@@ -1,6 +1,12 @@
 # Policy working memory
 
-## Current state (iteration 0015, Policymaker session for issue #299)
+## Current state (iteration 0016, Policymaker session for issue #303)
+
+- Iteration 0015 closed (accepted, improved); record `iterations/0015.json` exists. No audit, no pending suggestions, no open owner requests.
+- Goal gate not accepted (`gate_accepted: false`). Remaining goal work (farewell file) belongs to the shaper.
+- Decision: no changes to `execution/` or `policy/`, no orders. Reason: no evidence of a problem; an order without expected gain is busywork.
+
+## Earlier state (iteration 0015, Policymaker session for issue #299)
 
 - Iteration 0014 closed (accepted, improved); record `iterations/0014.json` exists. `src/greeting.txt` is present.
 - The farewell file (`src/farewell.txt`, N = greeting's merge iteration) is execution work; no policy change needed for it.

@@ -1,8 +1,17 @@
 # Policy working memory
 
-## Current state (iteration 0014, Policymaker session for issue #295)
+## Current state (iteration 0015, Policymaker session for issue #299)
 
-- No closed iteration has been considered yet: `iterations: []`, `iterations/` records 0.
+- Iteration 0014 closed (accepted, improved); record `iterations/0014.json` exists. `src/greeting.txt` is present.
+- The farewell file (`src/farewell.txt`, N = greeting's merge iteration) is execution work; no policy change needed for it.
+
+## Decisions (iteration 0015)
+
+- No changes to `execution/` or `policy/`, no orders. Reason: the only remaining goal step is the shaper's, no audit or suggestion asks for a change, and an order without expected gain is busywork.
+
+## Earlier state (iteration 0014, Policymaker session for issue #295)
+
+- No closed iteration had been considered yet at that time.
 - Goal: two files under `src/` (`greeting.txt`, `farewell.txt`); gate not accepted (`gate_accepted: false`, `gate: null`).
 - Audit: none (`audit_report: null`). Suggestions: none pending.
 - Owner requests: none open.

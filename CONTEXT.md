@@ -41,3 +41,26 @@ _Avoid_: success metric, stop condition
 **Judge**:
 An LLM session that scores work against criteria from the setup map, so the
 loop can iterate on subjective goals without waiting for the owner.
+
+**Iteration**:
+One unit of the loop's work: a plan executed as one or more parallel jobs,
+ending in a verdict on what it produced. Exploring a wrong solution counts.
+
+**Iteration core**:
+The part of an iteration that actually moves the loop toward the goal: the
+work done by the roles (building, researching, verifying, exploring).
+_Avoid_: step, task
+
+**Policy**:
+The component that decides the shape of the next iteration: which roles,
+which model, how many parallel candidates, time and budget limits, and
+whether the choice is deterministic or made by an LLM. Cannot write to the
+evaluator, the judge's rubric, the goal gate or the owner's switch; it may
+propose changes to them to the owner.
+_Avoid_: strategy, scheduler
+
+**Change gate**:
+The verdict "not worse than what is accepted" that a piece of work must get
+before it enters the main line. Issued by an evaluator, the judge or the
+owner, as the setup map decides.
+_Avoid_: review, merge check

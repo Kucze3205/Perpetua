@@ -20,8 +20,11 @@ prepares everything the loop needs; closing it arms the loop.
 _Avoid_: onboarding, wizard
 
 **Engine**:
-The goal-independent machinery of a loop: workflows, scripts, watchdog. Shipped
-by the plugin; a setup map may change it for one loop.
+The goal-independent machinery of a loop: workflows, scripts, configuration,
+the policy's prompt. Copied into the loop's repository by setup, where it
+belongs to that loop; a setup map may change it. Changed only by the owner,
+or by the loop through a pull request the owner merges (workflows: the owner
+alone).
 _Avoid_: framework, runtime
 
 **Role**:
@@ -58,14 +61,29 @@ work done by the roles (building, researching, verifying, exploring).
 _Avoid_: step, task
 
 **Policy**:
-The component that decides the shape of the next iteration: which roles,
-which model, how many parallel candidates, time and budget limits, and
-whether the choice is deterministic or made by an LLM. Owns the evaluator:
-designs it and keeps it trustworthy, changing it only through the evaluator
-verifier. Cannot write to the goal gate or the owner's switch; it may propose
-a goal change to the owner while the loop keeps working toward the current
-goal.
+The agent that runs after every iteration and owns the loop's architecture:
+the macro plan (what the next iteration aims at), the evaluator, the
+orchestrator (may shape or remove it), roles, parameters, whether the
+iteration shape is an orchestrator's plan or a deterministic rule as in v2.
+Keeps the evaluator trustworthy, changing it only through the evaluator
+verifier. Never touches what the iteration core produces. Cannot write to the
+engine, the goal gate or the owner's switch; it may propose a goal change to
+the owner while the loop keeps working toward the current goal. Its own prompt
+belongs to the engine.
 _Avoid_: strategy, scheduler
+
+**Orchestrator**:
+A role that turns the policy's macro plan into concrete work: what to
+analyse, build, search, whom to bring in. Decides what the loop does today;
+may propose changes to its own prompt, which the policy judges. The policy may
+replace it with a deterministic rule or remove it.
+_Avoid_: manager
+
+**Policy artifacts**:
+What the policy may change on its own, kept in version control: the
+orchestrator's prompt, role skills, parameters, a deterministic rule, profiles
+within what the owner already accepted, the evaluator. When the loop stalls,
+the watchdog reverts the last change to them.
 
 **Evaluator**:
 The measurement that tells whether work moved the loop toward the goal: a

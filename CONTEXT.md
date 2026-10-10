@@ -102,3 +102,8 @@ The verdict "not worse than what is accepted" that a piece of work must get
 before it enters the main line. Issued by an evaluator, the judge or the
 owner, as the setup map decides.
 _Avoid_: review, merge check
+
+**Setup baseline**:
+The state of the loop's repository at the moment the setup map is closed and
+the loop is armed, marked by a tag. The watchdog returns the policy artifacts
+to it when the policy breaks them before any iteration has closed.

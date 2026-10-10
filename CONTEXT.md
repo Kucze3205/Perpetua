@@ -45,6 +45,12 @@ loop can iterate on subjective goals without waiting for the owner.
 **Iteration**:
 One unit of the loop's work: a plan executed as one or more parallel jobs,
 ending in a verdict on what it produced. Exploring a wrong solution counts.
+_Avoid_: cycle
+
+**Session**:
+One agent run in one job, working one issue under one role. An iteration is
+made of sessions.
+_Avoid_: run
 
 **Iteration core**:
 The part of an iteration that actually moves the loop toward the goal: the
@@ -54,10 +60,24 @@ _Avoid_: step, task
 **Policy**:
 The component that decides the shape of the next iteration: which roles,
 which model, how many parallel candidates, time and budget limits, and
-whether the choice is deterministic or made by an LLM. Cannot write to the
-evaluator, the judge's rubric, the goal gate or the owner's switch; it may
-propose changes to them to the owner.
+whether the choice is deterministic or made by an LLM. Owns the evaluator:
+designs it and keeps it trustworthy, changing it only through the evaluator
+verifier. Cannot write to the goal gate or the owner's switch; it may propose
+a goal change to the owner while the loop keeps working toward the current
+goal.
 _Avoid_: strategy, scheduler
+
+**Evaluator**:
+The measurement that tells whether work moved the loop toward the goal: a
+script, or the judge's rubric. Its verdict feeds the change gate. The work it
+measures can never change it, only suggest a change to the policy.
+_Avoid_: benchmark, progress tests
+
+**Evaluator verifier**:
+An independent session that runs right after every change to the evaluator
+and checks that the changed evaluator still measures progress toward the
+goal. Until it passes, the previous evaluator stays in force; a failed check
+goes back to the policy.
 
 **Change gate**:
 The verdict "not worse than what is accepted" that a piece of work must get

@@ -107,3 +107,16 @@ _Avoid_: review, merge check
 The state of the loop's repository at the moment the setup map is closed and
 the loop is armed, marked by a tag. The watchdog returns the policy artifacts
 to it when the policy breaks them before any iteration has closed.
+
+**Owner request**:
+A question the loop puts to the owner, answerable only by them: a consent, a
+proposed goal or goal gate, a confirmation of a result. It may block the work
+that depends on it; the rest of the loop keeps going. The owner answers yes or
+no. What it proposes is fixed when it is raised; a change is a new request.
+_Avoid_: ticket for the owner, approval
+
+**Accepted limits**:
+The bounds the owner has accepted for what roles and their profiles may do.
+The policy widens roles within them on its own; beyond them, work waits for an
+owner request or for the owner to move the limits.
+_Avoid_: permissions, allowlist

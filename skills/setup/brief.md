@@ -37,13 +37,13 @@ Dependencies: A → B → C → D; E needs B and C; F needs B and E; G needs C, 
 
 | Topic | Default |
 |---|---|
-| G | cadence "cycle after cycle"; design criterion "shortest wall-clock time to the goal" |
+| G: cadence, criterion | cadence "cycle after cycle"; design criterion "shortest wall-clock time to the goal" |
 | Orchestrator | the generic one from the engine, an LLM at the start; the Policy later chooses the iteration shape (orchestrator or rule), setup does not |
 | E | existing skills first, a new skill only when nothing fits |
 | C | the Policy owns the evaluator; it changes only through the evaluator verifier |
 | F | **none**; no hard ban, every loop sets its limits from scratch |
 | D | **none** for the goal gate; without an accepted gate the loop never declares its own end |
-| G | **none** for "time without an iteration" and for the waiting-time question; they follow from the goal |
+| G: watchdog | **none** for "time without an iteration" and for the waiting-time question; they follow from the goal |
 
 **Fixed.** Substrate is GitHub Actions. The goal gate is accepted only by the owner. The Policy never touches the engine, the goal gate, `AUTOPILOT` or the token. Engine zones: workflows change only by the owner; scripts and configuration by the loop through a pull request the owner merges; `policy/` is the Policy's. The loop's token has no `workflows` scope. Owner requests (issues the loop opens for the owner) are the only way the loop asks for a decision, a consent or a confirmation.
 

@@ -1,6 +1,6 @@
 {
   "name": "perpetua",
   "description": "Sets up an autonomous agent loop in a GitHub repository and leaves it running until it reaches its goal",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": { "name": "Kamil Kuczerowski" }
 }

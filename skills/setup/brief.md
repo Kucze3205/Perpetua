@@ -23,13 +23,13 @@ The map is done when the environment is ready, goal reformulations are with the 
 | # | Topic | Content |
 |---|---|---|
 | A | Raw goal | Understand the goal as it stands. |
-| B | Environment | Sources, information and tools; access to them from the runner; secrets and credentials; the machine-preparation script; the loop's token without the `workflows` scope; enable "Allow GitHub Actions to create pull requests". |
+| B | Environment | Sources, information and tools; access to them from the runner; secrets and credentials; the machine-preparation script (`.github/loop/prepare.sh`); the loop's token without the `workflows` scope; enable "Allow GitHub Actions to create pull requests". |
 | C | Starting evaluator and change gate | A script, a judge's rubric, or "owner only"; the check command; protected paths. |
 | D | Goal reformulation and goal gate | Proposed reformulations (realistic only after B and C); whether a goal gate exists and the `owner_confirms` field. |
 | E | Starting roles | Propose existing skills first (plugins, personal, project) and build agents on them; write a new skill only when nothing fits. |
 | F | Actions and spending | The boundary (Accepted limits) within which the Policy may widen roles and profiles on its own; configuration in the engine zone, changed by pull request. |
-| G | Starting parameters | Cadence, design criterion, the watchdog's "time without an iteration", and whether time spent waiting for the owner counts toward it. |
-| H | Arming | A `task` ticket, last: merge `{{BRANCH}}` into main, tag the merge commit `setup-baseline`, switch on `AUTOPILOT`. No trial run: the first iteration is the trial. |
+| G | Starting parameters | Cadence, design criterion, the watchdog's "time without an iteration", and whether time spent waiting for the owner counts toward it; optionally the macro plan of iteration 0 (`iterations/0000/macro-plan.md`, else the first iteration begins with the Policy). Every key and file is described in `docs/perpetua/engine.md`. |
+| H | Arming | A `task` ticket, last: merge `{{BRANCH}}` into main, tag the merge commit `setup-baseline`, switch on `AUTOPILOT`, then `gh workflow run watchdog.yml` to start iteration 0 now. No trial run: the first iteration is the trial. |
 
 Dependencies: A → B → C → D; E needs B and C; F needs B and E; G needs C, E and F; H needs all.
 

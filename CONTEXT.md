@@ -92,6 +92,16 @@ may propose changes to its own prompt, which the policy judges. The policy may
 replace it with a deterministic rule or remove it.
 _Avoid_: manager
 
+**Shaper**:
+The orchestrator, or a script role acting as a deterministic rule: whatever turns
+the macro plan into a task graph. It writes the graph to a file; the engine
+creates the issues. It has no shell and no token.
+_Avoid_: planner, scheduler
+
+**Task graph**:
+The tasks of one iteration with their blocking edges, as issues. Its width (how
+many tasks can run side by side) is computed from it, not set.
+
 **Policy artifacts**:
 What the policy may change on its own, kept in version control: the
 orchestrator's prompt, role skills, parameters, a deterministic rule, profiles

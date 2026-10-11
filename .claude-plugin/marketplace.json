@@ -1,0 +1,8 @@
+{
+  "name": "perpetua",
+  "owner": { "name": "Kamil Kuczerowski" },
+  "description": "Perpetua: autonomous agent loops for any goal",
+  "plugins": [
+    { "name": "perpetua", "source": "./", "description": "Sets up an autonomous agent loop for any goal" }
+  ]
+}

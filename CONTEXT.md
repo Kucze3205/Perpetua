@@ -60,6 +60,19 @@ The part of an iteration that actually moves the loop toward the goal: the
 work done by the roles (building, researching, verifying, exploring).
 _Avoid_: step, task
 
+**Macro plan**:
+What the policy fixes for the next iteration: its aim and constraints. It says
+what the iteration is for, not which roles or models do the work; the
+orchestrator or the deterministic rule turns it into tasks.
+_Avoid_: strategy
+
+**Iteration record**:
+The immutable account of one iteration, written by the engine when the
+iteration ends, closed or failed: what the policy saw, the macro plan, the
+tasks as planned, and the outcome (verdict, token use, wall time, resources).
+The watchdog's last good state is the last closed one.
+_Avoid_: log, report
+
 **Policy**:
 The agent that runs after every iteration and owns the loop's architecture:
 the macro plan (what the next iteration aims at), the evaluator, the

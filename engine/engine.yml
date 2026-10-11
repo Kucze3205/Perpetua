@@ -1,0 +1,55 @@
+# Engine configuration of this loop. Owner zone: it changes only by a pull request the owner merges
+# (or by the owner, on the setup branch, while the setup map runs). No session can write it (`protected` below).
+# Values set to null have no default on purpose: the setup map decides them per loop, and the engine does nothing
+# for a null parameter.
+
+cli_version: "2.1.284"          # pinned Claude Code CLI; a new model may need a newer pin
+author:                          # git author of the loop's commits (the bot stays the committer); empty = the bot
+  name: ""
+  email: ""
+owner: ""                        # GitHub login owner requests are assigned to; empty = the repository owner
+
+# --- the change gate -------------------------------------------------------------------------------------------
+# Nothing enters the default branch without a verdict "not worse than what is accepted".
+check: ""                        # command run on the rebased candidate first (tests); empty = none
+gate:
+  kind: owner                    # owner: every change waits for the owner's answer; script: `command` decides
+  command: ""                    # script: run from the ACCEPTED tree, never from the candidate; prints a JSON object last:
+                                 #   {"verdict": "accepted|rejected|inconclusive", "improved": true, "detail": "..."}
+                                 #   env: CANDIDATE_DIR BASELINE_DIR CANDIDATE_SHA BASELINE_SHA CHANGED_FILES_FILE TASK ITERATION
+  timeout_minutes: 120
+  env_passthrough: []            # names of secrets the gate command may see (e.g. a judge that calls a model)
+
+# --- zones ------------------------------------------------------------------------------------------------------
+protected: [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"]   # no session writes these
+direct_paths: ["policy/", "audit/", "journal/"]   # not work: merged without the change gate (role `write` paths still apply)
+notes_paths: ["journal/"]        # merged even when the session did not finish
+evaluator_paths: ["policy/evaluator/"]            # only a role whose profile has `owns_evaluator`; merged only after the verifier
+policy_only_roles: [evaluator, audit]             # tasks of these roles come only from the Policy's `orders`
+verifier_role: evaluator-verifier
+large_file_bytes: 5000000        # bigger files go to `.session/artifacts/` (release assets), not into git
+
+# --- accepted limits ---------------------------------------------------------------------------------------------
+# What a role's profile may have without asking the owner. Beyond it, each session needs a granted consent request.
+limits:
+  tools: [Read, Grep, Glob, Write, Edit, Skill]
+  internet_write: []             # path prefixes a profile with internet may write
+
+# --- the Policy's own session (engine zone: its prompt is .github/loop/policy.md) -------------------------------
+policy:
+  model: claude-opus-5-5
+  effort: high
+  max_turns: 150
+  timeout_minutes: 90
+  tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
+  write: ["policy/"]
+
+# --- parameters of the setup (null = off) ------------------------------------------------------------------------
+params:
+  no_progress_iterations: null   # open a notice after this many iterations without an improving accepted change
+  quiet_minutes: null            # no iteration closed this long: roll back policy/ and start over
+  owner_wait_counts: null        # does time spent waiting for the owner count toward quiet_minutes
+  stream_retention_iterations: null   # keep raw session streams for this many iterations (null: GitHub's default)
+cadence:
+  min_interval_minutes: null     # null: iteration after iteration
+  daily_iterations: null

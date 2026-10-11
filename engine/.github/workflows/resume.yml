@@ -1,0 +1,39 @@
+# The resume clock: GitHub's cron lags by hours (the watchdog wakes every 2.5-5 h) while a subscription limit
+# resets to the minute. The epilogue of a parked session starts this workflow; the job sleeps until `resume_after`
+# and launches the session; a park longer than a job hands the clock to the next run. The watchdog is only a safety
+# net here (a lost event), not the loop's clock.
+name: resume
+run-name: resume #${{ inputs.issue }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Number of the parked issue (blocked:rate-limit)
+        required: true
+
+concurrency:
+  group: resume-${{ inputs.issue }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  wait:
+    if: vars.AUTOPILOT == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py resume "${{ inputs.issue }}"

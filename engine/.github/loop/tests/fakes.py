@@ -1,0 +1,358 @@
+"""Test world: an in-memory GitHub (the thin functions of `common`) and real git repositories (a bare origin, the
+engine's checkout of the default branch, agent working copies). Nothing here talks to the network."""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+LOOP_DIR = os.path.dirname(HERE)
+ENGINE = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+sys.path.insert(0, LOOP_DIR)
+
+import common  # noqa: E402
+import iteration  # noqa: E402
+import loop  # noqa: E402
+
+PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
+           "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
+           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh"]
+
+
+class FakeHub:
+    def __init__(self):
+        self.base = datetime.now(timezone.utc)
+        self.tick = 0
+        self.issues = {}
+        self.cmts = {}
+        self.deps = []                      # (blocked, blocker)
+        self.vars = {"AUTOPILOT": "on"}
+        self.runs, self.dispatched, self.cancelled, self.deleted, self.gh_calls = [], [], [], [], []
+        self.artifacts = []
+        self.next_n = 1
+
+    def ts(self):
+        self.tick += 1
+        return (self.base + timedelta(seconds=self.tick)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # -- the functions of common
+    def variable(self, name):
+        return self.vars.get(name, "")
+
+    def _view(self, x):
+        d = dict(x)
+        d["labels"] = [{"name": l} for l in sorted(x["_labels"])]
+        return d
+
+    def issue(self, n):
+        return self._view(self.issues[int(n)])
+
+    def list_issues(self, state="open", labels=()):
+        out = [self._view(x) for x in self.issues.values()
+               if (state == "all" or x["state"] == state) and set(labels) <= x["_labels"]]
+        return sorted(out, key=lambda x: x["number"])
+
+    def create_issue(self, title, body, labels=(), assignees=()):
+        n = self.next_n
+        self.next_n += 1
+        self.issues[n] = {"number": n, "id": 1000 + n, "title": title, "body": body, "state": "open", "state_reason": None,
+                          "_labels": set(labels), "assignees": list(assignees), "created_at": self.ts(), "closed_at": None}
+        return n
+
+    def edit_labels(self, n, add=(), remove=()):
+        x = self.issues[int(n)]
+        x["_labels"] |= set(add)
+        x["_labels"] -= set(remove)
+
+    def close_issue(self, n, reason="completed"):
+        x = self.issues[int(n)]
+        x.update(state="closed", state_reason="not_planned" if reason == "not planned" else "completed", closed_at=self.ts())
+
+    def ensure_label(self, *a, **k):
+        pass
+
+    def comments(self, n):
+        return list(self.cmts.get(int(n), []))
+
+    def post_comment(self, n, body):
+        c = {"id": 5000 + sum(len(v) for v in self.cmts.values()), "body": body, "author_association": "NONE",
+             "user": {"login": "github-actions[bot]"}}
+        self.cmts.setdefault(int(n), []).append(c)
+        return c
+
+    def patch_comment(self, cid, body):
+        for v in self.cmts.values():
+            for c in v:
+                if c["id"] == cid:
+                    c["body"] = body
+
+    def blockers(self, n):
+        return [self._view(self.issues[b]) for (x, b) in self.deps if x == int(n)]
+
+    def blocking(self, n):
+        return [self._view(self.issues[x]) for (x, b) in self.deps if b == int(n)]
+
+    def add_blocker(self, blocked, blocker):
+        self.deps.append((int(blocked), int(blocker)))
+
+    def workflow_run(self, workflow, **inputs):
+        self.dispatched.append((workflow, dict(inputs)))
+        if workflow == "session.yml":
+            self.runs.append({"databaseId": 9000 + len(self.runs), "displayTitle": "session #%s" % inputs["issue"], "status": "queued",
+                              "createdAt": self.ts()})
+
+    def run_list(self, workflow):
+        return list(self.runs) if workflow == "session.yml" else []
+
+    def list_artifacts(self):
+        return list(self.artifacts)
+
+    def delete_artifact(self, aid):
+        self.deleted.append(aid)
+
+    def cancel_run(self, rid):
+        self.cancelled.append(rid)
+
+    def recent_closed(self, limit=30):
+        done = [self._view(x) for x in self.issues.values() if x["state"] == "closed"]
+        return sorted(done, key=lambda x: x["closed_at"], reverse=True)[:limit]
+
+    def gh(self, *args, inp=None, check=True):
+        self.gh_calls.append(args)
+        return ""
+
+    # -- helpers for tests
+    def install(self):
+        self.saved = {k: getattr(common, k) for k in PATCHED}
+        for k in PATCHED:
+            setattr(common, k, getattr(self, k))
+        common.REPO = "o/r"
+
+    def uninstall(self):
+        for k, v in self.saved.items():
+            setattr(common, k, v)
+
+    def answer(self, n, yes):
+        """The owner closes an issue: completed = yes, not planned = no."""
+        self.close_issue(n, "completed" if yes else "not planned")
+
+    def finish_runs(self):
+        for r in self.runs:
+            r["status"] = "completed"
+
+    def by_label(self, label, state="open"):
+        return [x for x in self.list_issues(state) if label in common.label_names(x)]
+
+    def role_issues(self, role, state="open"):
+        return self.by_label("role:" + role, state)
+
+    def report(self, n):
+        for c in self.cmts.get(n, []):
+            if c["body"].startswith(common.MARK):
+                return common.fields(c["body"])
+        return {}
+
+    def prose(self, n):
+        for c in self.cmts.get(n, []):
+            if c["body"].startswith(common.MARK):
+                return c["body"]
+        return ""
+
+
+def sh(cwd, *args):
+    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError("%s: %s" % (" ".join(args), r.stderr))
+    return r.stdout.strip()
+
+
+class World:
+    """A hub, a bare origin, the engine's checkout (cwd) and a place for agent copies."""
+
+    def __init__(self, engine_yml=None, files=None):
+        self.tmp = tempfile.mkdtemp(prefix="perpetua-test-")
+        self.env_saved = dict(os.environ)
+        self.cwd_saved = os.getcwd()
+        for k, v in dict(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
+                         DEFAULT_BRANCH="main", GITHUB_REPOSITORY="o/r", GITHUB_REPOSITORY_OWNER="ow").items():
+            os.environ[k] = v
+        if os.name == "nt":      # `bash` on PATH may be WSL's, which cannot run engine commands: put Git's first
+            for cand in ("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe"):
+                if os.path.exists(cand):
+                    os.environ["LOOP_BASH"] = cand
+                    os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
+                    break
+        os.environ.pop("GH_TOKEN", None)
+        os.environ.pop("LOOP_SANDBOX", None)
+        self.n_work = 0
+        self.before_finalize = None         # a callable: something happens on origin while the agent works
+        self.origin = os.path.join(self.tmp, "origin.git")
+        self.loop = os.path.join(self.tmp, "loop")
+        sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
+        # hermetic: the engine's code plus a small policy fixture, never whatever policy/ holds in the repository we run in
+        shutil.copytree(os.path.join(ENGINE, ".github"), os.path.join(self.loop, ".github"),
+                        ignore=shutil.ignore_patterns("__pycache__", "tests"))
+        shutil.copy(os.path.join(ENGINE, "ENGINE_VERSION"), self.loop)
+        self.write(self.loop, "engine.yml", engine_yml if engine_yml is not None else "")
+        self.write(self.loop, "policy/params.yml", POLICY_PARAMS)
+        self.write(self.loop, "policy/profiles.yml", WORKER_PROFILES)
+        for role in ("orchestrator", "worker", "net", "evaluator", "evaluator-verifier", "audit"):
+            self.write(self.loop, "policy/roles/%s/SKILL.md" % role, "---\nname: %s\ndescription: fixture\n---\nx\n" % role)
+        for p, text in (files or {}).items():
+            self.write(self.loop, p, text)
+        sh(self.loop, "git", "init", "-q", "-b", "main")
+        sh(self.loop, "git", "config", "core.autocrlf", "false")
+        sh(self.loop, "git", "add", "-A")
+        sh(self.loop, "git", "commit", "-q", "-m", "setup")
+        sh(self.loop, "git", "remote", "add", "origin", self.origin)
+        sh(self.loop, "git", "push", "-q", "origin", "main")
+        os.chdir(self.loop)
+        self.hub = FakeHub()
+        self.hub.install()
+        common.LAUNCHED.clear()
+
+    def close(self):
+        self.hub.uninstall()
+        os.chdir(self.cwd_saved)
+        os.environ.clear()
+        os.environ.update(self.env_saved)
+        shutil.rmtree(self.tmp, onerror=lambda f, p, e: (os.chmod(p, 0o700), f(p)))
+
+    @staticmethod
+    def write(root, rel, text):
+        p = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+
+    def origin_file(self, rel, ref="main"):
+        r = subprocess.run(["git", "show", "%s:%s" % (ref, rel)], cwd=self.origin, capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else None
+
+    def origin_has_ref(self, ref):
+        return subprocess.run(["git", "rev-parse", "--verify", "-q", ref], cwd=self.origin, capture_output=True).returncode == 0
+
+    def push_main(self, files, message="direct"):
+        """A commit by a human straight on the origin's default branch."""
+        self.n_work += 1
+        d = os.path.join(self.tmp, "human%s" % self.n_work)
+        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, d)
+        for p, t in files.items():
+            self.write(d, p, t)
+        sh(d, "git", "add", "-A")
+        sh(d, "git", "commit", "-q", "-m", message)
+        sh(d, "git", "push", "-q", "origin", "main")
+
+    def session(self, n, files=None, status="done", report_extra="", session_files=None, exit_code="0", result=None,
+                commit=True, report=True, base=None, delete=(), yaml=""):
+        """Play the agent of issue `n` and run the epilogue on what it left. `files` are committed on `task/N`;
+        `session_files` go to `.session/` (report extras, tasks.json, macro-plan.md, requests.json, artifacts/...)."""
+        self.n_work += 1
+        work = os.path.join(self.tmp, "work%s" % self.n_work)
+        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
+        sh(work, "git", "config", "core.autocrlf", "false")
+        sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base or "origin/main")
+        for p, t in (files or {}).items():
+            self.write(work, p, t)
+        for p in delete:
+            os.remove(os.path.join(work, p))
+        if commit and (files or delete):
+            sh(work, "git", "add", "-A")
+            sh(work, "git", "commit", "-q", "--allow-empty", "-m", "work of #%s" % n)
+        if report:
+            self.write(work, ".session/report.md", "%s\n```yaml\nstatus: %s\ncommit: abc\n%s```\nProse of #%s.\n%s" % (
+                common.MARK, status, yaml, n, report_extra))
+        for p, t in (session_files or {}).items():
+            self.write(work, ".session/" + p, t)
+        rt = os.path.join(self.tmp, "rt%s" % self.n_work)
+        os.makedirs(rt)
+        self.write(rt, "agent-exit", exit_code)
+        self.write(rt, "session-start", str(int(datetime.now().timestamp()) - 50))
+        self.write(rt, "agent-start", str(int(datetime.now().timestamp()) - 40))
+        self.write(rt, "agent-end", str(int(datetime.now().timestamp()) - 10))
+        self.write(rt, "claude-execution-output.json", json.dumps(result if result is not None else {
+            "type": "result", "is_error": False, "num_turns": 7, "usage": {"input_tokens": 1, "output_tokens": 2},
+            "modelUsage": {"m1": {"inputTokens": 100, "outputTokens": 50, "cacheReadInputTokens": 10, "cacheCreationInputTokens": 5}}}))
+        os.environ["RUNNER_TEMP"] = rt
+        os.environ["MODEL"], os.environ["EFFORT"] = "m1", "high"
+        self.hub.finish_runs()
+        common.LAUNCHED.clear()            # every epilogue is a fresh process
+        if self.before_finalize:
+            self.before_finalize()
+        loop.finalize(n, work)
+        return work
+
+    def branch(self, n, files, base="origin/main", delete=()):
+        """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""
+        self.n_work += 1
+        work = os.path.join(self.tmp, "br%s" % self.n_work)
+        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
+        sh(work, "git", "config", "core.autocrlf", "false")
+        sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base)
+        for p, t in files.items():
+            self.write(work, p, t)
+        for p in delete:
+            os.remove(os.path.join(work, p))
+        sh(work, "git", "add", "-A")
+        sh(work, "git", "commit", "-q", "--allow-empty", "-m", "work of #%s" % n)
+        sh(work, "git", "push", "-q", "-f", "origin", "task/%s" % n)
+
+    def next_dispatch(self, workflow="session.yml"):
+        """The issue number of the oldest dispatched session not yet played."""
+        done = getattr(self, "_played", set())
+        for w, inp in self.hub.dispatched:
+            if w == workflow and int(inp["issue"]) not in done and self.hub.issues[int(inp["issue"])]["state"] == "open":
+                self._played = done | {int(inp["issue"])}
+                return int(inp["issue"])
+        return None
+
+    def macro_plan(self, aim="do the thing", orders=""):
+        return "---\naim: %s\nconstraints: [none]\nnotes_for_shaper: n/a\n%s---\nplan\n" % (aim, orders)
+
+
+def tasks_json(*tasks):
+    return json.dumps({"tasks": list(tasks)})
+
+
+def task(tid, role="worker", title=None, body=None, **kw):
+    return dict(id=tid, role=role, title=title or "Task %s" % tid, body=body or "## Goal\nx\n## Acceptance\n- [ ] y\n", **kw)
+
+
+WORKER_PROFILES = """orchestrator:
+  write: ["journal/**"]
+  tools: [Read, Grep, Glob, Write, Edit]
+  model: opus
+worker:
+  write: ["src/**", "docs/**"]
+  tools: [Read, Grep, Glob, Write, Edit]
+net:
+  internet: true
+  write: ["src/**"]
+  tools: [Read, WebSearch, Write]
+evaluator:
+  owns_evaluator: true
+  write: ["policy/evaluator/**"]
+  tools: [Read, Write]
+evaluator-verifier:
+  write: []
+  tools: [Read, Write]
+audit:
+  write: ["audit/**", "policy/metrics/**"]
+  tools: [Read, Write]
+"""
+
+
+POLICY_PARAMS = """shaper: orchestrator
+models:
+  default: claude-sonnet-5-5
+  opus: claude-opus-5-5
+efforts: [low, medium, high]
+"""
+
+
+def worker_world(engine_yml=None):
+    """The world of most tests: a `worker` and a `net` role next to the engine's roles; `engine_yml` goes over the defaults."""
+    return World(engine_yml=engine_yml)

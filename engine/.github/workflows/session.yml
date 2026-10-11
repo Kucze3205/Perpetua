@@ -1,0 +1,164 @@
+# One session of the loop. Single input: the issue number. Role, model and limits come from the issue's labels
+# and policy/profiles.yml. Started only by the engine (`launch` in common.py), never by hand.
+#
+# The engine code (.github/loop/) runs from a checkout of the default branch (`loop/`) and is removed from the
+# disk while the agent works; the agent works in its own checkout (`work/`) and has no push credentials. The
+# epilogue re-checks the engine out, fetches the agent's commits as plain objects and does everything else itself.
+# Two kinds: `agent` (a Claude session) and `script` (a deterministic role, no model, no credential).
+name: session
+run-name: session #${{ inputs.issue }}${{ inputs.role && format(' · {0}', inputs.role) || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number with a role:* label
+        required: true
+      role:
+        description: Role (only for the run name)
+        required: false
+
+concurrency:
+  group: session-${{ inputs.issue }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  prep:
+    if: vars.AUTOPILOT == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      go: ${{ steps.guard.outputs.go }}
+      kind: ${{ steps.resolve.outputs.kind }}
+      role: ${{ steps.resolve.outputs.role }}
+      model: ${{ steps.resolve.outputs.model }}
+      effort: ${{ steps.resolve.outputs.effort }}
+      start: ${{ steps.resolve.outputs.start }}
+      tools: ${{ steps.resolve.outputs.tools }}
+      max_turns: ${{ steps.resolve.outputs.max_turns }}
+      agent_timeout: ${{ steps.resolve.outputs.agent_timeout }}
+      job_timeout: ${{ steps.resolve.outputs.job_timeout }}
+      consented: ${{ steps.resolve.outputs.consented }}
+      iteration: ${{ steps.resolve.outputs.iteration }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      # AUTOPILOT is the first step: a session created just before the switch-off stops too
+      - id: guard
+        run: |
+          if python3 .github/loop/loop.py guard; then echo go=true >> "$GITHUB_OUTPUT"; else echo go=false >> "$GITHUB_OUTPUT"; fi
+      # a dead credential ends the job before the agent stands up
+      - if: steps.guard.outputs.go == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: python3 .github/loop/loop.py probe
+      - id: resolve
+        if: steps.guard.outputs.go == 'true'
+        run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py resolve "${{ inputs.issue }}"
+
+  session:
+    needs: prep
+    if: needs.prep.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    # job_timeout = agent + gate + 30 min < 360: the 6 h limit kills a job as FAILED and the epilogue must fit
+    timeout-minutes: ${{ fromJSON(needs.prep.outputs.job_timeout) }}
+    env:
+      ISSUE: ${{ inputs.issue }}
+      ROLE: ${{ needs.prep.outputs.role }}
+      KIND: ${{ needs.prep.outputs.kind }}
+      MODEL: ${{ needs.prep.outputs.model }}
+      EFFORT: ${{ needs.prep.outputs.effort }}
+      TOOLS: ${{ needs.prep.outputs.tools }}
+      MAX_TURNS: ${{ needs.prep.outputs.max_turns }}
+      AGENT_TIMEOUT: ${{ needs.prep.outputs.agent_timeout }}
+      ITERATION: ${{ needs.prep.outputs.iteration }}
+      WORK: ${{ github.workspace }}/work
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+      LOOP_SANDBOX: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: loop
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prep.outputs.start }}
+          path: work
+          fetch-depth: 0
+          persist-credentials: false
+      - run: date +%s > "$RUNNER_TEMP/session-start"
+      - id: guard
+        working-directory: loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if python3 .github/loop/loop.py guard; then echo go=true >> "$GITHUB_OUTPUT"; else echo go=false >> "$GITHUB_OUTPUT"; fi
+      - name: Tools
+        if: steps.guard.outputs.go == 'true'
+        working-directory: loop
+        run: |
+          pip install -q pyyaml
+          CLI=$(python3 -c "import yaml; print((yaml.safe_load(open('engine.yml')) or {}).get('cli_version', '2.1.284'))")
+          npm install -g "@anthropic-ai/claude-code@$CLI"
+          bash .github/loop/sandbox.sh
+          python3 .github/loop/loop.py git-identity
+      - name: Prepare the machine
+        if: steps.guard.outputs.go == 'true'
+        working-directory: work
+        run: bash "$GITHUB_WORKSPACE/loop/.github/loop/prepare.sh"
+      - name: Stage the session
+        if: steps.guard.outputs.go == 'true'
+        working-directory: loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/loop/loop.py stage "$ISSUE" "$WORK" "$RUNNER_TEMP/trusted"
+      # the engine code is not on the disk while the agent works: it cannot change what watches it
+      - if: steps.guard.outputs.go == 'true'
+        run: rm -rf "$GITHUB_WORKSPACE/loop"
+      - name: Session
+        if: steps.guard.outputs.go == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ needs.prep.outputs.kind == 'agent' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          # Secrets a role may use only with the owner's consent go here, one line each, gated on the consent that
+          # `resolve` verified (the setup map adds them; the owner owns this file):
+          #   EXTRA_SECRET: ${{ needs.prep.outputs.consented == 'true' && secrets.EXTRA_SECRET || '' }}
+        run: bash "$RUNNER_TEMP/trusted/agent.sh"
+      - uses: actions/checkout@v4
+        if: always() && steps.guard.outputs.go == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: loop
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.guard.outputs.go == 'true'
+        with:
+          name: stream-${{ needs.prep.outputs.iteration }}-${{ inputs.issue }}
+          path: ${{ runner.temp }}/stream.ndjson
+          if-no-files-found: ignore
+      - name: Epilogue
+        if: always() && steps.guard.outputs.go == 'true'
+        working-directory: loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py git-identity
+          python3 .github/loop/loop.py finalize "$ISSUE" "$WORK"

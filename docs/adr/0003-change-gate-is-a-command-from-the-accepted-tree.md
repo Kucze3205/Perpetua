@@ -1,0 +1,3 @@
+# The change gate is a command run from the accepted tree; the engine keeps no accepted result
+
+The gate's verdict comes from one command that runs from the default branch, never from the candidate, and is handed the candidate and the accepted tree; the engine stores no "accepted score". We rejected a record file written by the engine after each merge: parallel merges would conflict on it, and a stale record measures against yesterday's state. The cost is that the evaluator measures the accepted tree again on every gate run (it may cache by the accepted commit), and that a judge that calls a model is just such a command, so its form stays a setup decision.

@@ -1,0 +1,12 @@
+# Parameters the Policy owns. Defaults of the engine are in the code; this file overrides them.
+shaper: orchestrator             # the role that turns the macro plan into a task graph: an LLM role, or a script role
+                                 # (a deterministic rule: a profile with `agent: false` and a `command`)
+criterion: "shortest wall-clock time to the goal"
+models:                          # label `model:<alias>` on a task -> model id; `default` when there is no label
+  default: claude-sonnet-5-5
+  opus: claude-opus-5-5
+efforts: [low, medium, high]
+ceilings:                        # a task's limits never exceed these; the engine enforces time and turns hard
+  job_minutes: 240
+  iteration_minutes: null
+  max_turns: 150

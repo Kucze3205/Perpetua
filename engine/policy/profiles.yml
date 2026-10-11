@@ -1,0 +1,41 @@
+# Role profiles: a role = a skill (policy/roles/<role>/SKILL.md) + a profile from here. The label `role:<name>` picks both.
+# The Policy owns this file. Beyond the owner's accepted limits (engine.yml `limits`) a session needs a consent.
+#
+#   agent: false + command   a deterministic role: no model, no credential (a rule, a measurement)
+#   write                    paths the role may change; enforced when its branch is merged
+#   internet                 WebSearch/WebFetch and network
+#   tools                    the full --allowedTools list (the Skill tool is added)
+#   owns_evaluator           may change the evaluator's files (policy/evaluator/)
+#   model, effort            alias from params.yml `models` and a level; labels on a task override them
+#   timeout_minutes, max_turns   at most the ceilings in params.yml
+
+orchestrator:
+  write: ["journal/**"]
+  tools: [Read, Grep, Glob, Write, Edit]        # no shell and no `gh`: the engine creates the issues from tasks.json
+  model: opus
+  effort: high
+  max_turns: 150
+  timeout_minutes: 120
+
+audit:
+  write: ["audit/**", "policy/metrics/**"]
+  tools: [Read, Grep, Glob, Write, Edit, "Bash(git:*)", "Bash(python3:*)"]
+  internet: false
+  effort: medium
+  max_turns: 120
+  timeout_minutes: 120
+
+evaluator:
+  owns_evaluator: true
+  write: ["policy/evaluator/**"]
+  tools: [Read, Grep, Glob, Write, Edit, "Bash(git:*)", "Bash(python3:*)"]
+  effort: high
+  max_turns: 120
+  timeout_minutes: 120
+
+evaluator-verifier:
+  write: []
+  tools: [Read, Grep, Glob, Write, Edit, "Bash(git:*)", "Bash(python3:*)"]
+  effort: high
+  max_turns: 100
+  timeout_minutes: 120

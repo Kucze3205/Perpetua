@@ -95,7 +95,8 @@ _Avoid_: manager
 **Policy artifacts**:
 What the policy may change on its own, kept in version control: the
 orchestrator's prompt, role skills, parameters, a deterministic rule, profiles
-within what the owner already accepted, the evaluator. When the loop stalls,
+within what the owner already accepted, the evaluator, the audit's measuring
+scripts. When the loop stalls,
 the watchdog reverts the last change to them.
 
 **Evaluator**:
@@ -109,6 +110,17 @@ An independent session that runs right after every change to the evaluator
 and checks that the changed evaluator still measures progress toward the
 goal. Until it passes, the previous evaluator stays in force; a failed check
 goes back to the policy.
+
+**Audit**:
+A role the policy orders to learn and monitor the loop's whole environment,
+every session included: what the loop consumes, where it waits, what the
+substrate offers that the loop leaves unused. The policy decides, per project,
+what is measured and what the audit may see and do. Each measurement is done
+by the audit session itself or, when the audit finds it mechanical, turned
+into a script it keeps for later audits. Proposes changes to the policy and
+changes nothing else. Judges how the loop uses its environment, never the
+quality of the work (that is the evaluator).
+_Avoid_: monitoring, telemetry
 
 **Change gate**:
 The verdict "not worse than what is accepted" that a piece of work must get

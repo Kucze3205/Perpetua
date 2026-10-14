@@ -145,7 +145,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertNotIn("GH_TOKEN", step)
         with open(os.path.join(ENGINE, ".github", "loop", "agent.sh"), encoding="utf-8") as fh:
             sh = fh.read()
-        self.assertIn("unset CLAUDE_CODE_OAUTH_TOKEN LOOP_GH_TOKEN GH_TOKEN GITHUB_TOKEN", sh)
+        self.assertIn("unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN", sh)
         code = [l for l in sh.splitlines() if not l.strip().startswith("#")]
         self.assertEqual([l for l in code if re.search(r"(^|[\s;|&(])gh\s", l)], [])          # the agent has no gh
 
@@ -190,12 +190,13 @@ class ConfigTest(unittest.TestCase):
         for r in names:
             self.assertIn(r, profs, r)
 
-    def test_the_generic_orchestrator_needs_nothing_beyond_the_default_limits(self):
+    def test_the_shipped_roles_need_nothing_beyond_the_default_limits(self):
+        # the verifier is started by the engine with no consent request: beyond the limits it could never run
         profs = self.load("policy", "profiles.yml")
         w = fakes.World()
         try:
-            self.assertEqual(it.limits_exceeded(profs["orchestrator"]), [])
-            self.assertNotEqual(it.limits_exceeded(profs["audit"]), [])           # the audit needs a shell: setup (topic F) decides
+            for role, p in profs.items():
+                self.assertEqual(it.limits_exceeded(p), [], role)
         finally:
             w.close()
 

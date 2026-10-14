@@ -6,7 +6,7 @@ leaves it running until it reaches its goal. The goal is not limited to code.
 ## Language
 
 **Loop**:
-A self-sustaining cycle of agent sessions in GitHub Actions that works toward a
+A self-sustaining chain of iterations in GitHub Actions that works toward a
 goal without a human driving it. Switched on and off only by the owner.
 
 **Owner**:
@@ -22,9 +22,7 @@ _Avoid_: onboarding, wizard
 **Engine**:
 The goal-independent machinery of a loop: workflows, scripts, configuration,
 the policy's prompt. Copied into the loop's repository by setup, where it
-belongs to that loop; a setup map may change it. Changed only by the owner,
-or by the loop through a pull request the owner merges (workflows: the owner
-alone).
+belongs to that loop; a setup map may change it. Changed only by the owner.
 _Avoid_: framework, runtime
 
 **Role**:
@@ -40,10 +38,6 @@ versions, only the owner accepts them.
 The check that decides the goal is reached. Without an owner-accepted gate the
 loop cannot declare its own end.
 _Avoid_: success metric, stop condition
-
-**Judge**:
-An LLM session that scores work against criteria from the setup map, so the
-loop can iterate on subjective goals without waiting for the owner.
 
 **Iteration**:
 One unit of the loop's work: a plan executed as one or more parallel jobs,
@@ -70,19 +64,13 @@ _Avoid_: strategy
 The immutable account of one iteration, written by the engine when the
 iteration ends, closed or failed: what the policy saw, the macro plan, the
 tasks as planned, and the outcome (verdict, token use, wall time, resources).
-The watchdog's last good state is the last closed one.
+The last good state is the last closed one.
 _Avoid_: log, report
 
 **Policy**:
-The agent that runs after every iteration and owns the loop's architecture:
-the macro plan (what the next iteration aims at), the evaluator, the
-orchestrator (may shape or remove it), roles, parameters, whether the
-iteration shape is an orchestrator's plan or a deterministic rule as in v2.
-Keeps the evaluator trustworthy, changing it only through the evaluator
-verifier. Never touches what the iteration core produces. Cannot write to the
-engine, the goal gate or the owner's switch; it may propose a goal change to
-the owner while the loop keeps working toward the current goal. Its own prompt
-belongs to the engine.
+The agent that runs at the start of every iteration and owns the loop's
+architecture: the macro plan, the evaluator, the shaper, the roles and the
+parameters. Never touches what the iteration core produces.
 _Avoid_: strategy, scheduler
 
 **Orchestrator**:
@@ -103,23 +91,18 @@ The tasks of one iteration with their blocking edges, as issues. Its width (how
 many tasks can run side by side) is computed from it, not set.
 
 **Policy artifacts**:
-What the policy may change on its own, kept in version control: the
-orchestrator's prompt, role skills, parameters, a deterministic rule, profiles
-within what the owner already accepted, the evaluator, the audit's measuring
-scripts. When the loop stalls,
-the watchdog reverts the last change to them.
+What the policy owns, kept in version control: the orchestrator's prompt, role
+skills, profiles, parameters, a deterministic rule, the evaluator.
 
 **Evaluator**:
 The measurement that tells whether work moved the loop toward the goal: a
-script, or the judge's rubric. Its verdict feeds the change gate. The work it
+script, which may call a model. Its verdict feeds the change gate. The work it
 measures can never change it, only suggest a change to the policy.
 _Avoid_: benchmark, progress tests
 
 **Evaluator verifier**:
-An independent session that runs right after every change to the evaluator
-and checks that the changed evaluator still measures progress toward the
-goal. Until it passes, the previous evaluator stays in force; a failed check
-goes back to the policy.
+An independent session that checks a change to the evaluator before it takes
+effect: does the changed evaluator still measure progress toward the goal.
 
 **Audit**:
 A role the policy orders to learn and monitor the loop's whole environment,
@@ -134,20 +117,19 @@ _Avoid_: monitoring, telemetry
 
 **Change gate**:
 The verdict "not worse than what is accepted" that a piece of work must get
-before it enters the main line. Issued by an evaluator, the judge or the
-owner, as the setup map decides.
+before it enters the main line. Issued by the evaluator or the owner, as the
+setup map decides.
 _Avoid_: review, merge check
 
 **Setup baseline**:
 The state of the loop's repository at the moment the setup map is closed and
-the loop is armed, marked by a tag. The watchdog returns the policy artifacts
-to it when the policy breaks them before any iteration has closed.
+the loop is armed, marked by a tag. The engine returns the policy artifacts to
+it when they are rolled back before any iteration has closed.
 
 **Owner request**:
 A question the loop puts to the owner, answerable only by them: a consent, a
-proposed goal or goal gate, a confirmation of a result. It may block the work
-that depends on it; the rest of the loop keeps going. The owner answers yes or
-no. What it proposes is fixed when it is raised; a change is a new request.
+proposed goal or goal gate, a confirmation of a result. The owner answers by
+closing it; a notice only informs.
 _Avoid_: ticket for the owner, approval
 
 **Accepted limits**:

@@ -133,6 +133,18 @@ class StageTest(SessionCase):
         hook = json.loads(read(os.path.join(trusted, "settings.json")))
         self.assertIn("remaining.py", hook["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
 
+    def test_the_audit_gets_the_streams_of_the_last_iterations(self):
+        self.hub.artifacts = [{"id": 1, "name": "stream-0001-3", "workflow_run": {"id": 101}},
+                              {"id": 2, "name": "stream-0004-9", "workflow_run": {"id": 104}},
+                              {"id": 3, "name": "stream-0005-11", "workflow_run": {"id": 105}},
+                              {"id": 4, "name": "stream-0005-12", "workflow_run": {"id": 106}, "expired": True}]
+        n = self.hub.create_issue("A", "## Goal\nmeasure\n", labels=["role:audit", "loop:iteration 5"])
+        work = self.work()
+        loop.stage(n, work, os.path.join(self.w.tmp, "t"))
+        got = [a for a in self.hub.gh_calls if a[:2] == ("run", "download")]
+        self.assertEqual([(a[2], a[4]) for a in got], [("104", "stream-0004-9"), ("105", "stream-0005-11")])
+        self.assertTrue(all(a[6].startswith(os.path.join(work, ".session", "streams")) for a in got))
+
     def test_a_script_role_gets_its_command_and_no_skill(self):
         n = self.issue("rule")
         trusted = os.path.join(self.w.tmp, "trusted")
@@ -146,7 +158,7 @@ class StageTest(SessionCase):
         work = self.work()
         loop.stage(shaper, work, os.path.join(self.w.tmp, "t1"))
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
-        self.assertEqual((state["iteration"], state["engine_version"]), (0, "0.1.0"))
+        self.assertEqual((state["iteration"], state["engine_version"]), (0, "0.2.0"))
         self.assertIn("zero", read(os.path.join(work, ".session", "macro-plan.md")))
         pol = self.hub.create_issue("P", "b", labels=["role:policy", "loop:iteration 0"])
         work2 = self.work()

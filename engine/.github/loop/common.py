@@ -27,9 +27,9 @@ AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 OWNED = ("attempts", "resume_after", "kicks", "kicked", "conflicts", "cause", "verification", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts")
-SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "LOOP_GH_TOKEN")
+SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
 
-DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill"]
+DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)"]
 DEFAULTS = {
     "cli_version": "2.1.284",
     "author": {"name": "", "email": ""},
@@ -45,7 +45,7 @@ DEFAULTS = {
     "gate": {"kind": "owner", "command": "", "timeout_minutes": 120, "env_passthrough": []},
     "limits": {"tools": DEFAULT_TOOLS, "internet_write": []},
     "policy": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
-               "tools": DEFAULT_TOOLS + ["Bash(git:*)", "Bash(python3:*)"], "write": ["policy/"]},
+               "tools": DEFAULT_TOOLS, "write": ["policy/"]},
     "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
                "stream_retention_iterations": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},

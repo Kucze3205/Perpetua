@@ -71,6 +71,8 @@ def resolve(n):
     if not why and p.get("agent") is False and not p.get("command"):
         why = "script role `%s` has no command" % role
     if why:
+        if role == c.cfg()["verifier_role"]:      # a verifier that cannot start sends the evaluator change back
+            settle_verification(n, i, "blocked", None, why)
         close_out(n, i, "blocked", {"cause": "start:" + why.split()[0]}, "The session did not start: " + why + ".")
         reconcile()
         raise SystemExit(why)
@@ -110,6 +112,8 @@ def stage(n, work, trusted):
     if role == "policy" or "loop:shaper" in labels:
         it.export_state(n, sess)
     fetch_inputs(i["body"], os.path.join(sess, "inputs"))
+    if role == "audit":
+        fetch_streams(c.iteration_of(labels) or 0, os.path.join(sess, "streams"))
     shutil.copy(".github/loop/session-protocol.md", os.path.join(sess, "protocol.md"))
     for f in ("agent.sh", "stream_filter.py", "remaining.py"):
         shutil.copy(".github/loop/" + f, trusted)
@@ -171,6 +175,18 @@ def fetch_inputs(body, dest):
         tag, asset = rel.split("/", 1)
         os.makedirs(dest, exist_ok=True)
         c.gh("release", "download", tag, "--pattern", asset, "--dir", dest, "--clobber", check=False)
+
+
+AUDIT_STREAM_ITERATIONS = 3
+
+
+def fetch_streams(k, dest):
+    """Before an audit session (it has no token): the raw session streams of the last iterations, one directory each."""
+    for a in c.list_artifacts():
+        m = re.match(r"stream-(\d{4})-", a["name"])
+        run = (a.get("workflow_run") or {}).get("id")
+        if m and run and k - AUDIT_STREAM_ITERATIONS <= int(m.group(1)) <= k and not a.get("expired"):
+            c.gh("run", "download", str(run), "--name", a["name"], "--dir", os.path.join(dest, "%s-%s" % (a["name"], a["id"])), check=False)
 
 
 # ---------------------------------------------------------------- the candidate: the agent's commits in a trusted tree

@@ -1,6 +1,6 @@
 ---
 name: evaluator
-description: "Builds and maintains the loop's evaluator (a script, or a judge's rubric): the measurement that tells whether work moved the loop toward the goal. Ordered only by the Policy; the only role allowed to write `policy/evaluator/`. Loaded when a task has the label `role:evaluator`."
+description: "Builds and maintains the loop's evaluator (a script, which may call a model): the measurement that tells whether work moved the loop toward the goal. Ordered only by the Policy; the only role allowed to write `policy/evaluator/`. Loaded when a task has the label `role:evaluator`."
 ---
 
 # Evaluator role

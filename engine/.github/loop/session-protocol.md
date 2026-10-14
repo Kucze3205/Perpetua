@@ -9,7 +9,7 @@ publishes your report from `.session/report.md`. You have no `gh`, no GitHub tok
 reach for the issue yourself. `.session/` is never committed.
 
 Other files the engine may put in `.session/`: `loop-state.json` and `macro-plan.md` (the Policy and the shaper),
-`policy.md` (the Policy), `inputs/` (artifacts the task lists), `protocol.md` (this file).
+`policy.md` (the Policy), `inputs/` (artifacts the task lists), `streams/` (the audit), `protocol.md` (this file).
 
 ## Trust: what you do not read
 
@@ -36,7 +36,7 @@ You work on the branch `task/<n>` (n = the issue number). Commit often: the runn
 not commit. You do not rebase, merge or push: the epilogue does it, from outside.
 
 Stay inside the paths your role may write (see your skill). A change outside them, or to `.github/`, `engine.yml`,
-`iterations/`, `goal/` or `GOAL_REACHED`, is refused at merge and your task ends `blocked`.
+`ENGINE_VERSION`, `iterations/`, `goal/` or `GOAL_REACHED`, is refused at merge and your task ends `blocked`.
 
 Files bigger than a few MB, and binaries, do not go into git: put them in `.session/artifacts/` (plain file names).
 The epilogue uploads them as release assets and lists them in your report; a later task can list them under `inputs`.
@@ -126,8 +126,3 @@ The shaper writes `.session/tasks.json`; the engine creates the issues and the b
 engine asks the owner by itself when a role's profile is beyond the accepted limits. The width of the iteration is the
 widest layer of the graph; it is computed, not a field. Tasks of the roles in `policy_only_roles` come only from the
 Policy's `orders`; do not write them. Every task fits **one session**.
-
-## The verifier's result
-
-The evaluator verifier ends its report with `result: pass` or `result: fail` in the YAML block (and the reason in the
-prose). `pass` lets the engine merge the verified evaluator change; anything else sends it back.

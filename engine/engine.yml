@@ -1,5 +1,5 @@
-# Engine configuration of this loop. Owner zone: it changes only by a pull request the owner merges
-# (or by the owner, on the setup branch, while the setup map runs). No session can write it (`protected` below).
+# Engine configuration of this loop. Owner zone: only the owner changes it (on the setup branch while the setup map
+# runs). No session can write it (`protected` below).
 # Values set to null have no default on purpose: the setup map decides them per loop, and the engine does nothing
 # for a null parameter.
 
@@ -32,7 +32,7 @@ large_file_bytes: 5000000        # bigger files go to `.session/artifacts/` (rel
 # --- accepted limits ---------------------------------------------------------------------------------------------
 # What a role's profile may have without asking the owner. Beyond it, each session needs a granted consent request.
 limits:
-  tools: [Read, Grep, Glob, Write, Edit, Skill]
+  tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
   internet_write: []             # path prefixes a profile with internet may write
 
 # --- the Policy's own session (engine zone: its prompt is .github/loop/policy.md) -------------------------------

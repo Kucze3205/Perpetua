@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The iteration layer: Policy -> macro plan -> task graph -> parallel sessions -> record; owner requests;
-the goal gate; the watchdog's rollback of `policy/`.
+the goal gate; the rollback of `policy/`.
 
 An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the Policy session, the shaper,
 the tasks) are issues labelled `loop:iteration N` + `role:<name>`. The iteration issue carries the phase in a
@@ -329,7 +329,7 @@ def failed_streak():
 
 def policy_done(n, status, plan_text):
     """The Policy session ended (its `policy/` changes are already merged or rejected). Fail-open: without a new plan the
-    previous one stands, and a failed session is counted toward the watchdog's two-in-a-row rollback."""
+    previous one stands, and a failed session is counted toward the two-in-a-row rollback."""
     it = find_iteration_issue(n)
     if not it:
         return
@@ -796,7 +796,7 @@ def revert_policy(why):
     if c.tree_hash("HEAD", "policy") == c.tree_hash(target, "policy"):
         return False
     c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, ["policy"]))
-    open_request("notice", "policy/ rolled back", "The watchdog returned `policy/` to %s. Reason: %s." % (target[:8], why),
+    open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
                  "The loop was not progressing or the Policy failed twice in a row.",
                  "Nothing is blocked. The Policy sees this notice in its next iteration.", ref="rollback-%s" % c.head()[:8])
     return True

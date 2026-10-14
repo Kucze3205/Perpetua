@@ -91,7 +91,7 @@ class FirstIterationTest(Flow):
         self.assertEqual(rec["outcome"]["tokens"]["in"], 100 * 4)               # the shaper counts too
         self.assertIn("m1", rec["outcome"]["tokens"]["by_model"])
         self.assertTrue(rec["outcome"]["critical_path_s"] >= 0)
-        self.assertEqual(rec["engine_version"], "0.1.0")
+        self.assertEqual(rec["engine_version"], "0.2.0")
         self.assertNotIn("iterations", rec["input_state"])
         self.assertEqual(self.hub.issues[cur["number"]]["state"], "closed")
 
@@ -416,6 +416,20 @@ class EvaluatorChangeTest(Flow):
         self.assertEqual(self.w.origin_file("policy/evaluator/gate.sh"), "echo new\n")
         self.assertEqual(self.hub.report(e)["merged"], "true")
         self.assertEqual(self.hub.issues[e]["state"], "closed")
+
+    def test_a_verifier_that_cannot_start_sends_the_change_back(self):
+        e = self.start()
+        self.w.session(e, files={"policy/evaluator/gate.sh": "echo new\n"})
+        profs = self.w.origin_file("policy/profiles.yml").replace("evaluator-verifier:\n  write: []\n  tools: [Read, Write]",
+                                                                  "evaluator-verifier:\n  write: []\n  tools: [Read, 'Bash(rm:*)']")
+        self.assertIn("Bash(rm:*)", profs)
+        self.w.push_main({"policy/profiles.yml": profs}, "verifier beyond the limits")
+        c.sync_main()
+        with self.assertRaises(SystemExit):
+            loop.resolve(self.session_issue("evaluator-verifier"))
+        self.assertEqual(self.hub.report(e)["status"], "rejected")              # not left waiting for a verifier forever
+        self.assertNotIn("awaiting:verifier", self.hub.issues[e]["_labels"])
+        self.assertEqual(self.w.origin_file("policy/evaluator/gate.sh"), GATE_SH)
 
 
 class GoalGateTest(Flow):

@@ -2,7 +2,7 @@
 
 The goal-independent machinery of this loop: workflows, scripts, configuration, the Policy's prompt, a generic
 orchestrator. It was copied into this repository by `/perpetua:setup` and belongs to this loop; the setup map may
-change it. Terms (loop, owner, iteration, policy, evaluator...) are in `docs/perpetua/glossary.md`.
+change it. Terms (loop, owner, iteration, policy, evaluator...) are in `CONTEXT.md`.
 
 Engine version: `ENGINE_VERSION`. There is no update path from the plugin in the first release.
 
@@ -21,7 +21,7 @@ Policy session ──► macro plan ──► shaper session ──► task grap
 1. **Start.** The watchdog (or the end of the previous iteration) starts iteration N when none is open, if the
    cadence allows. It snapshots the state (`.session/loop-state.json`: goal, parameters, limits, open owner requests,
    an index line per past iteration, `no_progress`) into a comment of the iteration issue.
-2. **Policy.** If `iterations/NNNN/macro-plan.md` already exists (the setup wrote the first one), this step is skipped.
+2. **Policy.** If `iterations/NNNN/macro-plan.md` already exists (the setup writes the one of iteration 0), this step is skipped.
    Otherwise a `role:policy` session decides the macro plan and may change `policy/`. It blocks the iteration with a
    time limit. If it fails, produces no plan or is refused at merge, **the previous plan stands** and the iteration
    goes on (fail-open); two failed Policy sessions in a row roll `policy/` back.
@@ -41,10 +41,10 @@ Policy session ──► macro plan ──► shaper session ──► task grap
 | Zone | Contents | Changed by |
 |---|---|---|
 | Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
-| Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the loop through a pull request the owner merges; sessions cannot write them (`protected`) |
-| Policy artifacts | `policy/`, `audit/`, `journal/` | the Policy (`policy/`), the audit role (`audit/`, `policy/metrics/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
+| Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
+| Policy artifacts | `policy/`, `audit/`, `journal/` | the Policy (`policy/`), the audit role (`audit/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
 | Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policy, and only after the evaluator verifier passes |
-| Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only; the owner accepts what goes into `goal/` |
+| Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except what the setup map writes before arming (`goal/goal.md`, the macro plan of iteration 0); the owner accepts what goes into `goal/` |
 | Work | everything else | task sessions, through the change gate |
 
 The Policy never touches the engine, the goal gate, `AUTOPILOT` or a token. `AUTOPILOT` (repository variable) is the
@@ -60,9 +60,13 @@ setup), `stage`, the agent, the epilogue.
   process. The engine checkout is removed from the disk while it works. The epilogue re-checks the engine out and fetches
   the agent's commits as plain objects into the trusted checkout; the agent's repository is never used to run git.
 - **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments), `protocol.md`,
-  `loop-state.json` and `macro-plan.md` (Policy, shaper), `inputs/`; `report.md`, `tasks.json`, `requests.json`,
+  `loop-state.json` and `macro-plan.md` (Policy, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `requests.json`,
   `artifacts/` go out. See `.github/loop/session-protocol.md`, the contract every role reads.
 - **Kinds.** `agent` (a Claude session, pinned CLI) and `script` (a role with `agent: false`: no model, no credential).
+- **Model credential.** The engine is wired for a Claude subscription: the repository secret `CLAUDE_CODE_OAUTH_TOKEN`
+  (`claude setup-token`), the watchdog's probe and the parking on a subscription limit. Another model provider means
+  changing `session.yml`, `watchdog.yml`, `agent.sh`, the probe in `common.py` and `stream_filter.py`; the setup map may
+  do it for this loop.
 - **Limits.** Per-task limits never exceed the ceilings in `policy/params.yml`; the engine enforces time (`timeout`) and
   turns (`--max-turns`) hard. Tokens are recorded, not budgeted; there is no money limit anywhere in the engine.
 - **Statuses.** Agent: `wip`, `done`, `partial`, `blocked`, `rejected`. Engine: `paused` (subscription limit; it
@@ -74,7 +78,8 @@ setup), `stage`, the agent, the epilogue.
   the release `iter-NNNN` and lists them in the report. A later task names them in `inputs` and the engine downloads
   them before the agent starts.
 - **Streams.** The raw `stream-json` of every session is kept as the artifact `stream-NNNN-<issue>` (for
-  `stream_retention_iterations` iterations when set). Nothing interprets it; the audit can compute new measures from it.
+  `stream_retention_iterations` iterations when set). Nothing interprets it; an audit session gets the streams of the
+  last three iterations in `.session/streams/`.
 
 ## The change gate
 
@@ -157,16 +162,14 @@ The offline module (not shipped) replays decisions from `input_state` plus the i
 
 | Topic | Writes |
 |---|---|
-| A goal | `goal/goal.md` (accepted by the owner) |
-| B environment | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings; the first macro plan if wanted: `iterations/0000/macro-plan.md` |
+| charting (no ticket) | `goal/goal.md` (accepted by the owner) |
+| B environment | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings |
 | C evaluator and change gate | `engine.yml`: `check`, `gate`, `protected`, `evaluator_paths`; `policy/evaluator/` |
 | D goal reformulation and gate | `goal/goal.md`, `goal/gate.yml` (`command`, `owner_confirms`) |
 | E starting roles | `policy/roles/<role>/SKILL.md`, `policy/profiles.yml` (from `policy/roles/ROLE-TEMPLATE.md`) |
-| F actions and spending | `engine.yml`: `limits`; consent secrets in `session.yml` |
-| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models` |
-| H arming | merge the setup branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
-
-If the setup wrote no macro plan for iteration 0, the first iteration begins with the Policy session instead.
+| F accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
+| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`; the macro plan of iteration 0: `iterations/0000/macro-plan.md` |
+| H arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
 
 ## Not exercised here
 

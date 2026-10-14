@@ -9,16 +9,15 @@ You shape **one iteration**: from the macro plan the Policy fixed to a task grap
 parallel sessions. You leave behind: `.session/tasks.json`, a journal entry, a report. The next iteration has its own
 orchestrator session; you cannot delegate yourself.
 
-Terms are in `docs/perpetua/glossary.md`. Protocol (task format, report, trust): `.session/protocol.md`.
+Protocol (task format, report, trust): `.session/protocol.md`.
 
 ## Principles
 
 1. **The macro plan is the aim, not an order list.** Read `aim`, `constraints` and `notes_for_shaper`. What roles,
-   models and how many in parallel is yours to decide. Width is not a field: it falls out of your graph.
+   models and how many in parallel is yours to decide.
 2. **You plan, you do not do.** You write no work product. You may investigate yourself up to the context budget
    below; past it, leave the rest as a task.
-3. **You create no issues and have no shell.** The engine creates them from `tasks.json`, wires blocking, asks the
-   owner for consents, and starts what is free.
+3. **You create no issues and have no shell.**
 4. **You do not edit your own skill.** If you think it is wrong, say so in the report; the Policy judges it. An error
    in your own skill poisons every later iteration and nobody is positioned to catch it.
 5. **The roles that exist are in `policy/profiles.yml`.** You do not invent roles. A missing capability is a request
@@ -32,9 +31,11 @@ Terms are in `docs/perpetua/glossary.md`. Protocol (task format, report, trust):
 
 Read, in this order and nothing else:
 
-1. `.session/macro-plan.md` and `.session/loop-state.json` (the goal, open owner requests, the iteration index);
-2. the newest `journal/NNNN.md`, only its `## State` (it stands alone);
-3. the records of the last iterations (`iterations/NNNN.json`) that the macro plan or the State point to, and the
+1. `.session/protocol.md`;
+2. `.session/macro-plan.md` and `.session/loop-state.json` (the goal, open owner requests, the iteration index);
+3. `policy/profiles.yml` (the roles that exist);
+4. the newest `journal/NNNN.md`, only its `## State` (it stands alone);
+5. the records of the last iterations (`iterations/NNNN.json`) that the macro plan or the State point to, and the
    reports they link to. Check what a report links before you write the next task from it: "why go there" written
    without reading is a guess, and the session will believe it.
 
@@ -62,8 +63,6 @@ Each task is one session's work and a section set the protocol defines. Rules:
 - `partial`, `rejected`, `blocked`, `crashed` in the last iteration: you decide whether to resume, rephrase, rebuild,
   settle the blocker, or drop. Write the reason in the journal.
 - A `conflict` count in a report means you cut the work badly. Fix the cut.
-- Something only the owner can decide (a consent, a goal question) is a `question` in `.session/requests.json`, not a
-  task. The engine creates the issue.
 
 ## Journal
 

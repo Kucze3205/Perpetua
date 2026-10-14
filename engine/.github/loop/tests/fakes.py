@@ -340,7 +340,7 @@ evaluator-verifier:
   write: []
   tools: [Read, Write]
 audit:
-  write: ["audit/**", "policy/metrics/**"]
+  write: ["audit/**"]
   tools: [Read, Write]
 """
 

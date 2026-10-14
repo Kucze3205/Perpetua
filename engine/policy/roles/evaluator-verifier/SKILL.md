@@ -12,8 +12,8 @@ This is the engine's first version of the checks; the Policy may extend this ski
 
 ## Checks
 
-1. **It still measures the goal.** Read the goal (`goal/goal.md` if there is one, else the goal in
-   `.session/loop-state.json`). Say in your own words what the new evaluator measures and how that tracks the goal.
+1. **It still measures the goal.** Read the goal in `goal/goal.md`. Say in your own words what the new evaluator
+   measures and how that tracks the goal.
 2. **It agrees with the old one where it should.** Run both on the accepted state (the default branch checkout). The
    re-measurement of the accepted state must come out as the change claims; a surprise is a finding.
 3. **It cannot be steered by the work.** Look for anything the candidate's files can alter in the evaluator's inputs.
@@ -26,4 +26,4 @@ This is the engine's first version of the checks; the Policy may extend this ski
 
 Finish your report with `result: pass` or `result: fail` in the YAML block and the reasons in the prose. Only `pass`
 lets the engine merge the change. When in doubt, `fail` with what would settle it: a failed check goes back to the Policy,
-which corrects the evaluator or opens a goal question with the owner.
+which corrects the evaluator or proposes a goal change to the owner.

@@ -1,7 +1,8 @@
 # Role template
 
-A role is a skill plus a profile. Build a role from an existing skill first (a plugin's, a personal one, the project's);
-write a new one from this template only when nothing fits.
+A role is a skill plus a profile. Build a role from an existing skill first (a plugin's, a personal one, the project's)
+by copying its files into `policy/roles/<role>/` and adapting them: only that folder reaches the runner. Write a new
+one from this template only when nothing fits.
 
 1. The skill: `policy/roles/<role>/SKILL.md`. Claude Code loads it by name in the session.
 2. The profile: an entry in `policy/profiles.yml` (see the comments there).
@@ -24,11 +25,11 @@ description: <one sentence: what the role does and when it is loaded (label `rol
 
 <What the role does and what it never does.>
 
-Protocol (input, report, trust, git): `.session/protocol.md`. Terms: `docs/perpetua/glossary.md`.
+Protocol (input, report, trust, git): `.session/protocol.md`. Terms: `CONTEXT.md`.
 
 ## Method
 
-<How the role works. If it is built on another skill, say which one to call with the Skill tool first.>
+<How the role works.>
 
 ## Output
 

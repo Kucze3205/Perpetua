@@ -13,21 +13,19 @@ The Policy decides per project what is measured and what you may see and do; the
 fixed list of measures. Examples of what an order may ask: tokens and cost-unit per role and model; context fill (are
 sessions entering the "dumb zone"); wall time of steps and where the loop waits (queue, preparation, gate, parked);
 parallelism actually used; what the substrate offers and the loop leaves unused (parallel jobs, subagents, network).
-The cost unit and its limit come from the setup (for a subscription: a window limit, not dollars).
 
 ## Where the data is
 
 - `iterations/NNNN.json`: the records (sessions with tokens per model, turns, wall times, statuses, verdicts).
-- The raw stream of every session (`stream-NNNN-<issue>` artifact, kept for N iterations): `result`, `usage`, every
-  tool call. Nothing in it is interpreted for you, so a new measure can be computed backwards.
-- Whatever the Policy exported into `.session/` for this order (job times, parked events, run data). You have no token;
-  you cannot call GitHub.
-- Earlier audit reports in `audit/` (you read them; you are the only writer of `audit/` and `policy/metrics/`).
+- The raw streams of the sessions of the last three iterations, in `.session/streams/` (a directory per
+  `stream-NNNN-<issue>` artifact): `result`, `usage`, every tool call. Nothing in them is interpreted for you, so a new
+  measure can be computed backwards. You have no token; you cannot call GitHub.
+- Earlier audit reports in `audit/` (you are the only writer of `audit/`).
 
 ## How you work
 
 - Per measure, decide: do it yourself each time (judgement), or when it is mechanical, write a script into
-  `policy/metrics/` and run it. Later audits rerun the scripts and check them first. A script that cannot be shown to
+  `audit/metrics/` and run it. Later audits rerun the scripts and check them first. A script that cannot be shown to
   measure what its name says is deleted, not trusted.
 - Report in `audit/NNNN.md` and point `audit/latest.md` at the newest (a copy). Numbers first, then what they suggest.
 - **Proposals.** Changes to profiles, models, budgets, turn limits belong to the Policy: write them as proposals, each

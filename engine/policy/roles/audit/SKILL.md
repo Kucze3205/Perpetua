@@ -17,9 +17,15 @@ parallelism actually used; what the substrate offers and the loop leaves unused 
 ## Where the data is
 
 - `iterations/NNNN.json`: the records (sessions with tokens per model, turns, wall times, statuses, verdicts).
-- The raw streams of the sessions of the last three iterations, in `.session/streams/` (a directory per
-  `stream-NNNN-<issue>` artifact): `result`, `usage`, every tool call. Nothing in them is interpreted for you, so a new
-  measure can be computed backwards. You have no token; you cannot call GitHub.
+- Read `.session/exports/manifest.json` first: it names the selected data and says which inputs were downloaded,
+  unavailable, expired, failed or unknown. The order can explicitly select streams, Actions metadata, iteration
+  records and trusted session reports for iteration numbers or session issue numbers.
+- Raw streams are staged in `.session/streams/` (a directory per `stream-NNNN-<issue>` artifact): `result`, `usage`,
+  every tool call. When an order omits `exports`, the legacy window is the current iteration and three predecessors
+  (`k-3..k` inclusive). Explicit exports replace that window. Compute your own interpretations and measures.
+- Actions exports contain stored run/job/step timestamps and outcomes. Derive additional timing only where those
+  fields support it; missing historical transitions cannot be reconstructed. Reuse the record's existing
+  `agent_s`, `gate_s`, `total_s` and `parked_s`. You have no token; the engine fetches data before you start.
 - Earlier audit reports in `audit/` (you are the only writer of `audit/`).
 
 ## How you work

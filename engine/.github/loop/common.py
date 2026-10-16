@@ -5,6 +5,7 @@ No agent code runs here. Everything is called from `loop.py` and `iteration.py` 
 default branch, never from a task branch: an agent cannot change the code that watches it.
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -26,7 +27,8 @@ AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 # Report fields written only by the engine. An agent's value for them is dropped when its report is published.
 OWNED = ("attempts", "resume_after", "kicks", "kicked", "conflicts", "cause", "verification", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
-         "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts")
+         "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
+         "verifier_issue", "verified_commit", "verifier_passed")
 SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
 
 DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)"]
@@ -46,6 +48,7 @@ DEFAULTS = {
     "limits": {"tools": DEFAULT_TOOLS, "internet_write": []},
     "policy": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": ["policy/"]},
+    "policy_session_ceilings": None,
     "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
                "stream_retention_iterations": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
@@ -77,7 +80,8 @@ def cfg():
 
 def params():
     p = {"shaper": "orchestrator", "criterion": "", "models": {"default": "claude-sonnet-5-5"}, "efforts": ["low", "medium", "high"],
-         "ceilings": {"job_minutes": 240, "iteration_minutes": None, "max_turns": 150}}
+         "ceilings": {"job_minutes": 240, "iteration_minutes": None, "max_turns": 150},
+         "policy_triggers": {"every_iterations": None, "no_progress": None}}
     return merged(p, load_yaml("policy/params.yml"))
 
 
@@ -253,7 +257,18 @@ def add_blocker(blocked, blocker):
 
 
 def is_unblocked(n):
-    return all(b["state"] == "closed" for b in blockers(n))
+    import owner_requests
+
+    def ready(b):
+        if b["state"] != "closed":
+            return False
+        frozen = owner_requests.read(b["number"])
+        if frozen:
+            return frozen["status"] == "approved"
+        # Labels can never grant capability/engine authority without a trusted snapshot.
+        return not (label_names(b) & {"owner-request:" + k for k in owner_requests.KINDS})
+
+    return all(ready(b) for b in blockers(n))
 
 
 def workflow_run(workflow, **inputs):
@@ -562,13 +577,28 @@ def sync_main():
     git(".", "checkout", "-q", "-f", "--detach", "origin/%s" % d)
 
 
-def commit_main(files, message, remove=(), restore=None):
+class ConcurrentChange(Exception):
+    """An owner-approved update no longer has the configuration it was reviewed against."""
+
+
+def file_digest(path):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except FileNotFoundError:
+        return None
+
+
+def commit_main(files, message, remove=(), restore=None, expected=None):
     """Engine commit straight to the default branch: write `files` (path -> text), delete `remove`, optionally
     restore paths from a commit (`restore=(sha, [paths])`). Push races are retried from a fresh tip."""
     d = default_branch()
     for _ in range(5):
         git(".", "fetch", "-q", "origin", d, remote=True)
         git(".", "checkout", "-q", "-f", "--detach", "origin/%s" % d)
+        for path, digest in (expected or {}).items():
+            if file_digest(path) != digest:
+                raise ConcurrentChange("%s changed since the proposal was frozen" % path)
         if restore:
             sha, paths = restore
             git(".", "rm", "-r", "-q", "-f", "--ignore-unmatch", *paths)

@@ -11,29 +11,39 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git checkout -q -B "task/$ISSUE"
 date +%s > "$OUT/agent-start"
 
-sandbox() {   # a PID namespace for what the session starts, so it cannot read its parent's environment
-  if [ "${LOOP_SANDBOX:-}" = 1 ] && command -v bwrap >/dev/null; then
-    bwrap --unshare-pid --die-with-parent --ro-bind / / --dev /dev --proc /proc \
-      --bind "$WORK" "$WORK" --bind "$OUT" "$OUT" --bind "$HOME" "$HOME" --bind /tmp /tmp "$@"
-  else
-    "$@"
-  fi
-}
+NETWORK_MODE="$(cat "$TRUSTED/network-mode")"
+case "$NETWORK_MODE" in online|offline) ;; *) echo "Invalid staged network mode" >&2; exit 1 ;; esac
 
 if [ "$KIND" = script ]; then
   # a deterministic role: no model, no credential
-  timeout "${AGENT_TIMEOUT}m" sandbox bash "$TRUSTED/command.sh" > "$OUT/script-output.txt" 2>&1
+  unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN
+  # A shell function cannot be invoked by timeout. Keep the namespace command in an array.
+  isolation=()
+  if [ "$NETWORK_MODE" = offline ] || [ "${LOOP_SANDBOX:-}" = 1 ]; then
+    if ! command -v bwrap >/dev/null; then
+      echo "Required script sandbox unavailable" >&2
+      echo 1 > "$OUT/agent-exit"
+      date +%s > "$OUT/agent-end"
+      exit 1
+    fi
+    isolation=(bwrap --unshare-pid --die-with-parent --ro-bind / / --dev /dev --proc /proc
+      --bind "$WORK" "$WORK" --bind "$OUT" "$OUT" --bind "$HOME" "$HOME" --bind /tmp /tmp
+      --ro-bind "$TRUSTED" "$TRUSTED")
+    [ "$NETWORK_MODE" != offline ] || isolation+=(--unshare-net)
+  fi
+  command=(bash "$TRUSTED/command.sh")
+  [ "$NETWORK_MODE" != offline ] || command=(python3 "$TRUSTED/offline_exec.py" "${command[@]}")
+  timeout "${AGENT_TIMEOUT}m" "${isolation[@]}" "${command[@]}" > "$OUT/script-output.txt" 2>&1
   echo $? > "$OUT/agent-exit"
   cat "$OUT/script-output.txt"
   date +%s > "$OUT/agent-end"
   exit 0
 fi
 
-if [ "$ROLE" = policy ]; then
-  PROMPT="You are the Policy of this loop, iteration $ITERATION. Read .session/policy.md and follow it. Input: .session/loop-state.json and .session/issue.md. Protocol: .session/protocol.md. Write your report to .session/report.md. Work on the branch task/$ISSUE and commit often."
-else
-  PROMPT="You are the role \`$ROLE\` in a loop. Call the Skill tool with \`$ROLE\` and do the task of issue #$ISSUE. Input: .session/issue.md. Protocol: .session/protocol.md. Write your report to .session/report.md. Work on the branch task/$ISSUE and commit often."
-fi
+PROMPT="$(cat "$TRUSTED/prompt.md")"
+AVAILABLE_TOOLS="$(cat "$TRUSTED/tools")"
+SKILL_FLAGS=()
+[ "$NETWORK_MODE" != offline ] || SKILL_FLAGS=(--disable-slash-commands)
 
 # the end of a turn in -p is the end of the session: background work and Monitor die with the runner
 export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
@@ -51,6 +61,9 @@ unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN
 CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" claude -p "$PROMPT" \
   --model "$MODEL" --effort "$EFFORT" \
   --permission-mode acceptEdits --allowedTools "$TOOLS" --disallowedTools Monitor \
+  --tools "$AVAILABLE_TOOLS" --strict-mcp-config --mcp-config "$TRUSTED/mcp.json" \
+  "${SKILL_FLAGS[@]}" \
+  --setting-sources '' --append-system-prompt-file "$TRUSTED/contract.md" \
   --settings "$TRUSTED/settings.json" \
   --max-turns "$MAX_TURNS" --output-format stream-json --verbose \
   2> "$OUT/claude-stderr.txt" \

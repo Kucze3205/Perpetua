@@ -18,6 +18,11 @@ from datetime import datetime, timedelta, timezone
 
 import common as c
 import iteration as it
+import session_security as security
+import session_exports
+import session_reports
+import policy_session
+import policy_changes
 
 BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
 MAX_ATTEMPTS = 3                # resume attempts
@@ -49,12 +54,34 @@ def consent_status(profile, labels):
 
 def profile_of(role):
     if role == "policy":
-        return dict(c.cfg()["policy"], agent=True)
+        return policy_session.profile()
     return c.profiles().get(role)
 
 
 def model_id(alias):
     return c.params()["models"].get(alias, alias)
+
+
+def session_options(i, role, p):
+    """Execution parameters shared by prep and the startup recheck."""
+    labels = c.label_names(i)
+    ceil = c.params()["ceilings"]
+    lim = json.loads(c.marker(i["body"], "limits") or "{}")
+    alias = c.label_value(labels, "model:") or p.get("model") or "default"
+    model = p["model"] if role == "policy" else model_id(alias)
+    effort = p["effort"] if role == "policy" else c.label_value(labels, "effort:") or p.get("effort") or "medium"
+    cfg = c.cfg()
+    gate_min = int(cfg["gate"].get("timeout_minutes") or 0) if cfg["gate"]["kind"] == "script" else 0
+    cap = JOB_MAX_MIN - 30 - gate_min
+    timeout = min(int(x) for x in (lim.get("timeout_minutes") or cap, p.get("timeout_minutes") or ceil["job_minutes"], ceil["job_minutes"], cap))
+    turns = min(int(x) for x in (lim.get("max_turns") or 10**6, p.get("max_turns") or ceil["max_turns"], ceil["max_turns"]))
+    fingerprint = {"profile": p, "limits": cfg["limits"], "cli_version": cfg["cli_version"], "gate": cfg["gate"],
+                   "policy_session_ceilings": cfg.get("policy_session_ceilings")}
+    return {"kind": "script" if p.get("agent") is False else "agent", "role": role,
+            "model": model, "effort": effort, "tools": ",".join(list(p.get("tools") or []) + ["Skill"]),
+            "max_turns": turns, "agent_timeout": timeout, "job_timeout": timeout + gate_min + 30,
+            "iteration": "%04d" % (c.iteration_of(labels) or 0),
+            "profile_digest": hashlib.sha256(json.dumps(fingerprint, sort_keys=True).encode()).hexdigest()}
 
 
 def resolve(n):
@@ -64,8 +91,16 @@ def resolve(n):
     if i["state"] != "open" or len(roles) != 1 or not c.in_loop(labels):
         raise SystemExit("issue %s: not open, outside the loop (no `%sN`) or not exactly one role (%s)" % (n, c.ITER, roles))
     role = roles[0]
-    p = profile_of(role)
-    granted, why = (False, "no profile for role `%s`" % role) if not p else (False, None) if role == "policy" else consent_status(p, labels)
+    try:
+        p = profile_of(role)
+    except ValueError as error:
+        close_out(n, i, "blocked", {"cause": "start:policy-session"}, str(error))
+        reconcile()
+        raise SystemExit(str(error))
+    why = security.profile_error(p, c.cfg()["cli_version"]) if p else "no profile for role `%s`" % role
+    granted = False
+    if not why and role != "policy":
+        granted, why = consent_status(p, labels)
     if not why and role != "policy" and p.get("agent") is not False and not os.path.exists("policy/roles/%s/SKILL.md" % role):
         why = "no skill for role `%s`" % role
     if not why and p.get("agent") is False and not p.get("command"):
@@ -76,24 +111,12 @@ def resolve(n):
         close_out(n, i, "blocked", {"cause": "start:" + why.split()[0]}, "The session did not start: " + why + ".")
         reconcile()
         raise SystemExit(why)
-    prm = c.params()
-    ceil = prm["ceilings"]
-    lim = json.loads(c.marker(i["body"], "limits") or "{}")
-    kind = "script" if p.get("agent") is False else "agent"
-    alias = c.label_value(labels, "model:") or p.get("model") or "default"
-    model = p["model"] if role == "policy" else model_id(alias)
-    effort = c.label_value(labels, "effort:") or p.get("effort") or "medium"
-    gate_min = int(c.cfg()["gate"].get("timeout_minutes") or 0) if c.cfg()["gate"]["kind"] == "script" else 0
-    cap = JOB_MAX_MIN - 30 - gate_min
-    timeout = min(int(x) for x in (lim.get("timeout_minutes") or cap, p.get("timeout_minutes") or ceil["job_minutes"], ceil["job_minutes"], cap))
-    turns = min(int(x) for x in (lim.get("max_turns") or 10**6, p.get("max_turns") or ceil["max_turns"], ceil["max_turns"]))
+    options = session_options(i, role, p)
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
-    c.set_output(kind=kind, role=role, model=model, effort=effort, start=start, tools=",".join(list(p.get("tools") or []) + ["Skill"]),
-                 max_turns=turns, agent_timeout=timeout, job_timeout=timeout + gate_min + 30, consented="true" if granted else "false",
-                 iteration="%04d" % (c.iteration_of(labels) or 0))
+    c.set_output(**options, start=start, consented="true" if granted else "false")
 
 
 def stage(n, work, trusted):
@@ -101,7 +124,25 @@ def stage(n, work, trusted):
     i = c.issue(n)
     labels = c.label_names(i)
     role = c.roles_of(labels)[0]
-    p = profile_of(role)
+    try:
+        p = profile_of(role)
+    except ValueError as error:
+        raise SystemExit("invalid session profile: " + str(error))
+    error = security.profile_error(p, c.cfg()["cli_version"])
+    if error:
+        raise SystemExit("invalid session profile: " + error)
+    if role != "policy":
+        _, error = consent_status(p, labels)
+        if error:
+            raise SystemExit("session profile changed or consent is no longer valid: " + error)
+    # Real workflow sessions carry KIND. Test/finalize callers may have unrelated MODEL env values.
+    if "KIND" in os.environ:
+        expected = session_options(i, role, p)
+        for key, value in expected.items():
+            env_key = key.upper()
+            if env_key in os.environ and os.environ[env_key] != str(value):
+                raise SystemExit("session configuration changed after prep: " + env_key)
+    security.check_session_directory(work)
     sess = os.path.join(work, ".session")
     os.makedirs(sess, exist_ok=True)
     os.makedirs(trusted, exist_ok=True)
@@ -112,13 +153,39 @@ def stage(n, work, trusted):
     if role == "policy" or "loop:shaper" in labels:
         it.export_state(n, sess)
     fetch_inputs(i["body"], os.path.join(sess, "inputs"))
-    if role == "audit":
-        fetch_streams(c.iteration_of(labels) or 0, os.path.join(sess, "streams"))
-    shutil.copy(".github/loop/session-protocol.md", os.path.join(sess, "protocol.md"))
-    for f in ("agent.sh", "stream_filter.py", "remaining.py"):
+    session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess)
+    contract = c.safe_read(".", ".github/loop/session-protocol.md") or ""
+    if role == "policy":
+        contract += "\n\n" + (c.safe_read(".", ".github/loop/policy.md") or "")
+    rules = c.safe_read(".", "policy/protocol.md") or ""
+    prompt_name = "policy" if role == "policy" else "role"
+    template = c.safe_read(".", "policy/prompts/%s.md" % prompt_name) or ""
+    # The trusted contract is also passed as a system instruction; editable rules are user instructions.
+    with open(os.path.join(sess, "protocol.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(contract + "\n\n# Policy work rules (subordinate to the engine contract)\n\n" + rules)
+    with open(os.path.join(trusted, "contract.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(contract)
+    bootstrap = ("You are the Policy" if role == "policy" else "You are role `%s`" % role)
+    bootstrap += " of this loop. Read .session/protocol.md and .session/issue.md. "
+    if role == "policy":
+        bootstrap += "Read .session/policy.md and .session/loop-state.json. "
+    else:
+        bootstrap += ("Call the Skill tool with `%s`. " % role if p.get("internet", False)
+                      else "Read your staged role skill .session/role/SKILL.md and its relevant references. ")
+    bootstrap += "Write .session/report.md. Work on branch task/%s.\n\n" % n
+    with open(os.path.join(trusted, "prompt.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(bootstrap + template)
+    with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("online\n" if p.get("internet", False) else "offline\n")
+    with open(os.path.join(trusted, "tools"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(",".join(security.tool_names(p)))
+    with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:
+        json.dump({"mcpServers": {}}, fh)
+    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py"):
         shutil.copy(".github/loop/" + f, trusted)
     if role == "policy":
-        shutil.copy(".github/loop/policy.md", os.path.join(sess, "policy.md"))
+        with open(os.path.join(sess, "policy.md"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("You are the Policy. Follow the engine contract in .session/protocol.md.\n\n" + template)
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")
@@ -126,9 +193,16 @@ def stage(n, work, trusted):
         dest = os.path.join(os.path.expanduser("~"), ".claude", "skills", role)
         shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree("policy/roles/%s" % role, dest)
-    hook = {"hooks": {"PostToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 %s" % os.path.join(trusted, "remaining.py")}]}]}}
+        if not p.get("internet", False):
+            staged_role = os.path.join(sess, "role")
+            shutil.rmtree(staged_role, ignore_errors=True)
+            shutil.copytree("policy/roles/%s" % role, staged_role)
+    # Skill hooks and interpolation execute outside the Bash tool sandbox.
+    if p.get("agent") is not False and not p.get("internet", False):
+        for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
+            security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
-        json.dump(hook, fh)
+        json.dump(security.settings(p, trusted), fh)
 
 
 # ---------------------------------------------------------------- artifacts: large outputs live in release assets
@@ -175,18 +249,6 @@ def fetch_inputs(body, dest):
         tag, asset = rel.split("/", 1)
         os.makedirs(dest, exist_ok=True)
         c.gh("release", "download", tag, "--pattern", asset, "--dir", dest, "--clobber", check=False)
-
-
-AUDIT_STREAM_ITERATIONS = 3
-
-
-def fetch_streams(k, dest):
-    """Before an audit session (it has no token): the raw session streams of the last iterations, one directory each."""
-    for a in c.list_artifacts():
-        m = re.match(r"stream-(\d{4})-", a["name"])
-        run = (a.get("workflow_run") or {}).get("id")
-        if m and run and k - AUDIT_STREAM_ITERATIONS <= int(m.group(1)) <= k and not a.get("expired"):
-            c.gh("run", "download", str(run), "--name", a["name"], "--dir", os.path.join(dest, "%s-%s" % (a["name"], a["id"])), check=False)
 
 
 # ---------------------------------------------------------------- the candidate: the agent's commits in a trusted tree
@@ -243,7 +305,7 @@ def run_verification(cand, body):
     return True, ""
 
 
-def merge_branch(n, role, i, override=None, verified=False):
+def merge_branch(n, role, i, override=None, verified=False, checked_commit=None, checked_evaluator_rev=None, verifier=None):
     """Rebase `task/N` on the default branch, run the checks, get the change gate's verdict, push.
     Returns {"result", "detail", "verdict", "gate_s", "changed"}. Git orders competitors: a rejected push is retried."""
     cfg, d = c.cfg(), c.default_branch()
@@ -253,7 +315,15 @@ def merge_branch(n, role, i, override=None, verified=False):
     for _ in range(PUSH_TRIES):
         c.sync_main()
         c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
-        changed = c.git(".", "diff", "--name-only", "origin/%s...origin/%s" % (d, br)).stdout.split()
+        existing = policy_changes.read(policy_changes.path(n))
+        if existing:
+            return dict(res, result="merged", change=existing)
+        branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
+        if checked_commit and branch_sha != checked_commit:
+            return dict(res, result="verification-stale", detail="The task branch changed after the verified snapshot.")
+        baseline = c.head()
+        session_base = c.git(".", "merge-base", baseline, branch_sha).stdout.strip()
+        changed = c.git(".", "diff", "--name-only", "-z", "origin/%s...origin/%s" % (d, br)).stdout.split("\0")[:-1]
         res["changed"] = changed
         if not changed:
             return dict(res, result="nothing")
@@ -270,6 +340,11 @@ def merge_branch(n, role, i, override=None, verified=False):
             if c.git(cand, "rebase", "origin/%s" % d, check=False).returncode:
                 c.git(cand, "rebase", "--abort", check=False)
                 return dict(res, result="conflict")
+            if checked_evaluator_rev and policy_changes.evaluator_rev("HEAD", cand) != checked_evaluator_rev:
+                return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
+            # The accepted range contains this session's rebased commits only.
+            changed = c.git(cand, "diff", "--name-only", "-z", baseline, "HEAD").stdout.split("\0")[:-1]
+            res["changed"] = changed
             big = [f for f in changed if os.path.isfile(os.path.join(cand, f)) and os.path.getsize(os.path.join(cand, f)) > cfg["large_file_bytes"]]
             if big:
                 return dict(res, result="large", detail=", ".join(big))
@@ -296,8 +371,9 @@ def merge_branch(n, role, i, override=None, verified=False):
                     return dict(res, result="gate-rejected", detail=res["verdict"].get("detail", ""))
                 if res["verdict"]["verdict"] != "accepted":
                     return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
+            change = policy_changes.receipt(cand, n, role, i, session_base, baseline, c.head(cand), changed, verifier)
             if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
-                return dict(res, result="merged")
+                return dict(res, result="merged", change=change)
     return dict(res, result="conflict")
 
 
@@ -345,6 +421,8 @@ def merge_outcome(r):
         return "rejected", dict(upd, merged="false"), "The change gate rejected the change. %s" % detail
     if res == "gate-inconclusive":
         return "partial", dict(upd, merged="false"), "The change gate gave no verdict. %s" % detail
+    if res == "verification-stale":
+        return "blocked", dict(upd, merged="false"), detail
     return "partial", dict(upd, merged="false"), "Rebase on the default branch conflicts."
 
 
@@ -449,6 +527,7 @@ def finalize(n, work):
     text = c.safe_read(work, ".session/report.md")
     if text:
         c.publish(n, text)
+    session_reports.capture(n, work)
     f = c.report_fields(n)
     status = f.get("status", "")
     exit_code = ""
@@ -496,7 +575,12 @@ def finalize(n, work):
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"
     pending = None
-    if status == "done" and sha:
+    if status == "done" and sha and role == "policy":
+        pending = "pending-iteration"            # its changes and orders take effect when the next iteration starts
+        prose = hold_policy(n, work)
+        c.edit_labels(n, add=["awaiting:iteration"])
+        c.update_report(n, dict(upd, status="done", merged=pending), prose)
+    elif status == "done" and sha:
         r = merge_branch(n, role, i)
         upd["gate_s"] = r["gate_s"] or None
         if r["result"] == "conflict":
@@ -504,6 +588,7 @@ def finalize(n, work):
             upd["conflicts"] = kk
             if kk < MAX_CONFLICTS:
                 c.update_report(n, dict(upd, status="partial"), "Rebase on the default branch: conflict (attempt %s)." % kk)
+                session_reports.capture(n, work)
                 c.edit_labels(n, add=["conflict"])
                 c.launch(n)
                 return
@@ -530,18 +615,53 @@ def finalize(n, work):
         merge_notes(n, role)
     if status == "paused":
         if park(n, i, f, upd, prose, reset):
+            session_reports.capture(n, work)
             return
         status, prose = "crashed", "Resumes exhausted or the issue is too old."
     if not pending:
         tag_unmerged(n, k, upd)
-    proposals(work, k)
+    proposals(work, k, source=n)
+    session_reports.capture(n, work)
     after_session(n, i, labels, role, k, work, status, upd, prose, pending)
 
 
-def proposals(work, k):
+def hold_policy(n, work):
+    """Keep a finished Policy session's orders on its issue until the next iteration starts. Returns the report prose."""
+    session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
+    text = c.safe_read(work, ".session/orders.json")
+    if not text:
+        return "Waiting for the next iteration to start: then `policy/` merges."
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return "`.session/orders.json` is not JSON: no orders. Waiting for the next iteration to start: then `policy/` merges."
+    it.store_state(n, doc, it.ORDERS_MARK)
+    return "Waiting for the next iteration to start: then `policy/` merges and the orders start."
+
+
+def apply_policy():
+    """Before an iteration starts: merge the finished Policy sessions, oldest first, and return the orders of those
+    that merged. An unmerged one counts as a failed Policy session."""
+    orders = []
+    for x in sorted(c.list_issues(labels=("role:policy", "awaiting:iteration")), key=lambda x: x["number"]):
+        r = merge_branch(x["number"], "policy", x)
+        st, upd, pr = merge_outcome(r)
+        if st == "done":
+            orders += it.read_orders(x["number"])
+            session_reports.apply_decisions(x["number"])
+        else:
+            tag_unmerged(x["number"], c.iteration_of(c.label_names(x)) or 0, {"commit": "x"})
+        close_out(x["number"], x, st, upd, pr)
+    return orders
+
+
+it.apply_policy = apply_policy
+
+
+def proposals(work, k, source=None):
     text = c.safe_read(work, ".session/requests.json")
     if text:
-        it.process_proposals(text, k)
+        it.process_proposals(text, k, source=source)
 
 
 def tag_unmerged(n, k, upd):
@@ -566,24 +686,22 @@ def park(n, i, f, upd, prose, reset):
 
 
 def after_session(n, i, labels, role, k, work, status, upd, prose, merged_pending):
-    """What a finished session means for the iteration; then close it unless it waits for the owner or a verifier."""
-    if role == "policy":
-        plan = c.safe_read(work, ".session/macro-plan.md")
-        it.policy_done(k, status, plan)
+    """What a finished session means for the iteration; then close it unless it waits for the owner, a verifier or the
+    next iteration."""
     if "loop:shaper" in labels and status == "done" and not merged_pending:
         doc, err = None, None
         try:
             doc = json.loads(c.safe_read(work, ".session/tasks.json") or "")
         except ValueError:
             err = "`.session/tasks.json` is missing or not JSON"
-        got = it.instantiate(k, doc, n) if doc is not None else err
+        got = it.instantiate(k, doc) if doc is not None else err
         if isinstance(got, str):
             status, prose = "partial", got
     if role == c.cfg()["verifier_role"] and merged_pending is None:
         status, prose = settle_verification(n, i, status, f_result(n), prose)
     if merged_pending:
         return reconcile()
-    close_out(n, i, status, upd, prose)
+    close_out(n, i, status, upd, prose, work=work)
     reconcile()
 
 
@@ -596,10 +714,15 @@ def f_result(n):
 def request_verifier(n, i, k, changed):
     role = c.cfg()["verifier_role"]
     c.ensure_label("role:" + role, "1D76DB")
+    checked = c.git(".", "rev-parse", "origin/task/%s" % n).stdout.strip()
+    rev = policy_changes.evaluator_rev(checked)
     body = ("Verify the evaluator change of task #%s (branch `task/%s`).\n\nChanged evaluator files: %s\n\n"
             "Decide whether the changed evaluator still measures progress toward the goal; the accepted state in force is the default branch.\n\n"
-            "<!-- verifies: %s -->\n<!-- start-branch: task/%s -->\n") % (n, n, ", ".join(changed[:20]), n, n)
+            "<!-- verifies: %s -->\n<!-- start-branch: %s -->\n<!-- checked-commit: %s -->\n"
+            "<!-- checked-evaluator-rev: %s -->\n") % (n, n, ", ".join(changed[:20]), n, checked, checked, json.dumps(rev, sort_keys=True))
     v = c.create_issue("Verify evaluator change of task #%s" % n, body, labels=("role:" + role, c.ITER + str(k), "generation:0"))
+    c.update_report(n, {"verifier_issue": v, "verified_commit": checked})
+    c.edit_labels(n, add=["awaiting:verifier"])
     c.launch(v)
     return v
 
@@ -611,17 +734,29 @@ def settle_verification(n, i, status, result, prose):
         return status, prose
     t = int(target)
     ti = c.issue(t)
+    if ti["state"] != "open" or "awaiting:verifier" not in c.label_names(ti):
+        return status, prose                  # repeated epilogue cannot reapply a closed change
+    target_fields = c.report_fields(t)
+    if target_fields.get("verifier_issue") != str(n):
+        return status, prose                  # only the engine-requested verifier may settle this change
     trole = c.roles_of(c.label_names(ti))[0]
     if status == "done" and result == "pass":
-        r = merge_branch(t, trole, ti, verified=True)
+        checked = c.marker(i["body"], "checked-commit")
+        rev = json.loads(c.marker(i["body"], "checked-evaluator-rev") or "null")
+        if not checked or not rev:
+            r = {"result": "verification-stale", "detail": "Verifier has no pinned snapshot; request a fresh verification."}
+        else:
+            r = merge_branch(t, trole, ti, verified=True, checked_commit=checked, checked_evaluator_rev=rev, verifier=n)
+        policy_changes.verification(n, i, status, result, r)
         if r["result"] == "awaiting-owner":
             req = it.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (t, ti["title"]), "The evaluator change of task #%s was verified; its work paths still need your verdict." % t,
                                   "The change gate is set to you.", "Completed merges the branch.", ref="task-%s" % t, iteration=c.iteration_of(c.label_names(ti)))
             c.edit_labels(t, add=["awaiting:owner"], remove=["awaiting:verifier"])
-            c.update_report(t, {"merged": "pending-owner"}, "Verified; waiting for the owner: request #%s." % req)
+            c.update_report(t, {"merged": "pending-owner", "verifier_passed": "true"}, "Verified; waiting for the owner: request #%s." % req)
             return status, prose
         st, upd, pr = merge_outcome(r)
     else:
+        policy_changes.verification(n, i, status, result, {"result": "not-applied"})
         st, upd, pr = "rejected", {"merged": "false", "verdict": "rejected"}, "The evaluator verifier did not pass the change (result: %s, status: %s)." % (result, status)
     c.edit_labels(t, remove=["awaiting:verifier"])
     close_out(t, ti, st, upd, pr)
@@ -648,9 +783,10 @@ def spawn_successor(n, i, report_body):
     return s
 
 
-def close_out(n, i, status, upd, prose):
+def close_out(n, i, status, upd, prose, work=None):
     body = c.update_report(n, dict(upd, status=status), prose)
-    c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier"])
+    session_reports.capture(n, work)
+    c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration"])
     succ = spawn_successor(n, i, body) if status == "partial" else None
     c.close_issue(n, "completed" if status == "done" else "not planned")
     if status == "done":
@@ -687,6 +823,25 @@ def on_request_closed(n):
     if it.REQ not in names or it.HANDLED in names or x["state"] != "closed":
         return
     kind = c.marker(x["body"], "request-kind")
+    # The trusted snapshot controls the type even if someone edits the issue's markers.
+    snapshot = it.requests.read(n)
+    if snapshot or kind in it.requests.KINDS:
+        status = it.requests.settle(n, x)
+        if status == "waiting":
+            return
+        if status == "approved":
+            c.edit_labels(n, add=[it.requests.APPROVED])
+        for d in c.blocking(n):
+            if d["state"] == "open":
+                if status == "approved":
+                    c.launch(d["number"])
+                else:
+                    close_out(d["number"], d, "blocked", {"cause": "owner-request-" + status},
+                              "Owner request #%s ended as %s." % (n, status))
+        c.edit_labels(n, add=[it.HANDLED])
+        it.advance()
+        reconcile()
+        return
     yes = x.get("state_reason") == "completed"
     ref = c.marker(x["body"], "request-ref") or ""
     if kind in ("goal-gate", "goal-change") and yes:
@@ -716,10 +871,19 @@ def settle_owner_merge(t, yes):
     if ti["state"] != "open" or "awaiting:owner" not in c.label_names(ti):
         return
     role = c.roles_of(c.label_names(ti))[0]
+    fields = c.report_fields(t)
+    verifier = int(fields["verifier_issue"]) if fields.get("verifier_passed") == "true" and fields.get("verifier_issue", "").isdigit() else None
+    vi = c.issue(verifier) if verifier else None
     if yes:
-        r = merge_branch(t, role, ti, override={"verdict": "accepted", "improved": True, "detail": "accepted by the owner"})
+        r = merge_branch(t, role, ti, override={"verdict": "accepted", "improved": True, "detail": "accepted by the owner"},
+                         verified=bool(verifier), verifier=verifier,
+                         checked_commit=c.marker(vi["body"], "checked-commit") if vi else None,
+                         checked_evaluator_rev=json.loads(c.marker(vi["body"], "checked-evaluator-rev") or "null") if vi else None)
     else:
         r = {"result": "gate-rejected", "detail": "declined by the owner", "verdict": {"verdict": "rejected", "detail": "declined by the owner"}}
+    if verifier:
+        vf = c.report_fields(verifier)
+        policy_changes.verification(verifier, vi, vf.get("status"), vf.get("result"), r, owner=True)
     st, upd, pr = merge_outcome(r)
     k = c.iteration_of(c.label_names(ti)) or 0
     if st != "done":
@@ -772,6 +936,9 @@ def drive():
     if it.stalled():
         handle_stall()
         return 0
+    # Policy activity alone must not hold up the next iteration; core work keeps its commitments.
+    if not it.open_iteration() and not any(c.roles_of(c.label_names(x)) != ["policy"] for x in loop_open()):
+        return kick()
     if commitments():
         c.say("quiet: commitments in progress")
         return 0
@@ -867,7 +1034,7 @@ def kick():
     if not it.open_iteration():
         it.start_iteration()
         return 0
-    ready = [x for x in loop_open() if c.is_unblocked(x["number"]) and not (c.label_names(x) & {"blocked:rate-limit", "awaiting:owner", "awaiting:verifier"})]
+    ready = [x for x in loop_open() if c.is_unblocked(x["number"]) and not (c.label_names(x) & {"blocked:rate-limit", "awaiting:owner", "awaiting:verifier", "awaiting:iteration"})]
     if not ready:
         it.advance()
         return 0

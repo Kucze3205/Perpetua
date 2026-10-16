@@ -175,8 +175,8 @@ class TaskGraphTest(unittest.TestCase):
     def tearDown(self):
         self.w.close()
 
-    def errs(self, *tasks, orders=()):
-        return it.validate_tasks({"tasks": list(tasks)}, orders)
+    def errs(self, *tasks, **kw):
+        return it.validate_tasks({"tasks": list(tasks)}, **kw)
 
     def test_a_valid_graph(self):
         self.assertEqual(self.errs(fakes.task("a"), fakes.task("b", blocked_by=["a"], model="opus", effort="high")), [])
@@ -199,19 +199,23 @@ class TaskGraphTest(unittest.TestCase):
     def test_cycle(self):
         self.assertTrue(self.errs(fakes.task("a", blocked_by=["b"]), fakes.task("b", blocked_by=["a"])))
 
-    def test_policy_only_roles_come_from_orders_only(self):
+    def test_policy_only_roles_come_from_orders_and_orders_only_of_them(self):
         self.assertTrue(self.errs(fakes.task("a", role="evaluator")))
-        self.assertEqual(self.errs(fakes.task("order-1", role="evaluator"), orders=[{"id": "order-1"}]), [])
+        self.assertEqual(self.errs(fakes.task("a", role="evaluator"), ordered=True), [])
+        self.assertTrue(self.errs(fakes.task("a"), ordered=True))
+
+    def test_an_id_the_iteration_already_uses_is_refused(self):
+        self.assertTrue(self.errs(fakes.task("a"), taken={"a"}))
 
     def test_width_is_the_widest_layer(self):
         ts = [dict(fakes.task("a")), dict(fakes.task("b")), dict(fakes.task("c", blocked_by=["a", "b"])), dict(fakes.task("d", blocked_by=["c"]))]
         self.assertEqual(it.width(ts), 2)
 
-    def test_order_ids_are_prefixed_and_their_edges_follow(self):
-        self.w.write(self.w.loop, it.plan_path(3), self.w.macro_plan(orders="orders:\n  - {id: e, role: evaluator, title: t, body: b}\n  - {id: f, role: audit, title: t, body: b, blocked_by: [e]}\n"))
-        orders = it.plan_orders(3)
-        self.assertEqual([o["id"] for o in orders], ["order-e", "order-f"])
-        self.assertEqual(orders[1]["blocked_by"], ["order-e"])
+    def test_order_ids_are_prefixed_with_the_policy_session_and_their_edges_follow(self):
+        it.store_state(7, {"tasks": [fakes.task("e", role="evaluator"), fakes.task("f", role="audit", blocked_by=["e"])]}, it.ORDERS_MARK)
+        orders = it.read_orders(7)
+        self.assertEqual([o["id"] for o in orders], ["order-7-e", "order-7-f"])
+        self.assertEqual(orders[1]["blocked_by"], ["order-7-e"])
 
 
 class LimitsTest(unittest.TestCase):

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""The iteration layer: Policy -> macro plan -> task graph -> parallel sessions -> record; owner requests;
-the goal gate; the rollback of `policy/`.
+"""The iteration layer: shaper -> task graph -> parallel sessions -> record; the Policy on triggers; owner
+requests; the goal gate; the rollback of `policy/`.
 
-An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the Policy session, the shaper,
-the tasks) are issues labelled `loop:iteration N` + `role:<name>`. The iteration issue carries the phase in a
-report comment; everything else is derived from the issues and from `iterations/` on the default branch.
+An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the shaper, the tasks, the Policy's
+orders) are issues labelled `loop:iteration N` + `role:<name>`. The iteration issue carries the phase in a report
+comment; everything else is derived from the issues and from `iterations/` on the default branch. A Policy session
+carries the label of the iteration whose close started it and belongs to no iteration.
 """
 import glob
 import hashlib
@@ -13,21 +14,23 @@ import os
 import re
 
 import common as c
+import owner_requests as requests
+import session_exports
+import session_reports
+import policy_changes
 
 MAP = "loop:map"
 REQ = "owner-request"
-REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice")
-SESSION_KINDS = ("goal-gate", "goal-change", "question")      # what an agent may propose; the engine opens the issue
+REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice") + requests.KINDS
+SESSION_KINDS = ("goal-gate", "goal-change", "question") + requests.KINDS
 STATE_MARK = "<!-- input-state -->"
+ORDERS_MARK = "<!-- policy-orders -->"
 HANDLED = "request:handled"
 
 
 def tag(n):
     return "%04d" % n
 
-
-def plan_path(n):
-    return "iterations/%s/macro-plan.md" % tag(n)
 
 
 def tasks_path(n):
@@ -72,10 +75,13 @@ def fence_for(text):
     return "`" * max(3, longest + 1)
 
 
-def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None):
+def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None):
     """The only way the loop asks the owner for a decision, a consent or a confirmation. Only engine code calls it.
     The answer is the closing of the issue: completed = yes, not planned = no."""
     assert kind in REQUEST_KINDS, kind
+    proposal = requests.prepare(kind, frozen, readiness) if kind in requests.KINDS else None
+    if proposal:
+        frozen = proposal["frozen"]
     owner = c.owner_login()
     body = "%s\n\n## What\n\n%s\n\n## Why\n\n%s\n\n## What it unblocks\n\n%s\n" % (
         " ".join("@" + o for o in owner), what, why, unblocks)
@@ -85,10 +91,14 @@ def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks
     body += "\n<!-- request-kind: %s -->\n" % kind
     if ref:
         body += "<!-- request-ref: %s -->\n" % ref
+    if proposal:
+        body += requests.instructions(proposal)
     labels = [REQ, "%s:%s" % (REQ, kind)] + (([c.ITER + str(iteration)]) if iteration is not None else [])
     for l in labels:
         c.ensure_label(l, "FBCA04" if l.startswith(REQ) else "C5DEF5")
     n = c.create_issue(title, body, labels=labels, assignees=owner)
+    if proposal:
+        requests.freeze(n, proposal, body)
     for t in blocks:
         c.add_blocker(t, n)
     c.say("owner request #%s: %s" % (n, title))
@@ -117,7 +127,7 @@ def request_open(kind, ref=None, title=None):
     return None
 
 
-def process_proposals(text, iteration):
+def process_proposals(text, iteration, source=None):
     """`.session/requests.json` of an agent: `[{kind, title, what, why, unblocks, frozen?}]`. Returns the issue numbers."""
     try:
         items = json.loads(text)
@@ -127,12 +137,20 @@ def process_proposals(text, iteration):
     for p in items if isinstance(items, list) else []:
         if not isinstance(p, dict) or p.get("kind") not in SESSION_KINDS or not p.get("title"):
             continue
-        if p["kind"] != "question" and not p.get("frozen"):
+        if p["kind"] not in ("question", "capability") and not p.get("frozen"):
             continue
+        ref = None
+        if p["kind"] in requests.KINDS:
+            ref = "proposal-" + sha256(json.dumps([source if source is not None else iteration, p], sort_keys=True))
+            if any(c.marker(x["body"], "request-ref") == ref for x in c.list_issues(state="all", labels=(REQ,))):
+                continue
         if request_open(p["kind"], title=p["title"]):
             continue
-        made.append(open_request(p["kind"], p["title"], p.get("what", ""), p.get("why", ""), p.get("unblocks", ""),
-                                 frozen=p.get("frozen"), iteration=iteration))
+        try:
+            made.append(open_request(p["kind"], p["title"], p.get("what", ""), p.get("why", ""), p.get("unblocks", ""),
+                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness")))
+        except (ValueError, TypeError) as e:
+            c.say("Invalid owner request %s: %s" % (p["title"], e))
     return made
 
 
@@ -154,10 +172,9 @@ def index_lines():
     out = []
     for r in records():
         o = r.get("outcome", {})
-        out.append({"n": r["iteration"], "status": r["status"], "aim": (r.get("macro_plan") or {}).get("aim"),
+        out.append({"n": r["iteration"], "status": r["status"],
                     "verdict": (o.get("verdict") or {}).get("value"), "improved": (o.get("verdict") or {}).get("improved", False),
-                    "tasks": len(r.get("tasks", [])), "wall_s": o.get("wall_s"), "tokens": o.get("tokens"),
-                    "policy": ((r.get("policy") or {}).get("session") or {}).get("status")})
+                    "tasks": len(r.get("tasks", [])), "wall_s": o.get("wall_s"), "tokens": o.get("tokens")})
     return out
 
 
@@ -171,10 +188,17 @@ def no_progress(idx=None):
     return k
 
 
-def policy_failures(idx=None):
+def policy_sessions(limit=5):
+    """The latest closed Policy sessions, newest first, and how they ended."""
+    done = sorted(c.list_issues(state="closed", labels=("role:policy",)), key=lambda x: -x["number"])[:limit]
+    return [{"issue": x["number"], "status": c.report_fields(x["number"]).get("status")} for x in done]
+
+
+def policy_failures():
+    """Trailing Policy sessions that did not end `done`."""
     k = 0
-    for line in reversed(idx if idx is not None else index_lines()):
-        if line["policy"] in (None, "done"):
+    for s in policy_sessions(2):
+        if s["status"] == "done":
             break
         k += 1
     return k
@@ -189,7 +213,12 @@ def evaluator_rev():
 
 
 def request_summary(x):
-    return {"number": x["number"], "kind": c.marker(x["body"], "request-kind"), "title": x["title"]}
+    out = {"number": x["number"], "kind": c.marker(x["body"], "request-kind"), "title": x["title"]}
+    frozen = requests.read(x["number"])
+    if frozen:
+        out.update(decision=frozen["status"], proposal_sha=frozen["proposal_sha"], base_commit=frozen["base_commit"],
+                   detail=frozen.get("detail"), readiness=frozen.get("readiness"))
+    return out
 
 
 def build_state(n):
@@ -206,7 +235,11 @@ def build_state(n):
         "owner_requests": {"open": [request_summary(x) for x in open_requests()],
                            "recently_closed": [dict(request_summary(x), answer=x.get("state_reason")) for x in closed]},
         "no_progress": no_progress(idx),
+        "policy_sessions": policy_sessions(),
+        "suggestions": session_reports.pending(),
         "audit_report": "audit/latest.md" if os.path.exists("audit/latest.md") else None,
+        "audit_rev": audit_revision(),
+        "first_closed_iteration": next((r["n"] for r in idx if r["status"] == "closed"), None),
         "iterations": idx,
     }
 
@@ -225,33 +258,31 @@ def iteration_number(x):
     return c.iteration_of(c.label_names(x))
 
 
-def store_state(it, state):
-    c.post_comment(it, "%s\n```json\n%s\n```\n" % (STATE_MARK, json.dumps(state, indent=1, ensure_ascii=False)))
+def store_state(it, state, mark=STATE_MARK):
+    c.post_comment(it, "%s\n```json\n%s\n```\n" % (mark, json.dumps(state, indent=1, ensure_ascii=False)))
 
 
-def read_state(it):
+def read_state(it, mark=STATE_MARK):
     for x in c.comments(it):
-        if x["body"].startswith(STATE_MARK) and c.trusted(x):
+        if x["body"].startswith(mark) and c.trusted(x):
             m = re.search(r"```json\n(.*?)\n```", x["body"], re.S)
             return json.loads(m.group(1)) if m else None
     return None
 
 
 def export_state(n, directory):
-    """`.session/loop-state.json` (the snapshot taken when the iteration began) and the macro plan, for the Policy
-    and the shaper."""
-    labels = c.label_names(c.issue(n))
-    k = c.iteration_of(labels)
-    it = find_iteration_issue(k, state="all") if k is not None else None
-    state = read_state(it["number"]) if it else None
+    """`.session/loop-state.json`: the snapshot taken when the Policy session was opened, or, for the shaper, when
+    its iteration began."""
+    state = read_state(n)
+    if state is None:
+        k = c.iteration_of(c.label_names(c.issue(n)))
+        it = find_iteration_issue(k, state="all") if k is not None else None
+        state = read_state(it["number"]) if it else None
     os.makedirs(directory, exist_ok=True)
     if state is not None:
+        session_reports.stage(state, directory)
         with open(os.path.join(directory, "loop-state.json"), "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=1, ensure_ascii=False)
-    plan = read_text(plan_path(k)) if k is not None else None
-    if plan is not None:
-        with open(os.path.join(directory, "macro-plan.md"), "w", encoding="utf-8") as fh:
-            fh.write(plan)
 
 
 # ---------------------------------------------------------------- starting an iteration
@@ -276,9 +307,15 @@ def cadence_ok():
     return True
 
 
+def apply_policy():
+    """Merge the Policy sessions that finished since the last start and return their orders. loop.py, where the merge
+    lives, puts its own in place."""
+    return []
+
+
 def start_iteration():
-    """Begin the next iteration if none is open: the Policy session first, or straight to the shaper for an
-    iteration whose macro plan the setup already wrote. Serial by construction: one open iteration at most."""
+    """Begin the next iteration if none is open: what the Policy finished meanwhile takes effect, its orders start
+    beside the shaper. Serial by construction: one open iteration at most."""
     if not c.guard_ok() or c.outage_open():
         return None
     c.sync_main()
@@ -288,30 +325,26 @@ def start_iteration():
         c.say("cadence: next iteration not due yet")
         return None
     if failed_streak() >= 3:
-        c.open_outage("three iterations in a row failed", "The last three iterations ended `failed` (infrastructure or an invalid plan).",
+        c.open_outage("three iterations in a row failed", "The last three iterations ended `failed` (infrastructure or an invalid task graph).",
                       "Read the iteration records in `iterations/`, fix the cause, close this issue.")
         return None
     n = next_number()
     label = c.ITER + str(n)
     for l in (label, MAP):
         c.ensure_label(l, "0E8A16" if l == MAP else "C5DEF5", "iteration of the loop")
-    it = c.create_issue("Iteration %s" % tag(n), "Iteration %s of the loop. State and plan are in the comments and in `iterations/`.\n" % tag(n),
+    it = c.create_issue("Iteration %s" % tag(n), "Iteration %s of the loop. State is in the comments and in `iterations/`.\n" % tag(n),
                         labels=(MAP, label))
     if any(x["number"] < it for x in c.list_issues(labels=(MAP,))):      # two runs started one at once: the lower number stays
         c.close_issue(it, "not planned")
         return None
+    orders = apply_policy()
+    if policy_failures() >= 2:
+        revert_policy("two Policy sessions in a row failed")
     c.update_report(it, {"phase": "starting", "started": c.iso(), "policy_rev_start": policy_rev()})
     store_state(it, build_state(n))
-    if os.path.exists(plan_path(n)):
-        c.update_report(it, {"plan_source": "setup"})
-        begin_shape(n, it)
-        return n
-    p = c.create_issue("Policy for iteration %s" % tag(n),
-                       "Decide the macro plan of iteration %s and, where needed, change `policy/`.\n\nInput: `.session/loop-state.json`. "
-                       "Output: `.session/macro-plan.md`. Rules: `.session/policy.md`.\n" % tag(n),
-                       labels=("role:policy", label))
-    c.update_report(it, {"phase": "policy", "policy_issue": p})
-    c.launch(p)
+    if orders:
+        place_orders(n, it, orders)
+    begin_shape(n, it)
     return n
 
 
@@ -327,49 +360,86 @@ def failed_streak():
     return k
 
 
-def policy_done(n, status, plan_text):
-    """The Policy session ended (its `policy/` changes are already merged or rejected). Fail-open: without a new plan the
-    previous one stands, and a failed session is counted toward the two-in-a-row rollback."""
-    it = find_iteration_issue(n)
-    if not it:
-        return
-    source = "policy"
-    if status != "done" or not plan_text or not frontmatter(plan_text)[0].get("aim"):
-        source, plan_text = "stood", stand_plan(n)
-        if plan_text is None:
-            return fail_iteration(n, "no macro plan: the Policy produced none and there is no earlier one")
-    if not os.path.exists(plan_path(n)):
-        c.commit_main({plan_path(n): plan_text}, "iteration %s: macro plan (%s)" % (tag(n), source))
-    c.update_report(it["number"], {"plan_source": source, "policy_rev_end": policy_rev()})
-    if status != "done" and policy_failures() + 1 >= 2:
-        revert_policy("two Policy sessions in a row failed")
-    begin_shape(n, it["number"])
-
-
-def stand_plan(n):
-    for k in range(n - 1, -1, -1):
-        t = read_text(plan_path(k))
-        if t:
-            return t
-    return None
-
-
 def begin_shape(n, it):
-    """The shaper turns the macro plan into a task graph: an LLM orchestrator or a script role (a deterministic rule)."""
+    """The shaper decides what the iteration does and writes its task graph: an LLM orchestrator or a script role (a
+    deterministic rule)."""
     shaper = c.params()["shaper"]
     if shaper not in c.profiles():
         return fail_iteration(n, "shaper role `%s` has no profile" % shaper)
     s = c.create_issue("Shape iteration %s" % tag(n),
-                       "Turn the macro plan of iteration %s into a task graph.\n\nInput: `.session/macro-plan.md`, `.session/loop-state.json`. "
+                       "Decide what iteration %s does and write its task graph.\n\nInput: `.session/loop-state.json`. "
                        "Output: `.session/tasks.json` (format: `.session/protocol.md`).\n" % tag(n),
                        labels=("role:" + shaper, c.ITER + str(n), "loop:shaper"))
     c.update_report(it, {"phase": "shape", "shape_issue": s, "shaper": shaper})
     c.launch(s)
 
 
+# ---------------------------------------------------------------- the Policy on triggers
+
+def audit_revision():
+    return c.git(".", "log", "-1", "--format=%H", "--", "audit/", check=False).stdout.strip() or None
+
+
+def policy_due(n):
+    """Why the Policy should run now that iteration n closed (None: it should not). One Policy session at a time."""
+    if c.list_issues(labels=("role:policy",)):
+        return None
+    t = c.params()["policy_triggers"]
+    k = no_progress()
+    if t.get("every_iterations") and (n + 1) % t["every_iterations"] == 0:
+        return "every %s iterations" % t["every_iterations"]
+    if t.get("no_progress") and k and k % t["no_progress"] == 0:
+        return "%s iterations without progress" % k
+    sessions = c.list_issues(state="all", labels=("role:policy",))
+    last = max(sessions, key=lambda x: x["number"], default=None)
+    state = (read_state(last["number"]) or {}) if last else {}
+    first = next((r["iteration"] for r in records() if r["status"] == "closed"), None)
+    if first is not None and state.get("first_closed_iteration") != first:
+        return "the first closed iteration"
+    audit = audit_revision()
+    if audit and audit != state.get("audit_rev"):
+        return "a new audit report"
+    seen = {item["id"] for session in sessions for item in
+            (read_state(session["number"]) or {}).get("suggestions", [])}
+    if any(item["id"] not in seen for item in session_reports.pending()):
+        return "new session suggestions"
+    return None
+
+
+def start_policy(n, why):
+    """A Policy session beside the iterations, never blocking one. What it changes and orders takes effect when the
+    next iteration starts."""
+    p = c.create_issue("Policy after iteration %s" % tag(n),
+                       "Runs because: %s. Change `policy/` where needed; order the evaluator or the audit in `.session/orders.json`.\n\n"
+                       "Input: `.session/loop-state.json`. Rules: `.session/policy.md`. Your changes and orders take effect when the "
+                       "next iteration starts.\n" % why, labels=("role:policy", c.ITER + str(n)))
+    store_state(p, dict(build_state(n), trigger=why))
+    c.launch(p)
+    return p
+
+
+def read_orders(p):
+    """The orders a finished Policy session left, ids made unique across sessions: `order-<issue>-<id>`."""
+    raw = read_state(p, ORDERS_MARK)
+    tasks = raw.get("tasks") if isinstance(raw, dict) else None
+    pre = "order-%s-" % p
+    return [dict(o, id=pre + str(o.get("id")), blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
+            for o in (tasks if isinstance(tasks, list) else []) if isinstance(o, dict)]
+
+
+def place_orders(n, it, orders):
+    """The Policy's orders become tasks of iteration n, running beside the shaper and its graph."""
+    errs = validate_tasks({"tasks": orders}, ordered=True)
+    if errs:
+        c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policy's orders were refused: %s." % "; ".join(errs[:6]))
+        return
+    for num in create_tasks(n, orders):
+        c.launch(num)
+
+
 # ---------------------------------------------------------------- the task graph
 
-TASK_FIELDS = {"id", "title", "role", "body", "model", "effort", "blocked_by", "inputs", "start_branch", "limits", "consent"}
+TASK_FIELDS = {"id", "title", "role", "body", "model", "effort", "blocked_by", "inputs", "exports", "start_branch", "limits", "consent"}
 
 
 def limits_exceeded(profile):
@@ -389,29 +459,34 @@ def limits_exceeded(profile):
     return why
 
 
-def validate_tasks(doc, orders=()):
-    """Errors of a task graph (empty: valid). `orders` are the Policy's own tasks, the only way into policy-only roles."""
+def validate_tasks(doc, ordered=False, taken=()):
+    """Errors of a task graph (empty: valid). `ordered`: the Policy's orders, the only tasks of the roles in
+    `policy_only_roles` and only of them. `taken`: ids the iteration already uses."""
     prof, prm, cfg = c.profiles(), c.params(), c.cfg()
+    only = cfg["policy_only_roles"]
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     if not isinstance(tasks, list) or not tasks:
         return ["`tasks` must be a non-empty list"]
     errs, ids = [], set()
-    order_ids = {o["id"] for o in orders}
     for t in tasks:
         if not isinstance(t, dict):
             errs.append("a task is not an object")
             continue
         i = t.get("id")
-        if not isinstance(i, str) or not i or i in ids:
+        if not isinstance(i, str) or not i or i in ids or i in taken:
             errs.append("task id missing or duplicated: %r" % i)
         ids.add(i)
         extra = set(t) - TASK_FIELDS
         if extra:
             errs.append("task %s: unknown fields %s" % (i, sorted(extra)))
+        if "exports" in t:
+            errs.extend("task %s: %s" % (i, error) for error in session_exports.validate(t["exports"]))
         role = t.get("role")
         if role not in prof or role == "policy":
             errs.append("task %s: role %r has no profile" % (i, role))
-        elif role in cfg["policy_only_roles"] and i not in order_ids:
+        elif ordered and role not in only:
+            errs.append("task %s: the Policy orders only %s" % (i, ", ".join(only)))
+        elif not ordered and role in only:
             errs.append("task %s: role `%s` is ordered only by the Policy" % (i, role))
         for k in ("title", "body"):
             if not isinstance(t.get(k), str) or not t[k].strip():
@@ -420,11 +495,10 @@ def validate_tasks(doc, orders=()):
             errs.append("task %s: unknown model alias %r" % (i, t["model"]))
         if t.get("effort") and t["effort"] not in prm["efforts"]:
             errs.append("task %s: unknown effort %r" % (i, t["effort"]))
-    all_ids = ids | order_ids
     graph = {}
     for t in tasks:
         deps = t.get("blocked_by") or []
-        bad = [d for d in deps if d not in all_ids]
+        bad = [d for d in deps if d not in ids]
         if bad:
             errs.append("task %s: blocked_by unknown %s" % (t.get("id"), bad))
         graph[t.get("id")] = [d for d in deps if d in ids]
@@ -470,28 +544,24 @@ def width(tasks):
     return max(layers.values() or [0])
 
 
-def plan_orders(n):
-    """The Policy's own tasks from the macro plan: ids get the prefix `order-`, edges between them follow."""
-    fm, _ = frontmatter(read_text(plan_path(n)) or "")
-    raw = [o for o in (fm.get("orders") or []) if isinstance(o, dict)]
-    ids = {"order-%s" % (o.get("id") or k): o for k, o in enumerate(raw, 1)}
-    out = []
-    for oid, o in ids.items():
-        deps = ["order-%s" % d if "order-%s" % d in ids else d for d in o.get("blocked_by") or []]
-        out.append(dict(o, id=oid, blocked_by=deps))
-    return out
-
-
-def instantiate(n, doc, shape_issue):
-    """Create the issues of a validated task graph, wire blocking and consent, freeze the plan, start what is free.
-    Returns the number of tasks, or an error text."""
-    orders = plan_orders(n)
-    errs = validate_tasks(doc, orders)
-    if not errs:
-        errs = validate_tasks({"tasks": doc["tasks"] + orders}, orders)
+def instantiate(n, doc):
+    """The shaper's graph: validate it, create its tasks, start what is free. Returns the number of tasks, or an error text."""
+    taken = {t["id"] for t in read_json(tasks_path(n)) or []}
+    errs = validate_tasks(doc, taken=taken)
     if errs:
         return "invalid tasks.json: " + "; ".join(errs[:6])
-    tasks = doc["tasks"] + orders
+    started = create_tasks(n, doc["tasks"])
+    frozen = read_json(tasks_path(n))
+    it = find_iteration_issue(n)
+    c.update_report(it["number"], {"phase": "run", "tasks": len(frozen), "width": width(frozen)})
+    for num in started:
+        c.launch(num)
+    return len(doc["tasks"])
+
+
+def create_tasks(n, tasks):
+    """Create the issues of validated tasks, wire blocking and consent, add them to the frozen graph of the iteration.
+    Returns the issue numbers, for the caller to start."""
     prof, label = c.profiles(), c.ITER + str(n)
     by_id = {t["id"]: t for t in tasks}
     for t in tasks:
@@ -507,6 +577,8 @@ def instantiate(n, doc, shape_issue):
             body += "<!-- start-branch: %s -->\n" % t["start_branch"]
         if t.get("inputs"):
             body += "<!-- inputs: %s -->\n" % json.dumps(resolve_inputs(t["inputs"], number), sort_keys=True)
+        if "exports" in t:
+            body += "<!-- exports: %s -->\n" % json.dumps(t["exports"], sort_keys=True)
         labels = ["role:" + t["role"], label, "generation:0"]
         if t.get("model"):
             labels.append("model:" + t["model"])
@@ -526,13 +598,9 @@ def instantiate(n, doc, shape_issue):
                                "The session starts only when you close this as completed; the wider profile applies to that one session.",
                                ref="task-%s" % number[t["id"]], blocks=(number[t["id"]],), iteration=n)
             c.edit_labels(number[t["id"]], add=["consent:%s" % req])
-    frozen = [dict(t, issue=number[t["id"]]) for t in tasks]
+    frozen = (read_json(tasks_path(n)) or []) + [dict(t, issue=number[t["id"]]) for t in tasks]
     c.commit_main({tasks_path(n): json.dumps(frozen, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: task graph" % tag(n))
-    it = find_iteration_issue(n)
-    c.update_report(it["number"], {"phase": "run", "tasks": len(tasks), "width": width(tasks)})
-    for tid, num in number.items():
-        c.launch(num)
-    return len(tasks)
+    return list(number.values())
 
 
 def resolve_inputs(inputs, number):
@@ -548,7 +616,9 @@ def resolve_inputs(inputs, number):
 # ---------------------------------------------------------------- advancing and closing
 
 def iteration_issues(n):
-    return [x for x in c.list_issues(state="all", labels=(c.ITER + str(n),)) if "pull_request" not in x]
+    """The issues of iteration n. A Policy session carries an iteration label too, but belongs to no iteration."""
+    return [x for x in c.list_issues(state="all", labels=(c.ITER + str(n),))
+            if "pull_request" not in x and "role:policy" not in c.label_names(x)]
 
 
 def advance():
@@ -560,11 +630,7 @@ def advance():
     n = iteration_number(it)
     f = c.report_fields(it["number"])
     phase = f.get("phase", "")
-    if phase == "policy":
-        p = c.issue(int(f["policy_issue"]))
-        if p["state"] == "closed":
-            policy_done(n, "crashed", None)         # the epilogue died before it could report
-    elif phase == "shape":
+    if phase == "shape":
         s = c.issue(int(f["shape_issue"]))
         if s["state"] == "closed":
             fail_iteration(n, "the shaper produced no valid task graph")
@@ -597,6 +663,7 @@ def session_summary(x):
     def num(k):
         return int(float(f[k])) if f.get(k, "").replace(".", "", 1).isdigit() else 0
     return {"issue": x["number"], "role": (c.roles_of(names) or [""])[0], "model": f.get("model"), "effort": f.get("effort"),
+            **session_reports.references(x["number"]),
             "status": f.get("status"), "verdict": f.get("verdict"), "improved": f.get("improved") == "true",
             "merged": f.get("merged") == "true", "branch": f.get("branch"), "commit": f.get("commit"),
             "tokens": {"in": num("tokens_in"), "out": num("tokens_out"), "cache_read": num("cache_read"), "cache_write": num("cache_write")},
@@ -648,10 +715,10 @@ def close_iteration(n, status, failure=None):
     if not os.path.exists(record_path(n)):
         issues = iteration_issues(n)
         sessions = {x["number"]: session_summary(x) for x in issues if c.roles_of(c.label_names(x))}
-        pol = sessions.get(int(f["policy_issue"])) if f.get("policy_issue", "").isdigit() else None
+
         shp = sessions.get(int(f["shape_issue"])) if f.get("shape_issue", "").isdigit() else None
         tasks = read_json(tasks_path(n)) or []
-        work = [s for s in sessions.values() if s is not pol and s is not shp]
+        work = [s for s in sessions.values() if s is not shp]
         verdicts = [s["verdict"] for s in work if s.get("verdict")]
         value = "accepted" if "accepted" in verdicts else ("rejected" if "rejected" in verdicts else ("inconclusive" if verdicts else "none"))
         sums = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
@@ -664,29 +731,35 @@ def close_iteration(n, status, failure=None):
                 for k in b:
                     b[k] += t.get(k, 0)
         started = c.parse_time(f["started"]) if f.get("started") else c.now()
-        plan, _ = frontmatter(read_text(plan_path(n)) or "")
+
         opened = [x["number"] for x in c.list_issues(state="all", labels=(REQ, c.ITER + str(n)))]
         record = {
             "schema_version": 1, "iteration": n, "status": status, "failure": failure,
             "started": f.get("started"), "ended": c.iso(), "engine_version": c.engine_version(),
             "input_state": {k: v for k, v in (read_state(it["number"]) or {}).items() if k != "iterations"},
-            "policy": {"session": pol, "rev_start": f.get("policy_rev_start"), "rev_end": f.get("policy_rev_end") or policy_rev(),
-                       "commit_end": c.head(), "plan_source": f.get("plan_source")},
-            "macro_plan": dict(plan, decided_by=f.get("shaper")),
+            "policy": {"rev_start": f.get("policy_rev_start"), "rev_end": policy_rev(), "commit_end": c.head(),
+                       "orders_refused": f.get("orders_refused")},
+            "decided_by": f.get("shaper"),
             "tasks": tasks,
-            "outcome": {"sessions": [s for s in sessions.values() if s is not pol], "shaper": shp,
+            "outcome": {"sessions": list(sessions.values()), "shaper": shp,
                         "verdict": {"value": value, "issuer": c.cfg()["gate"]["kind"], "evaluator_rev": evaluator_rev(),
                                     "improved": any(s["improved"] for s in work)},
                         "tokens": dict(sums, by_model=by_model), "limit_hits": sum(s["attempts"] for s in sessions.values()), "wall_s": int((c.now() - started).total_seconds()),
                         "critical_path_s": critical_path(list(sessions.values()), tasks), "width": int(f.get("width", 0) or 0),
                         "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in open_requests()]}},
         }
+        changes, verifications = policy_changes.for_iteration(n)
+        record["policy"]["change_ids"] = changes
+        record["evaluator_verifications"] = verifications
         c.commit_main({record_path(n): json.dumps(record, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: record (%s)" % (tag(n), status))
     c.update_report(it["number"], {"phase": "closed", "status": status})
     c.close_issue(it["number"], "completed" if status == "closed" else "not planned")
     prune_streams(n)
     note_no_progress(n)
     check_goal()
+    why = policy_due(n)
+    if why and c.guard_ok():
+        start_policy(n, why)
     start_iteration()
 
 
@@ -782,7 +855,7 @@ def run_gate(cand, base, ctx):
 
 def revert_policy(why):
     """Return `policy/` to the state in which the last iteration closed (at the start: the setup baseline), open a
-    notice for the owner. Does nothing when the tree is already there. The Policy is called by the next iteration."""
+    notice for the owner. Does nothing when the tree is already there. The Policy's next session sees the notice."""
     c.sync_main()
     last = last_closed()
     target = (last or {}).get("policy", {}).get("commit_end")
@@ -798,7 +871,7 @@ def revert_policy(why):
     c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, ["policy"]))
     open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
                  "The loop was not progressing or the Policy failed twice in a row.",
-                 "Nothing is blocked. The Policy sees this notice in its next iteration.", ref="rollback-%s" % c.head()[:8])
+                 "Nothing is blocked. The Policy sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])
     return True
 
 

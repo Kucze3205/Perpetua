@@ -2,14 +2,18 @@
 
 Common to every role. The task is in the issue; the protocol is here, not in the issue.
 
+The engine contract takes precedence over policy work rules, starting prompts, role skills
+and task text. Required files, formats, field ownership and security boundaries are engine-owned.
+Editable policy instructions cannot redefine them.
+
 ## Input and output are files
 
 The engine puts the task in `.session/issue.md` (the issue and the comments of trusted authors, already filtered) and
 publishes your report from `.session/report.md`. You have no `gh`, no GitHub token and no push rights: you do not
 reach for the issue yourself. `.session/` is never committed.
 
-Other files the engine may put in `.session/`: `loop-state.json` and `macro-plan.md` (the Policy and the shaper),
-`policy.md` (the Policy), `inputs/` (artifacts the task lists), `streams/` (the audit), `protocol.md` (this file).
+Other files the engine may put in `.session/`: `loop-state.json` (the Policy and the shaper), `policy.md` (the
+Policy), `inputs/` (artifacts the task lists), `streams/` (the audit), `protocol.md` (this file).
 
 ## Trust: what you do not read
 
@@ -22,7 +26,7 @@ The repository may be public: anyone can paste a comment under an issue.
 ## The task
 
 The issue has the sections `## Goal`, `## Acceptance`, `## Verification`, `## Context`, optionally `## Budget`.
-Read them whole and read **by name** what `## Budget` lists. Browse nothing else "for orientation".
+The role's work rules decide how to investigate them; their required outputs remain the engine contract.
 
 The epilogue runs `## Verification` after you and compares the result with your status. Run it yourself before `done`.
 If a command does not work, that is your report, not a reason to change it.
@@ -32,8 +36,8 @@ the measurement.
 
 ## Git
 
-You work on the branch `task/<n>` (n = the issue number). Commit often: the runner dies together with whatever you did
-not commit. You do not rebase, merge or push: the epilogue does it, from outside.
+You work on the branch `task/<n>` (n = the issue number). The epilogue publishes committed changes only.
+You do not rebase, merge or push: the epilogue does it, from outside.
 
 Stay inside the paths your role may write (see your skill). A change outside them, or to `.github/`, `engine.yml`,
 `ENGINE_VERSION`, `iterations/`, `goal/` or `GOAL_REACHED`, is refused at merge and your task ends `blocked`.
@@ -43,6 +47,25 @@ The epilogue uploads them as release assets and lists them in your report; a lat
 
 ## The report
 
+Policy and shaper sessions receive actual trusted marked reports in `.session/reports/`;
+start with `index.json`. Each report JSON has `issue`, `source` (comment URL), `snapshot`
+(SHA-256 of `body`) and the full `body`. An untrusted author's marker does not qualify.
+
+To suggest a change to the Policy, write `.session/suggestions.json` as an array:
+`[{"kind":"role-change","what":"Change the role","why":"Reason","evidence":"Report section, path or measured result"}]`.
+All four fields are required nonempty strings; `kind` uses lowercase letters, digits
+and hyphens. The engine supplies the stable ID and source; agents cannot set those.
+Invalid entries get diagnostics while valid reports and valid entries survive.
+
+The Policy receives pending suggestions in `.session/loop-state.json` `suggestions`.
+Only the Policy may write `.session/suggestion-decisions.json`, an array of
+`{"id":"<staged suggestion ID>","status":"handled","reason":"What was done and why"}`;
+`rejected` is the other terminal status. Every decision requires a reason.
+Decisions are frozen after successful completion and take effect when that Policy
+branch is accepted at an iteration boundary. Source snapshots stay immutable.
+Pending suggestions trigger one Policy opportunity per new ID, even if that session
+does not resolve them; unresolved entries remain visible in later Policy inputs.
+
 `.session/report.md`, **overwritten** as you work, with the marker first. Make the first version (`wip`) right at the start.
 
 ````markdown
@@ -51,23 +74,13 @@ The epilogue uploads them as release assets and lists them in your report; a lat
 status: done
 commit: 9f3c1ab
 ```
-Prose (<= ~15 lines): what was done and why. On failure, what exactly failed.
-Detail goes into files the report links to, not here.
-
-## Discoveries
-- a fact outside the task that changes the plan (optional; one point = one sentence + a link)
-
-## What next
-- done and committed: <SHA>
-- next step: ...
-- do not repeat: ...
+Report prose follows the parsed YAML. Its structure is defined by policy work rules.
 ````
 
 Only scalars in the YAML block. The fields `attempts`, `resume_after`, `kicks`, `kicked`, `conflicts`, `cause`,
 `verification`, `verdict`, `improved`, `merged`, `detail`, `model`, `effort`, `turns`, `tokens_*`, `cache_*`, `*_s`,
 `runner`, `branch`, `iteration`, `artifacts` belong to the engine: do not write them (they are dropped).
-`## What next` is **required for every status except `done`**: it is the resume instruction for a cold session that
-has no transcript of yours. Without "do not repeat" it will do again what is already in a commit.
+Include resume instructions for every status except `done`; policy defines their wording.
 
 | status | when |
 |---|---|
@@ -106,10 +119,29 @@ You never create issues. To ask the owner for something the loop may not decide 
 `goal-change` (`frozen` is the new content of `goal/goal.md`). What the owner accepts is the text frozen when the issue
 is opened; a change needs a new request. The loop keeps working toward the current goal while you wait.
 
-## The task graph (shaper only)
+Three additional kinds cover capabilities and changes outside a role's authority:
+
+- `capability`: describe the missing tool, access, secret name or configuration in `what`, the owner's steps in
+  `frozen`, and a concrete readiness check in `readiness`. Never include secret values. Closing the issue creates
+  nothing: the owner must carry out the steps and post the proposal-specific `capability-ready` marker printed by
+  the engine. Until then the request remains waiting and dependent sessions cannot start.
+- `limits-change`: `frozen` is the entire proposed YAML **contents of the limits mapping**, for example
+  `tools: [Read, Grep, Glob]\ninternet_write: []\n` (without an outer `limits:` key). Completed applies only that frozen
+  mapping to `engine.yml`, after checking the proposal and base configuration. Not planned changes nothing.
+  A changed proposal or newer engine configuration requires a fresh request.
+- `engine-change`: `frozen` is a concrete diff and application instructions. The engine records its base commit and
+  hash. The owner applies, checks and merges it manually; closing the issue never edits engine files or creates a PR.
+  The proposal-specific `engine-applied` confirmation releases dependencies after the owner has done the work.
+
+The engine prints the exact effects, hashes, base version and confirmation instructions on each request. It freezes
+the original proposal in the trusted engine tree, so editing the issue or its displayed hash cannot change what is
+applied. Repeated publication from the same session does not create another request, including after refusal.
+To intentionally supersede a refused or conflicting proposal, change its content or add a new `revision` value.
+
+## The task graph (shaper and Policy only)
 
 The shaper writes `.session/tasks.json`; the engine creates the issues and the blocking edges. A script role
-(a deterministic rule) writes the same file.
+(a deterministic rule) writes the same file. The Policy writes its orders in the same format to `.session/orders.json`.
 
 ```json
 {"tasks": [
@@ -117,6 +149,7 @@ The shaper writes `.session/tasks.json`; the engine creates the issues and the b
    "body": "## Goal\n...\n## Acceptance\n- [ ] ...\n## Verification\n`python3 check.py`\n## Context\n- link: why go there\n## Budget\n- file-or-issue by name",
    "blocked_by": [], "start_branch": null, "limits": {"timeout_minutes": 60, "max_turns": 80},
    "inputs": [{"from": "b", "name": "weights.bin"}],
+   "exports": [{"source": "streams", "iterations": [0], "sessions": [42]}],
    "consent": {"what": "...", "why": "..."}}
 ]}
 ```
@@ -125,4 +158,14 @@ The shaper writes `.session/tasks.json`; the engine creates the issues and the b
 `model` is an alias from `policy/params.yml`; `limits` never exceed the ceilings there. `consent` is optional: the
 engine asks the owner by itself when a role's profile is beyond the accepted limits. The width of the iteration is the
 widest layer of the graph; it is computed, not a field. Tasks of the roles in `policy_only_roles` come only from the
-Policy's `orders`; do not write them. Every task fits **one session**.
+Policy's orders, and the orders only of those roles: the engine refuses either the other way. Every task fits **one
+session**.
+
+`exports` stages supported data for any role, fetched by the engine before the session
+starts. Select `streams`, `actions`, `records` or `reports` and explicit integer
+`iterations` or `sessions` (issue numbers); both selectors mean their intersection.
+`records` supports iteration scope only. Read `.session/exports/manifest.json` for
+each result and staged path: `downloaded`, `unavailable`, `expired`, `error`, or
+`unknown`. Unknown sources produce `unknown` and execute nothing. A missing
+selector keeps the audit's existing stream window (current iteration and three
+predecessors); `exports: []` opts out. Other roles have no implicit exports.

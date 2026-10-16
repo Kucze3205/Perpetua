@@ -54,27 +54,22 @@ The part of an iteration that actually moves the loop toward the goal: the
 work done by the roles (building, researching, verifying, exploring).
 _Avoid_: step, task
 
-**Macro plan**:
-What the policy fixes for the next iteration: its aim and constraints. It says
-what the iteration is for, not which roles or models do the work; the
-orchestrator or the deterministic rule turns it into tasks.
-_Avoid_: strategy
-
 **Iteration record**:
 The immutable account of one iteration, written by the engine when the
-iteration ends, closed or failed: what the policy saw, the macro plan, the
-tasks as planned, and the outcome (verdict, token use, wall time, resources).
+iteration ends, closed or failed: its starting state, the tasks as planned,
+and the outcome (verdict, token use, wall time, resources).
 The last good state is the last closed one.
 _Avoid_: log, report
 
 **Policy**:
-The agent that runs at the start of every iteration and owns the loop's
-architecture: the macro plan, the evaluator, the shaper, the roles and the
-parameters. Never touches what the iteration core produces.
+The agent that runs on triggers beside iterations and owns the loop's
+architecture: the evaluator, the shaper, the roles and the parameters. Its
+accepted changes and orders take effect at the next iteration boundary.
+Never touches what the iteration core produces.
 _Avoid_: strategy, scheduler
 
 **Orchestrator**:
-A role that turns the policy's macro plan into concrete work: what to
+A role that turns the goal and the loop's state into concrete work: what to
 analyse, build, search, whom to bring in. Decides what the loop does today;
 may propose changes to its own prompt, which the policy judges. The policy may
 replace it with a deterministic rule or remove it.
@@ -82,8 +77,8 @@ _Avoid_: manager
 
 **Shaper**:
 The orchestrator, or a script role acting as a deterministic rule: whatever turns
-the macro plan into a task graph. It writes the graph to a file; the engine
-creates the issues. It has no shell and no token.
+the goal and the loop's state into a task graph. It writes the graph to a file; the
+engine creates the issues. It has no GitHub credentials.
 _Avoid_: planner, scheduler
 
 **Task graph**:

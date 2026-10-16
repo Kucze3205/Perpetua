@@ -35,14 +35,15 @@ limits:
   tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
   internet_write: []             # path prefixes a profile with internet may write
 
-# --- the Policy's own session (engine zone: its prompt is .github/loop/policy.md) -------------------------------
+# --- the Policy's fixed permissions and owner ceilings -------------------------------------------------------
 policy:
-  model: claude-opus-5-5
-  effort: high
-  max_turns: 150
-  timeout_minutes: 90
   tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
   write: ["policy/"]
+policy_session_ceilings:          # policy/params.yml can tune sessions only within these owner-approved bounds
+  models: [claude-opus-5-5, claude-sonnet-5-5]
+  efforts: [low, medium, high]
+  max_turns: 150
+  timeout_minutes: 90
 
 # --- parameters of the setup (null = off) ------------------------------------------------------------------------
 params:

@@ -4,6 +4,13 @@ The goal-independent machinery of this loop: workflows, scripts, configuration, 
 orchestrator. It was copied into this repository by `/perpetua:setup` and belongs to this loop; the setup map may
 change it. Terms (loop, owner, iteration, policy, evaluator...) are in `CONTEXT.md`.
 
+GitHub Actions, the Claude subscription and GitHub issue owner requests are the shipped architecture defaults. The
+owner may replace them during setup; this requires implementing and checking the affected integration, tools and
+arming procedure, not selecting a generic backend. Record each decision and the specific guarantee it removes or
+replaces in the setup notes and implementing files; preserve that account in `docs/perpetua/setup-decisions.md` before
+arming deletes the notes. Losing a guarantee informs the owner's decision and does not automatically veto it. With
+no owner change, the shipped behavior remains in force.
+
 Engine version: `ENGINE_VERSION`. There is no update path from the plugin in the first release.
 
 ## One iteration
@@ -12,23 +19,25 @@ Iterations run one after another. An iteration is an issue labelled `loop:map` +
 does is an issue labelled `loop:iteration N` + `role:<name>`.
 
 ```
-Policy session ──► macro plan ──► shaper session ──► task graph ──► task sessions (parallel) ──► record
- (blocks; fail-open)  iterations/NNNN/       (orchestrator    issues + blocking     epilogue of each:         iterations/
-                      macro-plan.md           or a script)     iterations/NNNN/      rebase, check, gate,      NNNN.json
-                                                               tasks.json            merge
+shaper session ──► task graph ──► task sessions (parallel) ──► record
+ (orchestrator      issues and        rebase, check, gate,      iterations/NNNN.json
+  or a script)      blocking edges    merge
+
+Policy session (on triggers, beside iterations)
+ └─► accepted policy changes and orders take effect at the next iteration start
 ```
 
 1. **Start.** The watchdog (or the end of the previous iteration) starts iteration N when none is open, if the
-   cadence allows. It snapshots the state (`.session/loop-state.json`: goal, parameters, limits, open owner requests,
-   an index line per past iteration, `no_progress`) into a comment of the iteration issue.
-2. **Policy.** If `iterations/NNNN/macro-plan.md` already exists (the setup writes the one of iteration 0), this step is skipped.
-   Otherwise a `role:policy` session decides the macro plan and may change `policy/`. It blocks the iteration with a
-   time limit. If it fails, produces no plan or is refused at merge, **the previous plan stands** and the iteration
-   goes on (fail-open); two failed Policy sessions in a row roll `policy/` back.
-3. **Shaper.** The role named by `shaper` in `policy/params.yml` turns the plan into `.session/tasks.json`: an LLM
+   cadence allows. Finished Policy sessions are applied at this boundary, oldest first. The engine snapshots the
+   state (`.session/loop-state.json`: goal, parameters, limits, open owner requests, an index line per past iteration,
+   `no_progress`) into a comment of the iteration issue.
+2. **Policy.** A `role:policy` session runs on configured triggers, independently of the iteration. It may change
+   `policy/` and write `.session/orders.json`; its changes wait for the next iteration start. A running or failed
+   Policy session does not block work; two failed Policy sessions in a row roll `policy/` back.
+3. **Shaper.** The role named by `shaper` in `policy/params.yml` turns the goal and state into `.session/tasks.json`: an LLM
    orchestrator, or a script role (a deterministic rule: a profile with `agent: false` and a `command`). It has no
    shell and no token; the engine validates the graph and creates the issues, blocking edges and consent requests.
-   The Policy's `orders` in the plan are added as tasks (the only way to the roles in `policy_only_roles`).
+   The accepted Policy's orders start beside it (the only way to the roles in `policy_only_roles`).
    The width of the iteration is the widest layer of the graph, computed, not configured.
 4. **Tasks.** Each free task is a `session.yml` run (parallel jobs). When a task closes, what it blocked starts. A
    producer that did not deliver closes its consumers as `blocked`.
@@ -38,13 +47,17 @@ Policy session ──► macro plan ──► shaper session ──► task grap
 
 ## Who may change what
 
+These are the shipped boundaries after arming. The owner's ability to change architecture during setup gives the
+Policy no additional authority. Any owner-chosen change to these boundaries must be explicit, implemented and
+documented during setup; otherwise they remain in force.
+
 | Zone | Contents | Changed by |
 |---|---|---|
 | Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
 | Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
 | Policy artifacts | `policy/`, `audit/`, `journal/` | the Policy (`policy/`), the audit role (`audit/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
 | Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policy, and only after the evaluator verifier passes |
-| Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except what the setup map writes before arming (`goal/goal.md`, the macro plan of iteration 0); the owner accepts what goes into `goal/` |
+| Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except goal files the setup map writes before arming; the owner accepts what goes into `goal/` |
 | Work | everything else | task sessions, through the change gate |
 
 The Policy never touches the engine, the goal gate, `AUTOPILOT` or a token. `AUTOPILOT` (repository variable) is the
@@ -60,15 +73,18 @@ setup), `stage`, the agent, the epilogue.
   process. The engine checkout is removed from the disk while it works. The epilogue re-checks the engine out and fetches
   the agent's commits as plain objects into the trusted checkout; the agent's repository is never used to run git.
 - **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments), `protocol.md`,
-  `loop-state.json` and `macro-plan.md` (Policy, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `requests.json`,
+  `loop-state.json` (Policy, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `orders.json`, `requests.json`,
   `artifacts/` go out. See `.github/loop/session-protocol.md`, the contract every role reads.
 - **Kinds.** `agent` (a Claude session, pinned CLI) and `script` (a role with `agent: false`: no model, no credential).
-- **Model credential.** The engine is wired for a Claude subscription: the repository secret `CLAUDE_CODE_OAUTH_TOKEN`
+- **Model credential.** By default the engine is wired for a Claude subscription: the repository secret `CLAUDE_CODE_OAUTH_TOKEN`
   (`claude setup-token`), the watchdog's probe and the parking on a subscription limit. Another model provider means
   changing `session.yml`, `watchdog.yml`, `agent.sh`, the probe in `common.py` and `stream_filter.py`; the setup map may
-  do it for this loop.
+  do it for this loop. Changing provider removes the shipped credential-probe and subscription-limit parking/reset
+  guarantees until equivalents have been implemented and checked; document the specific consequences the owner accepts.
 - **Limits.** Per-task limits never exceed the ceilings in `policy/params.yml`; the engine enforces time (`timeout`) and
-  turns (`--max-turns`) hard. Tokens are recorded, not budgeted; there is no money limit anywhere in the engine.
+  turns (`--max-turns`) hard. Policy session tuning lives in `policy_session` in that file and additionally respects
+  the owner's `policy_session_ceilings` in `engine.yml`; tools and engine safeguards remain owner configuration.
+  Tokens are recorded, not budgeted; there is no money limit anywhere in the engine.
 - **Statuses.** Agent: `wip`, `done`, `partial`, `blocked`, `rejected`. Engine: `paused` (subscription limit; it
   resumes at the reset time, `resume.yml` keeps the clock), `crashed`. A task can also wait: `awaiting:owner` (the
   change gate is the owner) or `awaiting:verifier` (an evaluator change).
@@ -78,8 +94,13 @@ setup), `stage`, the agent, the epilogue.
   the release `iter-NNNN` and lists them in the report. A later task names them in `inputs` and the engine downloads
   them before the agent starts.
 - **Streams.** The raw `stream-json` of every session is kept as the artifact `stream-NNNN-<issue>` (for
-  `stream_retention_iterations` iterations when set). Nothing interprets it; an audit session gets the streams of the
-  last three iterations in `.session/streams/`.
+  `stream_retention_iterations` iterations when set). Nothing interprets it. Declarative `exports` select supported
+  data for any role; an audit with no selectors retains the current iteration and three predecessors in
+  `.session/streams/`. See [session data exports](session-exports.md) for the catalogue, scopes, manifest and Policy
+  session tuning contract.
+
+See [session instructions and network access](session-contract.md) for the contract's precedence, editable policy
+rules and starting prompts, and enforcement of `internet: false` for tools and script roles.
 
 ## The change gate
 
@@ -118,11 +139,22 @@ switching `AUTOPILOT` off stops it.
 
 ## Owner requests
 
+This is the shipped GitHub issue channel. The owner may replace it during setup by implementing its transport,
+authority checks and wake-ups. Record which frozen-payload, acceptance/refusal and event-recovery guarantees are
+replaced or lost, and update setup topics and arming tools to match. The Policy cannot change this channel itself.
+
 The only way the loop asks the owner for a decision, a consent or a confirmation. An issue assigned to the owner (with an
 @mention); the answer is closing it: **completed = yes, not planned = no**, with a comment. Only engine scripts create
 them. What the owner accepts is the text frozen when the request was opened (a hash in the issue); a change is a new
-request. Kinds: `consent`, `merge-acceptance`, `goal-gate`, `goal-change`, `result-confirmation`, `question`, `notice`.
-Sessions may propose `goal-gate`, `goal-change` and `question` in `.session/requests.json`.
+request. Kinds: `consent`, `merge-acceptance`, `goal-gate`, `goal-change`, `result-confirmation`, `question`, `notice`,
+`capability`, `limits-change`, `engine-change`. Sessions propose requests in `.session/requests.json`; the session
+protocol defines their fields and the kinds each role may propose.
+
+`capability` asks the owner to supply access, a tool or a named secret and confirm readiness; closing it alone does
+not create or verify a secret. `limits-change` automatically replaces only the frozen `limits` block after the owner
+accepts it, provided the proposal and its base configuration still match. `engine-change` records a concrete proposal
+and base; the owner applies and checks it manually. It neither applies engine files nor opens a PR. These requests
+keep trusted snapshots and durable decisions so repeated events cannot reapply a proposal.
 
 Closing a request wakes the loop (`owner-request.yml`); the watchdog sweeps requests whose event was lost.
 
@@ -152,11 +184,15 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 
 `iterations/NNNN.json`, written once by the engine, never edited: `schema_version`, `iteration`, `status`
 (`closed`/`failed`; the last good state is the last `closed`), `started`, `ended`, `engine_version`, `input_state` (the
-snapshot the Policy saw, without the index), `policy` (its session, `rev_start`, `rev_end`, `commit_end`, `plan_source`:
-`setup`/`policy`/`stood`), `macro_plan` (+ `decided_by`), `tasks` (the frozen graph), `outcome` (sessions with status,
+snapshot at iteration start, without the index), `policy` (`rev_start`, `rev_end`, `commit_end`, refused orders),
+`decided_by` (the shaper role), `tasks` (the frozen graph), `outcome` (sessions with status,
 verdict, tokens in/out/cache and by model, turns, agent/gate/total/parked seconds, runner, branch, commit, stream name;
 the shaper; the iteration verdict; token sums; wall time; critical path; width; owner requests opened and open at close).
 The offline module (not shipped) replays decisions from `input_state` plus the index.
+
+[Change provenance](policy-changes.md) records accepted Policy/evaluator changes and verifier outcomes separately,
+without modifying closed records. [Reports and suggestions](session-reports.md) describes frozen source evidence,
+staged report bodies and the separate suggestion lifecycle.
 
 ## Setup topics and where they write
 
@@ -168,14 +204,15 @@ The offline module (not shipped) replays decisions from `input_state` plus the i
 | D goal reformulation and gate | `goal/goal.md`, `goal/gate.yml` (`command`, `owner_confirms`) |
 | E starting roles | `policy/roles/<role>/SKILL.md`, `policy/profiles.yml` (from `policy/roles/ROLE-TEMPLATE.md`) |
 | F accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
-| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`; the macro plan of iteration 0: `iterations/0000/macro-plan.md` |
+| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policy_triggers` |
 | H arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
 
 ## Not exercised here
 
-The test suite (below) runs the engine against an in-memory GitHub and real git repositories. It cannot prove the YAML
-of the workflows against GitHub's runner, the exact flags of `gh` for releases, issue assignment and run cancellation, the
-bubblewrap sandbox on a runner, or `claude -p` with the hook settings: those run for the first time in the trial loop.
+The default test suite runs the engine against an in-memory GitHub and real git repositories. It does not validate
+live GitHub workflow execution, release operations, assignment or cancellation. Linux kernel isolation and the real
+model/network boundary have separate checks described in [session instructions and network access](session-contract.md);
+the provider check requires explicit opt-in and credentials. Exercise the deployed workflows in the trial loop.
 
 ## Tests
 

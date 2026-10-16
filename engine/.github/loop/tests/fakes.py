@@ -249,7 +249,7 @@ class World:
     def session(self, n, files=None, status="done", report_extra="", session_files=None, exit_code="0", result=None,
                 commit=True, report=True, base=None, delete=(), yaml=""):
         """Play the agent of issue `n` and run the epilogue on what it left. `files` are committed on `task/N`;
-        `session_files` go to `.session/` (report extras, tasks.json, macro-plan.md, requests.json, artifacts/...)."""
+        `session_files` go to `.session/` (report extras, tasks.json, orders.json, requests.json, artifacts/...)."""
         self.n_work += 1
         work = os.path.join(self.tmp, "work%s" % self.n_work)
         sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
@@ -308,9 +308,6 @@ class World:
                 self._played = done | {int(inp["issue"])}
                 return int(inp["issue"])
         return None
-
-    def macro_plan(self, aim="do the thing", orders=""):
-        return "---\naim: %s\nconstraints: [none]\nnotes_for_shaper: n/a\n%s---\nplan\n" % (aim, orders)
 
 
 def tasks_json(*tasks):

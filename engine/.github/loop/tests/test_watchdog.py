@@ -15,7 +15,7 @@ class WatchCase(unittest.TestCase):
     def setUp(self):
         self.w = fakes.worker_world(self.YML)
         self.hub = self.w.hub
-        files = {"policy/evaluator/gate.sh": GATE_SH, it.plan_path(0): self.w.macro_plan("zero")}
+        files = {"policy/evaluator/gate.sh": GATE_SH}
         if self.PARAMS:
             files["policy/params.yml"] = self.PARAMS
         self.w.push_main(files, "setup")
@@ -132,9 +132,8 @@ class StallTest(WatchCase):
 
     def test_an_iteration_that_does_not_close_fails_and_policy_goes_back(self):
         self.run_iteration_zero()                                  # iteration 0 closed; its record marks the good state
-        pol = self.hub.role_issues("policy")[0]["number"]
-        self.w.session(pol, files={"policy/params.yml": "criterion: broken\n"}, session_files={"macro-plan.md": self.w.macro_plan("p")})
-        self.assertIn("broken", self.w.origin_file("policy/params.yml"))
+        self.w.push_main({"policy/params.yml": "criterion: broken\n"}, "what a Policy session merged")
+        c.sync_main()
         self.later(45)
         self.hub.runs.clear()
         c.LAUNCHED.clear()
@@ -163,8 +162,6 @@ class StallTest(WatchCase):
         w2 = fakes.worker_world(SCRIPT_GATE + "params:\n  quiet_minutes: 30\n  owner_wait_counts: true\n")
         saved = c.now
         try:
-            w2.push_main({it.plan_path(0): w2.macro_plan("z")}, "p")
-            c.sync_main()
             it.start_iteration()
             w2.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 0", "awaiting:owner"])
             base = saved()
@@ -230,8 +227,6 @@ class CadenceTest(WatchCase):
         self.later(30)
         self.assertIsNone(it.start_iteration())
         self.later(70)
-        self.w.push_main({it.plan_path(1): self.w.macro_plan("one")}, "p")
-        c.sync_main()
         self.assertEqual(it.start_iteration(), 1)
 
 

@@ -32,8 +32,7 @@ class SessionCase(unittest.TestCase):
     def setUp(self):
         self.w = fakes.worker_world(self.YML)
         self.hub = self.w.hub
-        self.w.push_main({"policy/evaluator/gate.sh": GATE_SH, "policy/profiles.yml": fakes.WORKER_PROFILES + EXTRA_PROFILES,
-                          it.plan_path(0): self.w.macro_plan("zero")}, "setup")
+        self.w.push_main({"policy/evaluator/gate.sh": GATE_SH, "policy/profiles.yml": fakes.WORKER_PROFILES + EXTRA_PROFILES}, "setup")
         c.sync_main()
         self.out = os.path.join(self.w.tmp, "gh-output")
         os.environ["GITHUB_OUTPUT"] = self.out
@@ -152,19 +151,20 @@ class StageTest(SessionCase):
         self.assertEqual(read(os.path.join(trusted, "command.sh")), "echo shaping\n")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills", "rule")))
 
-    def test_the_policy_gets_its_prompt_and_the_shaper_gets_state_and_plan(self):
+    def test_the_policy_gets_its_prompt_and_its_own_state_and_the_shaper_the_iterations(self):
         it.start_iteration()
         shaper = self.hub.role_issues("orchestrator")[0]["number"]
         work = self.work()
         loop.stage(shaper, work, os.path.join(self.w.tmp, "t1"))
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
         self.assertEqual((state["iteration"], state["engine_version"]), (0, "0.2.0"))
-        self.assertIn("zero", read(os.path.join(work, ".session", "macro-plan.md")))
-        pol = self.hub.create_issue("P", "b", labels=["role:policy", "loop:iteration 0"])
+        self.assertFalse(os.path.exists(os.path.join(work, ".session", "macro-plan.md")))
+        pol = it.start_policy(0, "a test")
         work2 = self.work()
         loop.stage(pol, work2, os.path.join(self.w.tmp, "t3"))
         self.assertIn("You are the Policy", read(os.path.join(work2, ".session", "policy.md")))
-        self.assertTrue(os.path.exists(os.path.join(work2, ".session", "loop-state.json")))
+        state = json.loads(read(os.path.join(work2, ".session", "loop-state.json")))
+        self.assertEqual(state["trigger"], "a test")
 
 
 class EpilogueTest(SessionCase):

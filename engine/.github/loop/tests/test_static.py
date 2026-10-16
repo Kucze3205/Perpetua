@@ -212,7 +212,7 @@ class ProtectionTest(unittest.TestCase):
     def test_the_engines_own_files_are_protected_from_every_session(self):
         prot = c.DEFAULTS["protected"]
         for p in (".github/workflows/session.yml", ".github/loop/loop.py", "engine.yml", "ENGINE_VERSION", "iterations/0001.json",
-                  "iterations/0001/macro-plan.md", "goal/gate.yml", "GOAL_REACHED"):
+                  "iterations/0001/tasks.json", "goal/gate.yml", "GOAL_REACHED"):
             self.assertTrue(c.path_match(p, prot), p)
         for p in ("policy/params.yml", "journal/0001.md", "src/x.py", "audit/0001.md"):
             self.assertFalse(c.path_match(p, prot), p)

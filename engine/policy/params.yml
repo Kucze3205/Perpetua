@@ -1,7 +1,12 @@
 # Parameters the Policy owns. Defaults of the engine are in the code; this file overrides them.
-shaper: orchestrator             # the role that turns the macro plan into a task graph: an LLM role, or a script role
-                                 # (a deterministic rule: a profile with `agent: false` and a `command`)
+shaper: orchestrator             # the role that decides what an iteration does and writes its task graph: an LLM role,
+                                 # or a script role (a deterministic rule: a profile with `agent: false` and a `command`)
 criterion: "shortest wall-clock time to the goal"
+policy_session:                 # model id (not an alias); bounded by engine.yml policy_session_ceilings
+  model: claude-opus-5-5
+  effort: high
+  max_turns: 150
+  timeout_minutes: 90
 models:                          # label `model:<alias>` on a task -> model id; `default` when there is no label
   default: claude-sonnet-5-5
   opus: claude-opus-5-5
@@ -10,3 +15,7 @@ ceilings:                        # a task's limits never exceed these; the engin
   job_minutes: 240
   iteration_minutes: null
   max_turns: 150
+policy_triggers:                 # the Policy runs after an iteration closes when one fires; it never blocks an iteration.
+                                 # A new audit report always calls it. null: off
+  every_iterations: 5            # after every K-th iteration
+  no_progress: 3                 # each time this many more iterations in a row went without an improving change

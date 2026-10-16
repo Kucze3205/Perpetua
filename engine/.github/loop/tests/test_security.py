@@ -64,20 +64,36 @@ class CompositionTest(SessionCase):
                 self.assertEqual(os.listdir(target), [])
 
     def test_next_stage_uses_accepted_policy_rules_but_keeps_engine_contract(self):
-        n = self.issue()
-        original = read(".github/loop/session-protocol.md")
-        for revision in ("first", "second"):
-            self.w.write(self.w.loop, "policy/protocol.md", "Rules " + revision)
-            self.w.write(self.w.loop, "policy/prompts/role.md", "Prompt " + revision)
-            work = self.work()
-            trusted = os.path.join(self.w.tmp, revision)
-            loop.stage(n, work, trusted)
-            self.assertIn(original, read(os.path.join(work, ".session", "protocol.md")))
-            self.assertIn("Rules " + revision, read(os.path.join(work, ".session", "protocol.md")))
-            self.assertIn("Prompt " + revision, read(os.path.join(trusted, "prompt.md")))
-            self.assertEqual(read(os.path.join(trusted, "contract.md")), original)
-            self.assertNotIn("Rules " + revision, read(os.path.join(trusted, "contract.md")))
-            self.assertEqual(read(os.path.join(trusted, "network-mode")), "offline\n")
+        for role in ("worker", "policymaker"):
+            n = self.issue(role)
+            original = read(".github/loop/session-protocol.md")
+            if role == "policymaker":
+                original += "\n\n" + read(".github/loop/policymaker.md")
+            prompt_name = "policymaker" if role == "policymaker" else "role"
+            for revision in ("first", "second"):
+                with self.subTest(role=role, revision=revision):
+                    self.w.write(self.w.loop, "policy/protocol.md", "Rules " + revision)
+                    self.w.write(self.w.loop, "policy/prompts/%s.md" % prompt_name, "Prompt " + revision)
+                    work = self.work()
+                    # A task branch cannot supply its own engine contract or accepted policy.
+                    self.w.write(work, ".github/loop/policymaker.md", "Untrusted contract")
+                    self.w.write(work, "policy/protocol.md", "Unaccepted rules")
+                    self.w.write(work, "policy/prompts/%s.md" % prompt_name, "Unaccepted prompt")
+                    trusted = os.path.join(self.w.tmp, role + "-" + revision)
+                    loop.stage(n, work, trusted)
+                    protocol = read(os.path.join(work, ".session", "protocol.md"))
+                    prompt = read(os.path.join(trusted, "prompt.md"))
+                    if role == "policymaker":
+                        self.assertIn("Read .session/policymaker.md", prompt)
+                        self.assertNotIn("Prompt " + revision, prompt)
+                        prompt += read(os.path.join(work, ".session", "policymaker.md"))
+                    self.assertIn(original, protocol)
+                    self.assertIn("Rules " + revision, protocol)
+                    self.assertIn("Prompt " + revision, prompt)
+                    self.assertNotIn("Unaccepted", protocol + prompt)
+                    self.assertEqual(read(os.path.join(trusted, "contract.md")), original)
+                    self.assertNotIn("Rules " + revision, original)
+                    self.assertEqual(read(os.path.join(trusted, "network-mode")), "offline\n")
 
 
 @unittest.skipUnless(sys.platform == "linux", "requires Linux kernel network isolation")

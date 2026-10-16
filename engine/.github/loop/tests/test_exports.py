@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import fakes
 from fakes import common as c, iteration as it, loop
-import policy_session
+import policymaker_session
 import session_exports as exports
 from test_session import SessionCase
 
@@ -101,18 +101,18 @@ class ExportsTest(unittest.TestCase):
             self.assertNotIn("hidden", fh.read())
 
 
-class PolicySessionTest(unittest.TestCase):
+class PolicymakerSessionTest(unittest.TestCase):
     def setUp(self):
-        self.cfg = {"policy": {"model": "large", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
+        self.cfg = {"policymaker": {"model": "large", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                                 "tools": ["Read"], "write": ["policy/"]},
-                    "policy_session_ceilings": {"models": ["large", "small"], "efforts": ["low", "medium", "high"],
+                    "policymaker_session_ceilings": {"models": ["large", "small"], "efforts": ["low", "medium", "high"],
                                                 "max_turns": 100, "timeout_minutes": 60}}
 
     def profile(self, tune):
-        with patch.object(c, "cfg", return_value=self.cfg), patch.object(c, "params", return_value={"policy_session": tune}):
-            return policy_session.profile()
+        with patch.object(c, "cfg", return_value=self.cfg), patch.object(c, "params", return_value={"policymaker_session": tune}):
+            return policymaker_session.profile()
 
-    def test_policy_tunes_resources_with_owner_numeric_caps(self):
+    def test_policymaker_tunes_resources_with_owner_numeric_caps(self):
         p = self.profile({"model": "small", "effort": "low", "max_turns": 9999, "timeout_minutes": 9999})
         self.assertEqual((p["model"], p["effort"], p["max_turns"], p["timeout_minutes"]), ("small", "low", 100, 60))
         self.assertEqual(p["tools"], ["Read"])
@@ -124,7 +124,7 @@ class PolicySessionTest(unittest.TestCase):
                 self.profile(tune)
 
     def test_legacy_config_is_an_owner_ceiling(self):
-        self.cfg.pop("policy_session_ceilings")
+        self.cfg.pop("policymaker_session_ceilings")
         p = self.profile({"max_turns": 999})
         self.assertEqual(p["max_turns"], 150)
         with self.assertRaises(ValueError):
@@ -139,9 +139,9 @@ class ExportPipelineTest(SessionCase):
                     if key not in ("start", "consented")}
 
     def test_stage_blocks_a_lowered_owner_ceiling_after_prep(self):
-        n = self.issue("policy")
+        n = self.issue("policymaker")
         environment = self.execution_environment(n)
-        self.w.push_main({"engine.yml": self.YML + "\npolicy_session_ceilings:\n  models: [claude-opus-5-5]\n  efforts: [high]\n  max_turns: 5\n  timeout_minutes: 3\n"}, "owner lowered ceiling after prep")
+        self.w.push_main({"engine.yml": self.YML + "\npolicymaker_session_ceilings:\n  models: [claude-opus-5-5]\n  efforts: [high]\n  max_turns: 5\n  timeout_minutes: 3\n"}, "owner lowered ceiling after prep")
         c.sync_main()
         with patch.dict(os.environ, environment):
             with self.assertRaisesRegex(SystemExit, "configuration changed after prep"):
@@ -178,18 +178,18 @@ class ExportPipelineTest(SessionCase):
             result = json.load(fh)["results"][0]
         self.assertEqual((result["source"], result["status"]), ("records", "unavailable"))
 
-    def test_policy_labels_do_not_escape_owner_ceilings(self):
-        n = self.issue("policy", labels=["model:unapproved", "effort:unapproved"])
+    def test_policymaker_labels_do_not_escape_owner_ceilings(self):
+        n = self.issue("policymaker", labels=["model:unapproved", "effort:unapproved"])
         loop.resolve(n)
         with open(self.out, encoding="utf-8") as fh:
             output = dict(line.strip().split("=", 1) for line in fh if "=" in line)
         self.assertEqual((output["model"], output["effort"]), ("claude-opus-5-5", "high"))
 
     def test_resolve_enforces_owner_ceilings_over_policy_params_and_issue_limits(self):
-        self.w.push_main({"engine.yml": self.YML + "\npolicy_session_ceilings:\n  models: [claude-sonnet-5-5]\n  efforts: [low]\n  max_turns: 20\n  timeout_minutes: 10\n",
-                          "policy/params.yml": fakes.POLICY_PARAMS + "\npolicy_session:\n  model: claude-sonnet-5-5\n  effort: low\n  max_turns: 9999\n  timeout_minutes: 9999\n"}, "owner ceiling and policy tuning")
+        self.w.push_main({"engine.yml": self.YML + "\npolicymaker_session_ceilings:\n  models: [claude-sonnet-5-5]\n  efforts: [low]\n  max_turns: 20\n  timeout_minutes: 10\n",
+                          "policy/params.yml": fakes.POLICY_PARAMS + "\npolicymaker_session:\n  model: claude-sonnet-5-5\n  effort: low\n  max_turns: 9999\n  timeout_minutes: 9999\n"}, "owner ceiling and policy tuning")
         c.sync_main()
-        n = self.issue("policy", body='<!-- limits: {"max_turns": 9999, "timeout_minutes": 9999} -->')
+        n = self.issue("policymaker", body='<!-- limits: {"max_turns": 9999, "timeout_minutes": 9999} -->')
         loop.resolve(n)
         with open(self.out, encoding="utf-8") as fh:
             output = dict(line.strip().split("=", 1) for line in fh if "=" in line)

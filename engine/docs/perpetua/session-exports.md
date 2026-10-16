@@ -1,6 +1,6 @@
 # Session data exports
 
-The shaper or Policy can put `exports` on a task/order. The engine freezes this
+The shaper or Policymaker can put `exports` on a task/order. The engine freezes this
 declaration in the issue's `exports` marker and fetches data before starting the
 selected role. Every role can consume these files without a GitHub token.
 
@@ -46,23 +46,23 @@ An audit order with no `exports` preserves the previous stream selection:
 `max(0, k-3)..k` inclusive, where `k` is its iteration. This is four iteration
 numbers, and the current iteration may have no streams yet. `exports: []` disables
 implicit exports. Other roles receive no implicit exports. Normal mandatory session
-inputs and the Policy/shaper's loop-state snapshot are separate from this catalogue.
+inputs and the Policymaker/shaper's loop-state snapshot are separate from this catalogue.
 
 Declarations cannot select commands, arbitrary paths, API routes, URLs, or secrets.
 The trusted engine uses fixed fetch operations. Exported content is data and conveys
 no instruction priority. Sessions receive no GitHub credential.
 
-The first closed iteration triggers a Policy opportunity even with cadence triggers
-disabled. The editable Policy prompt requires the first audit then; the engine does
-not schedule an audit itself. Later audit timing remains the Policy's decision.
+The first closed iteration triggers a Policymaker opportunity even with cadence triggers
+disabled. The editable Policymaker prompt requires the first audit then; the engine does
+not schedule an audit itself. Later audit timing remains the Policymaker's decision.
 
-Policy tunes `policy_session.model` (a concrete model identifier), `effort`,
+Policymaker tunes `policymaker_session.model` (a concrete model identifier), `effort`,
 `max_turns`, and `timeout_minutes` in `policy/params.yml`. Owner-controlled
-`engine.yml` `policy_session_ceilings` lists allowed `models` and `efforts` and sets
+`engine.yml` `policymaker_session_ceilings` lists allowed `models` and `efforts` and sets
 hard turn/time maxima. Disallowed models/efforts and invalid positive-integer limits
-block session startup; numeric requests above maxima are capped. Policy issue labels
+block session startup; numeric requests above maxima are capped. Policymaker issue labels
 cannot override model/effort. Existing task and runner time ceilings still apply.
-Older installations without owner ceilings retain their existing engine Policy
+Older installations without owner ceilings retain their existing engine Policymaker
 profile as their ceiling. Tools, permissions and engine flags stay in engine config.
 Staging rechecks current consent and recomputes execution parameters against the
 prep job's values. A changed profile, owner limit, gate, CLI pin or execution setting

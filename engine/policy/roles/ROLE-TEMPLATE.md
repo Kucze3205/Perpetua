@@ -4,7 +4,9 @@ A role is a skill plus a profile. Build a role from an existing skill first (a p
 by copying its files into `policy/roles/<role>/` and adapting them: only that folder reaches the runner. Write a new
 one from this template only when nothing fits.
 
-1. The skill: `policy/roles/<role>/SKILL.md`. Claude Code loads it by name in the session.
+1. The skill: `policy/roles/<role>/SKILL.md`. The engine stages its folder for the session.
+   Offline sessions read `.session/role/SKILL.md` and its references; online sessions load it by name.
+   See `docs/perpetua/session-contract.md` for staging and executable-content restrictions.
 2. The profile: an entry in `policy/profiles.yml` (see the comments there).
 3. Nothing else: the label `role:<role>` on a task picks both, workflows are not edited.
 

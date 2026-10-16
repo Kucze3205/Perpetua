@@ -186,7 +186,7 @@ class ConfigTest(unittest.TestCase):
 
     def test_the_roles_the_engine_names_have_profiles(self):
         profs = self.load("policy", "profiles.yml")
-        names = c.DEFAULTS["policy_only_roles"] + [c.DEFAULTS["verifier_role"], self.load("policy", "params.yml")["shaper"]]
+        names = c.DEFAULTS["policymaker_only_roles"] + [c.DEFAULTS["verifier_role"], self.load("policy", "params.yml")["shaper"]]
         for r in names:
             self.assertIn(r, profs, r)
 

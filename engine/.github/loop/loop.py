@@ -21,7 +21,7 @@ import iteration as it
 import session_security as security
 import session_exports
 import session_reports
-import policy_session
+import policymaker_session
 import policy_changes
 
 BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
@@ -53,8 +53,8 @@ def consent_status(profile, labels):
 
 
 def profile_of(role):
-    if role == "policy":
-        return policy_session.profile()
+    if role == "policymaker":
+        return policymaker_session.profile()
     return c.profiles().get(role)
 
 
@@ -68,15 +68,15 @@ def session_options(i, role, p):
     ceil = c.params()["ceilings"]
     lim = json.loads(c.marker(i["body"], "limits") or "{}")
     alias = c.label_value(labels, "model:") or p.get("model") or "default"
-    model = p["model"] if role == "policy" else model_id(alias)
-    effort = p["effort"] if role == "policy" else c.label_value(labels, "effort:") or p.get("effort") or "medium"
+    model = p["model"] if role == "policymaker" else model_id(alias)
+    effort = p["effort"] if role == "policymaker" else c.label_value(labels, "effort:") or p.get("effort") or "medium"
     cfg = c.cfg()
     gate_min = int(cfg["gate"].get("timeout_minutes") or 0) if cfg["gate"]["kind"] == "script" else 0
     cap = JOB_MAX_MIN - 30 - gate_min
     timeout = min(int(x) for x in (lim.get("timeout_minutes") or cap, p.get("timeout_minutes") or ceil["job_minutes"], ceil["job_minutes"], cap))
     turns = min(int(x) for x in (lim.get("max_turns") or 10**6, p.get("max_turns") or ceil["max_turns"], ceil["max_turns"]))
     fingerprint = {"profile": p, "limits": cfg["limits"], "cli_version": cfg["cli_version"], "gate": cfg["gate"],
-                   "policy_session_ceilings": cfg.get("policy_session_ceilings")}
+                   "policymaker_session_ceilings": cfg.get("policymaker_session_ceilings")}
     return {"kind": "script" if p.get("agent") is False else "agent", "role": role,
             "model": model, "effort": effort, "tools": ",".join(list(p.get("tools") or []) + ["Skill"]),
             "max_turns": turns, "agent_timeout": timeout, "job_timeout": timeout + gate_min + 30,
@@ -94,14 +94,14 @@ def resolve(n):
     try:
         p = profile_of(role)
     except ValueError as error:
-        close_out(n, i, "blocked", {"cause": "start:policy-session"}, str(error))
+        close_out(n, i, "blocked", {"cause": "start:policymaker-session"}, str(error))
         reconcile()
         raise SystemExit(str(error))
     why = security.profile_error(p, c.cfg()["cli_version"]) if p else "no profile for role `%s`" % role
     granted = False
-    if not why and role != "policy":
+    if not why and role != "policymaker":
         granted, why = consent_status(p, labels)
-    if not why and role != "policy" and p.get("agent") is not False and not os.path.exists("policy/roles/%s/SKILL.md" % role):
+    if not why and role != "policymaker" and p.get("agent") is not False and not os.path.exists("policy/roles/%s/SKILL.md" % role):
         why = "no skill for role `%s`" % role
     if not why and p.get("agent") is False and not p.get("command"):
         why = "script role `%s` has no command" % role
@@ -131,7 +131,7 @@ def stage(n, work, trusted):
     error = security.profile_error(p, c.cfg()["cli_version"])
     if error:
         raise SystemExit("invalid session profile: " + error)
-    if role != "policy":
+    if role != "policymaker":
         _, error = consent_status(p, labels)
         if error:
             raise SystemExit("session profile changed or consent is no longer valid: " + error)
@@ -150,31 +150,33 @@ def stage(n, work, trusted):
     with open(os.path.join(work, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
         fh.write("\n.session/\n")
     c.export_issue(n, os.path.join(sess, "issue.md"))
-    if role == "policy" or "loop:shaper" in labels:
+    if role == "policymaker" or "loop:shaper" in labels:
         it.export_state(n, sess)
     fetch_inputs(i["body"], os.path.join(sess, "inputs"))
     session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess)
     contract = c.safe_read(".", ".github/loop/session-protocol.md") or ""
-    if role == "policy":
-        contract += "\n\n" + (c.safe_read(".", ".github/loop/policy.md") or "")
+    if role == "policymaker":
+        contract += "\n\n" + (c.safe_read(".", ".github/loop/policymaker.md") or "")
     rules = c.safe_read(".", "policy/protocol.md") or ""
-    prompt_name = "policy" if role == "policy" else "role"
+    prompt_name = "policymaker" if role == "policymaker" else "role"
     template = c.safe_read(".", "policy/prompts/%s.md" % prompt_name) or ""
     # The trusted contract is also passed as a system instruction; editable rules are user instructions.
     with open(os.path.join(sess, "protocol.md"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(contract + "\n\n# Policy work rules (subordinate to the engine contract)\n\n" + rules)
     with open(os.path.join(trusted, "contract.md"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(contract)
-    bootstrap = ("You are the Policy" if role == "policy" else "You are role `%s`" % role)
+    bootstrap = ("You are the Policymaker" if role == "policymaker" else "You are role `%s`" % role)
     bootstrap += " of this loop. Read .session/protocol.md and .session/issue.md. "
-    if role == "policy":
-        bootstrap += "Read .session/policy.md and .session/loop-state.json. "
+    if role == "policymaker":
+        bootstrap += "Read .session/policymaker.md and .session/loop-state.json. "
     else:
         bootstrap += ("Call the Skill tool with `%s`. " % role if p.get("internet", False)
                       else "Read your staged role skill .session/role/SKILL.md and its relevant references. ")
     bootstrap += "Write .session/report.md. Work on branch task/%s.\n\n" % n
     with open(os.path.join(trusted, "prompt.md"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(bootstrap + template)
+        # The Policymaker reads its template from the staged file named in bootstrap.
+        # Include it once, rather than loading the same instructions again through that pointer.
+        fh.write(bootstrap if role == "policymaker" else bootstrap + template)
     with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("online\n" if p.get("internet", False) else "offline\n")
     with open(os.path.join(trusted, "tools"), "w", encoding="utf-8", newline="\n") as fh:
@@ -183,9 +185,9 @@ def stage(n, work, trusted):
         json.dump({"mcpServers": {}}, fh)
     for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py"):
         shutil.copy(".github/loop/" + f, trusted)
-    if role == "policy":
-        with open(os.path.join(sess, "policy.md"), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write("You are the Policy. Follow the engine contract in .session/protocol.md.\n\n" + template)
+    if role == "policymaker":
+        with open(os.path.join(sess, "policymaker.md"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("You are the Policymaker. Follow the engine contract in .session/protocol.md.\n\n" + template)
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")
@@ -575,9 +577,9 @@ def finalize(n, work):
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"
     pending = None
-    if status == "done" and sha and role == "policy":
+    if status == "done" and sha and role == "policymaker":
         pending = "pending-iteration"            # its changes and orders take effect when the next iteration starts
-        prose = hold_policy(n, work)
+        prose = hold_policymaker_output(n, work)
         c.edit_labels(n, add=["awaiting:iteration"])
         c.update_report(n, dict(upd, status="done", merged=pending), prose)
     elif status == "done" and sha:
@@ -611,7 +613,7 @@ def finalize(n, work):
         else:
             status, more, prose = merge_outcome(r)
             upd.update(more)
-    elif status not in ("done", "paused") and sha and role != "policy":
+    elif status not in ("done", "paused") and sha and role != "policymaker":
         merge_notes(n, role)
     if status == "paused":
         if park(n, i, f, upd, prose, reset):
@@ -625,8 +627,8 @@ def finalize(n, work):
     after_session(n, i, labels, role, k, work, status, upd, prose, pending)
 
 
-def hold_policy(n, work):
-    """Keep a finished Policy session's orders on its issue until the next iteration starts. Returns the report prose."""
+def hold_policymaker_output(n, work):
+    """Keep a finished Policymaker session's orders on its issue until the next iteration starts. Returns the report prose."""
     session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
     text = c.safe_read(work, ".session/orders.json")
     if not text:
@@ -640,11 +642,11 @@ def hold_policy(n, work):
 
 
 def apply_policy():
-    """Before an iteration starts: merge the finished Policy sessions, oldest first, and return the orders of those
-    that merged. An unmerged one counts as a failed Policy session."""
+    """Before an iteration starts: merge the finished Policymaker sessions, oldest first, and return the orders of those
+    that merged. An unmerged one counts as a failed Policymaker session."""
     orders = []
-    for x in sorted(c.list_issues(labels=("role:policy", "awaiting:iteration")), key=lambda x: x["number"]):
-        r = merge_branch(x["number"], "policy", x)
+    for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
+        r = merge_branch(x["number"], "policymaker", x)
         st, upd, pr = merge_outcome(r)
         if st == "done":
             orders += it.read_orders(x["number"])
@@ -922,7 +924,7 @@ def watch():
 
 def drive():
     """Common tail of the watchdog and the epilogue: a crash streak -> outage; parked past due -> resume; stalled ->
-    roll back the Policy; no commitments -> kick or start the next iteration."""
+    roll back policy; no commitments -> kick or start the next iteration."""
     if crash_streak():
         c.open_outage("%s sessions in a row crashed without a commit" % CRASH_STREAK,
                       "The last %s sessions ended `crashed` with no commit. The counter is blind to the cause." % CRASH_STREAK,
@@ -936,8 +938,8 @@ def drive():
     if it.stalled():
         handle_stall()
         return 0
-    # Policy activity alone must not hold up the next iteration; core work keeps its commitments.
-    if not it.open_iteration() and not any(c.roles_of(c.label_names(x)) != ["policy"] for x in loop_open()):
+    # Policymaker activity alone must not hold up the next iteration; core work keeps its commitments.
+    if not it.open_iteration() and not any(c.roles_of(c.label_names(x)) != ["policymaker"] for x in loop_open()):
         return kick()
     if commitments():
         c.say("quiet: commitments in progress")
@@ -947,7 +949,7 @@ def drive():
 
 def handle_stall():
     """The iteration did not close in time: return `policy/` to the last good state, give up the iteration and start over;
-    the next iteration's Policy sees the notice."""
+    the next iteration's Policymaker sees the notice."""
     cur = it.open_iteration()
     reverted = it.revert_policy("the iteration did not close within the quiet time")
     it.fail_iteration(it.iteration_number(cur), "stalled%s" % ("; policy/ rolled back" if reverted else ""))

@@ -8,7 +8,7 @@ description: "Independent check of an evaluator change: does the changed evaluat
 Another session changed the evaluator (the branch in your issue). Until you pass it, the old evaluator stays in
 force. You are independent: you did not write it and you do not trust its author's report.
 
-This is the engine's first version of the checks; the Policy may extend this skill as the loop learns what goes wrong.
+This is the engine's first version of the checks; the Policymaker may extend this skill as the loop learns what goes wrong.
 
 ## Checks
 
@@ -25,5 +25,5 @@ This is the engine's first version of the checks; the Policy may extend this ski
 ## Result
 
 Finish your report with `result: pass` or `result: fail` in the YAML block and the reasons in the prose. Only `pass`
-lets the engine merge the change. When in doubt, `fail` with what would settle it: a failed check goes back to the Policy,
+lets the engine merge the change. When in doubt, `fail` with what would settle it: a failed check goes back to the Policymaker,
 which corrects the evaluator or proposes a goal change to the owner.

@@ -132,7 +132,7 @@ class StallTest(WatchCase):
 
     def test_an_iteration_that_does_not_close_fails_and_policy_goes_back(self):
         self.run_iteration_zero()                                  # iteration 0 closed; its record marks the good state
-        self.w.push_main({"policy/params.yml": "criterion: broken\n"}, "what a Policy session merged")
+        self.w.push_main({"policy/params.yml": "criterion: broken\n"}, "what a Policymaker session merged")
         c.sync_main()
         self.later(45)
         self.hub.runs.clear()
@@ -183,7 +183,7 @@ class StallTest(WatchCase):
 class CeilingTest(WatchCase):
     PARAMS = "ceilings:\n  iteration_minutes: 5\n"
 
-    def test_the_policys_own_iteration_ceiling_ends_a_long_iteration_without_a_rollback(self):
+    def test_the_policymakers_iteration_ceiling_ends_a_long_iteration_without_a_rollback(self):
         it.start_iteration()
         self.later(10)
         self.hub.runs.clear()

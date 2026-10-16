@@ -1,8 +1,13 @@
 # The Perpetua engine
 
-The goal-independent machinery of this loop: workflows, scripts, configuration, the Policy's prompt, a generic
+The goal-independent machinery of this loop: workflows, scripts, configuration, the Policymaker's prompt, a generic
 orchestrator. It was copied into this repository by `/perpetua:setup` and belongs to this loop; the setup map may
-change it. Terms (loop, owner, iteration, policy, evaluator...) are in `CONTEXT.md`.
+change it. Terms (loop, owner, iteration, policy, policymaker, evaluator...) are in `CONTEXT.md`.
+
+**Policy** is the collection of rules and artifacts in `policy/` governing the implementation layer: work rules,
+role skills, profiles, parameters and the evaluator. The **Policymaker** is the agent in the policy layer that creates
+and maintains that policy and manages the loop's architecture. The implementation layer applies it to shape,
+execute and evaluate work toward the goal. The engine enforces their contracts and the owner's authority.
 
 GitHub Actions, the Claude subscription and GitHub issue owner requests are the shipped architecture defaults. The
 owner may replace them during setup; this requires implementing and checking the affected integration, tools and
@@ -12,6 +17,21 @@ arming deletes the notes. Losing a guarantee informs the owner's decision and do
 no owner change, the shipped behavior remains in force.
 
 Engine version: `ENGINE_VERSION`. There is no update path from the plugin in the first release.
+
+When investigating behavior or proposing an engine change, use the [code map](code-map.md)
+to find the responsible module, contract and tests.
+
+The agent uses `role:policymaker`, the owner-controlled `policymaker` profile in `engine.yml`,
+`policymaker_session_ceilings`, and the editable `policymaker_session` and `policymaker_triggers` parameters.
+Its contract is `.github/loop/policymaker.md`; its editable starting prompt is `policy/prompts/policymaker.md`,
+staged as `.session/policymaker.md`. `policymaker_only_roles` identifies roles only this agent may order.
+Policy artifacts remain in `policy/`; `policy_rev`, `policy_params` and iteration records' `policy` section
+refer to those artifacts, while `policymaker_sessions` refers to the agent's session history.
+
+This naming applies to the engine template. A manual upgrade of an older copied engine must migrate its agent
+configuration, prompt paths and issue labels together, including closed session labels used for history and
+failure counting. Pending orders use the `policymaker-orders` marker. New suggestion resolutions attribute
+`policymaker_issue`; historical records and frozen state snapshots are not rewritten. Old agent names are not aliases.
 
 ## One iteration
 
@@ -23,21 +43,22 @@ shaper session ──► task graph ──► task sessions (parallel) ──►
  (orchestrator      issues and        rebase, check, gate,      iterations/NNNN.json
   or a script)      blocking edges    merge
 
-Policy session (on triggers, beside iterations)
+Policymaker session (on triggers, beside iterations)
  └─► accepted policy changes and orders take effect at the next iteration start
 ```
 
 1. **Start.** The watchdog (or the end of the previous iteration) starts iteration N when none is open, if the
-   cadence allows. Finished Policy sessions are applied at this boundary, oldest first. The engine snapshots the
+   cadence allows. Finished Policymaker sessions are applied at this boundary, oldest first. The engine snapshots the
    state (`.session/loop-state.json`: goal, parameters, limits, open owner requests, an index line per past iteration,
    `no_progress`) into a comment of the iteration issue.
-2. **Policy.** A `role:policy` session runs on configured triggers, independently of the iteration. It may change
+2. **Policymaker.** A `role:policymaker` session runs on configured triggers, independently of the iteration. It may change
    `policy/` and write `.session/orders.json`; its changes wait for the next iteration start. A running or failed
-   Policy session does not block work; two failed Policy sessions in a row roll `policy/` back.
+   Policymaker session does not block work; two failed Policymaker sessions in a row roll `policy/` back.
 3. **Shaper.** The role named by `shaper` in `policy/params.yml` turns the goal and state into `.session/tasks.json`: an LLM
    orchestrator, or a script role (a deterministic rule: a profile with `agent: false` and a `command`). It has no
-   shell and no token; the engine validates the graph and creates the issues, blocking edges and consent requests.
-   The accepted Policy's orders start beside it (the only way to the roles in `policy_only_roles`).
+   GitHub token; the shipped orchestrator has no shell, while a script shaper executes its configured command.
+   The engine validates the graph and creates the issues, blocking edges and consent requests.
+   The Policymaker's accepted orders start beside it (the only way to the roles in `policymaker_only_roles`).
    The width of the iteration is the widest layer of the graph, computed, not configured.
 4. **Tasks.** Each free task is a `session.yml` run (parallel jobs). When a task closes, what it blocked starts. A
    producer that did not deliver closes its consumers as `blocked`.
@@ -48,19 +69,20 @@ Policy session (on triggers, beside iterations)
 ## Who may change what
 
 These are the shipped boundaries after arming. The owner's ability to change architecture during setup gives the
-Policy no additional authority. Any owner-chosen change to these boundaries must be explicit, implemented and
+Policymaker no additional authority. Any owner-chosen change to these boundaries must be explicit, implemented and
 documented during setup; otherwise they remain in force.
 
 | Zone | Contents | Changed by |
 |---|---|---|
 | Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
 | Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
-| Policy artifacts | `policy/`, `audit/`, `journal/` | the Policy (`policy/`), the audit role (`audit/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
-| Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policy, and only after the evaluator verifier passes |
+| Policy artifacts | `policy/` | the Policymaker, with evaluator changes delegated as below; merged without the change gate, still within the role's `write` paths |
+| Audit and journal | `audit/`, `journal/` | the audit role (`audit/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
+| Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policymaker, and only after the evaluator verifier passes |
 | Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except goal files the setup map writes before arming; the owner accepts what goes into `goal/` |
 | Work | everything else | task sessions, through the change gate |
 
-The Policy never touches the engine, the goal gate, `AUTOPILOT` or a token. `AUTOPILOT` (repository variable) is the
+The Policymaker never touches the engine, the goal gate, `AUTOPILOT` or a token. `AUTOPILOT` (repository variable) is the
 owner's switch; it is the first condition of every workflow and anything but a literal `on` means stop.
 
 ## Sessions
@@ -73,7 +95,7 @@ setup), `stage`, the agent, the epilogue.
   process. The engine checkout is removed from the disk while it works. The epilogue re-checks the engine out and fetches
   the agent's commits as plain objects into the trusted checkout; the agent's repository is never used to run git.
 - **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments), `protocol.md`,
-  `loop-state.json` (Policy, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `orders.json`, `requests.json`,
+  `loop-state.json` (Policymaker, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `orders.json`, `requests.json`,
   `artifacts/` go out. See `.github/loop/session-protocol.md`, the contract every role reads.
 - **Kinds.** `agent` (a Claude session, pinned CLI) and `script` (a role with `agent: false`: no model, no credential).
 - **Model credential.** By default the engine is wired for a Claude subscription: the repository secret `CLAUDE_CODE_OAUTH_TOKEN`
@@ -82,8 +104,8 @@ setup), `stage`, the agent, the epilogue.
   do it for this loop. Changing provider removes the shipped credential-probe and subscription-limit parking/reset
   guarantees until equivalents have been implemented and checked; document the specific consequences the owner accepts.
 - **Limits.** Per-task limits never exceed the ceilings in `policy/params.yml`; the engine enforces time (`timeout`) and
-  turns (`--max-turns`) hard. Policy session tuning lives in `policy_session` in that file and additionally respects
-  the owner's `policy_session_ceilings` in `engine.yml`; tools and engine safeguards remain owner configuration.
+  turns (`--max-turns`) hard. Policymaker session tuning lives in `policymaker_session` in that file and additionally respects
+  the owner's `policymaker_session_ceilings` in `engine.yml`; tools and engine safeguards remain owner configuration.
   Tokens are recorded, not budgeted; there is no money limit anywhere in the engine.
 - **Statuses.** Agent: `wip`, `done`, `partial`, `blocked`, `rejected`. Engine: `paused` (subscription limit; it
   resumes at the reset time, `resume.yml` keeps the clock), `crashed`. A task can also wait: `awaiting:owner` (the
@@ -96,7 +118,7 @@ setup), `stage`, the agent, the epilogue.
 - **Streams.** The raw `stream-json` of every session is kept as the artifact `stream-NNNN-<issue>` (for
   `stream_retention_iterations` iterations when set). Nothing interprets it. Declarative `exports` select supported
   data for any role; an audit with no selectors retains the current iteration and three predecessors in
-  `.session/streams/`. See [session data exports](session-exports.md) for the catalogue, scopes, manifest and Policy
+  `.session/streams/`. See [session data exports](session-exports.md) for the catalogue, scopes, manifest and Policymaker
   session tuning contract.
 
 See [session instructions and network access](session-contract.md) for the contract's precedence, editable policy
@@ -104,7 +126,7 @@ rules and starting prompts, and enforcement of `internet: false` for tools and s
 
 ## The change gate
 
-Nothing enters the default branch without a verdict "not worse than what is accepted". After a task ends `done` the
+Work enters the default branch after a verdict "not worse than what is accepted". After a task ends `done` the
 epilogue, in a throwaway worktree: checks the paths (protected, role `write`, file size), rebases on the default branch,
 runs `## Verification` and `check`, then asks the gate. Paths in `direct_paths` (`policy/`, `audit/`, `journal/`) are not
 work and skip the check and the gate. A rejected push is retried from the new tip, up to three times.
@@ -126,7 +148,7 @@ accepted change.
 **Evaluator changes.** A merge that touches `evaluator_paths` does not merge: the engine opens a session of
 `verifier_role` (default `evaluator-verifier`, starting from the branch) and merges only if its report says
 `result: pass`; until then the old evaluator is the one in force (it lives on the default branch). A failed check goes
-back as a rejected task, visible to the Policy.
+back as a rejected task, visible to the Policymaker.
 
 ## The goal gate and the end
 
@@ -141,7 +163,7 @@ switching `AUTOPILOT` off stops it.
 
 This is the shipped GitHub issue channel. The owner may replace it during setup by implementing its transport,
 authority checks and wake-ups. Record which frozen-payload, acceptance/refusal and event-recovery guarantees are
-replaced or lost, and update setup topics and arming tools to match. The Policy cannot change this channel itself.
+replaced or lost, and update setup topics and arming tools to match. The Policymaker cannot change this channel itself.
 
 The only way the loop asks the owner for a decision, a consent or a confirmation. An issue assigned to the owner (with an
 @mention); the answer is closing it: **completed = yes, not planned = no**, with a comment. Only engine scripts create
@@ -175,7 +197,7 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 - three consecutive `crashed` sessions without a commit is an outage; three fruitless kicks of one issue too; three failed
   iterations in a row too;
 - resumes parked sessions that are due; relaunches ready sessions nobody started (kicking before calling);
-- `ceilings.iteration_minutes` (the Policy's own): fails an iteration that runs past it;
+- `ceilings.iteration_minutes` (the Policymaker's own): fails an iteration that runs past it;
 - `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, `policy/` is rolled back to the
   state in which the last iteration closed (at the start: the `setup-baseline` tag), and a `notice` is opened for the owner.
   Time spent waiting for the owner counts only when `params.owner_wait_counts` is true.
@@ -190,7 +212,7 @@ verdict, tokens in/out/cache and by model, turns, agent/gate/total/parked second
 the shaper; the iteration verdict; token sums; wall time; critical path; width; owner requests opened and open at close).
 The offline module (not shipped) replays decisions from `input_state` plus the index.
 
-[Change provenance](policy-changes.md) records accepted Policy/evaluator changes and verifier outcomes separately,
+[Change provenance](policy-changes.md) records accepted policy/evaluator changes and verifier outcomes separately,
 without modifying closed records. [Reports and suggestions](session-reports.md) describes frozen source evidence,
 staged report bodies and the separate suggestion lifecycle.
 
@@ -204,7 +226,7 @@ staged report bodies and the separate suggestion lifecycle.
 | D goal reformulation and gate | `goal/goal.md`, `goal/gate.yml` (`command`, `owner_confirms`) |
 | E starting roles | `policy/roles/<role>/SKILL.md`, `policy/profiles.yml` (from `policy/roles/ROLE-TEMPLATE.md`) |
 | F accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
-| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policy_triggers` |
+| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
 | H arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
 
 ## Not exercised here

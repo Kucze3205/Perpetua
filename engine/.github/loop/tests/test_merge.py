@@ -178,14 +178,14 @@ class NotesTest(MergeCase):
 class RollbackTest(MergeCase):
     def test_policy_goes_back_to_the_state_of_the_last_good_iteration(self):
         good = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD")
-        self.w.push_main({"policy/params.yml": "shaper: broken\n"}, "the Policy broke it")
+        self.w.push_main({"policy/params.yml": "shaper: broken\n"}, "the Policymaker broke it")
         fakes.sh(self.w.loop, "git", "tag", "setup-baseline", good)
         self.assertTrue(it.revert_policy("test"))
         self.assertIn("shaper: orchestrator", self.w.origin_file("policy/params.yml"))
         self.assertTrue(self.w.hub.by_label("owner-request:notice"))
         self.assertFalse(it.revert_policy("again"))         # already there: nothing to roll back
 
-    def test_rollback_removes_files_the_policy_added(self):
+    def test_rollback_removes_files_the_policymaker_added(self):
         good = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD")
         self.w.push_main({"policy/roles/new/SKILL.md": "x"}, "added")
         fakes.sh(self.w.loop, "git", "tag", "setup-baseline", good)

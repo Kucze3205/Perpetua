@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""The iteration layer: shaper -> task graph -> parallel sessions -> record; the Policy on triggers; owner
+"""The iteration layer: shaper -> task graph -> parallel sessions -> record; the Policymaker on triggers; owner
 requests; the goal gate; the rollback of `policy/`.
 
-An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the shaper, the tasks, the Policy's
+An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the shaper, the tasks, the Policymaker's
 orders) are issues labelled `loop:iteration N` + `role:<name>`. The iteration issue carries the phase in a report
-comment; everything else is derived from the issues and from `iterations/` on the default branch. A Policy session
+comment; everything else is derived from the issues and from `iterations/` on the default branch. A Policymaker session
 carries the label of the iteration whose close started it and belongs to no iteration.
 """
 import glob
@@ -24,7 +24,7 @@ REQ = "owner-request"
 REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice") + requests.KINDS
 SESSION_KINDS = ("goal-gate", "goal-change", "question") + requests.KINDS
 STATE_MARK = "<!-- input-state -->"
-ORDERS_MARK = "<!-- policy-orders -->"
+ORDERS_MARK = "<!-- policymaker-orders -->"
 HANDLED = "request:handled"
 
 
@@ -188,16 +188,16 @@ def no_progress(idx=None):
     return k
 
 
-def policy_sessions(limit=5):
-    """The latest closed Policy sessions, newest first, and how they ended."""
-    done = sorted(c.list_issues(state="closed", labels=("role:policy",)), key=lambda x: -x["number"])[:limit]
+def policymaker_sessions(limit=5):
+    """The latest closed Policymaker sessions, newest first, and how they ended."""
+    done = sorted(c.list_issues(state="closed", labels=("role:policymaker",)), key=lambda x: -x["number"])[:limit]
     return [{"issue": x["number"], "status": c.report_fields(x["number"]).get("status")} for x in done]
 
 
-def policy_failures():
-    """Trailing Policy sessions that did not end `done`."""
+def policymaker_failures():
+    """Trailing Policymaker sessions that did not end `done`."""
     k = 0
-    for s in policy_sessions(2):
+    for s in policymaker_sessions(2):
         if s["status"] == "done":
             break
         k += 1
@@ -235,7 +235,7 @@ def build_state(n):
         "owner_requests": {"open": [request_summary(x) for x in open_requests()],
                            "recently_closed": [dict(request_summary(x), answer=x.get("state_reason")) for x in closed]},
         "no_progress": no_progress(idx),
-        "policy_sessions": policy_sessions(),
+        "policymaker_sessions": policymaker_sessions(),
         "suggestions": session_reports.pending(),
         "audit_report": "audit/latest.md" if os.path.exists("audit/latest.md") else None,
         "audit_rev": audit_revision(),
@@ -271,7 +271,7 @@ def read_state(it, mark=STATE_MARK):
 
 
 def export_state(n, directory):
-    """`.session/loop-state.json`: the snapshot taken when the Policy session was opened, or, for the shaper, when
+    """`.session/loop-state.json`: the snapshot taken when the Policymaker session was opened, or, for the shaper, when
     its iteration began."""
     state = read_state(n)
     if state is None:
@@ -308,13 +308,13 @@ def cadence_ok():
 
 
 def apply_policy():
-    """Merge the Policy sessions that finished since the last start and return their orders. loop.py, where the merge
+    """Merge the Policymaker sessions that finished since the last start and return their orders. loop.py, where the merge
     lives, puts its own in place."""
     return []
 
 
 def start_iteration():
-    """Begin the next iteration if none is open: what the Policy finished meanwhile takes effect, its orders start
+    """Begin the next iteration if none is open: what the Policymaker finished meanwhile takes effect, its orders start
     beside the shaper. Serial by construction: one open iteration at most."""
     if not c.guard_ok() or c.outage_open():
         return None
@@ -338,8 +338,8 @@ def start_iteration():
         c.close_issue(it, "not planned")
         return None
     orders = apply_policy()
-    if policy_failures() >= 2:
-        revert_policy("two Policy sessions in a row failed")
+    if policymaker_failures() >= 2:
+        revert_policy("two Policymaker sessions in a row failed")
     c.update_report(it, {"phase": "starting", "started": c.iso(), "policy_rev_start": policy_rev()})
     store_state(it, build_state(n))
     if orders:
@@ -374,23 +374,23 @@ def begin_shape(n, it):
     c.launch(s)
 
 
-# ---------------------------------------------------------------- the Policy on triggers
+# ---------------------------------------------------------------- the Policymaker on triggers
 
 def audit_revision():
     return c.git(".", "log", "-1", "--format=%H", "--", "audit/", check=False).stdout.strip() or None
 
 
-def policy_due(n):
-    """Why the Policy should run now that iteration n closed (None: it should not). One Policy session at a time."""
-    if c.list_issues(labels=("role:policy",)):
+def policymaker_due(n):
+    """Why the Policymaker should run now that iteration n closed (None: it should not). One Policymaker session at a time."""
+    if c.list_issues(labels=("role:policymaker",)):
         return None
-    t = c.params()["policy_triggers"]
+    t = c.params()["policymaker_triggers"]
     k = no_progress()
     if t.get("every_iterations") and (n + 1) % t["every_iterations"] == 0:
         return "every %s iterations" % t["every_iterations"]
     if t.get("no_progress") and k and k % t["no_progress"] == 0:
         return "%s iterations without progress" % k
-    sessions = c.list_issues(state="all", labels=("role:policy",))
+    sessions = c.list_issues(state="all", labels=("role:policymaker",))
     last = max(sessions, key=lambda x: x["number"], default=None)
     state = (read_state(last["number"]) or {}) if last else {}
     first = next((r["iteration"] for r in records() if r["status"] == "closed"), None)
@@ -406,20 +406,20 @@ def policy_due(n):
     return None
 
 
-def start_policy(n, why):
-    """A Policy session beside the iterations, never blocking one. What it changes and orders takes effect when the
+def start_policymaker(n, why):
+    """A Policymaker session beside the iterations, never blocking one. What it changes and orders takes effect when the
     next iteration starts."""
-    p = c.create_issue("Policy after iteration %s" % tag(n),
+    p = c.create_issue("Policymaker after iteration %s" % tag(n),
                        "Runs because: %s. Change `policy/` where needed; order the evaluator or the audit in `.session/orders.json`.\n\n"
-                       "Input: `.session/loop-state.json`. Rules: `.session/policy.md`. Your changes and orders take effect when the "
-                       "next iteration starts.\n" % why, labels=("role:policy", c.ITER + str(n)))
+                       "Input: `.session/loop-state.json`. Rules: `.session/policymaker.md`. Your changes and orders take effect when the "
+                       "next iteration starts.\n" % why, labels=("role:policymaker", c.ITER + str(n)))
     store_state(p, dict(build_state(n), trigger=why))
     c.launch(p)
     return p
 
 
 def read_orders(p):
-    """The orders a finished Policy session left, ids made unique across sessions: `order-<issue>-<id>`."""
+    """The orders a finished Policymaker session left, ids made unique across sessions: `order-<issue>-<id>`."""
     raw = read_state(p, ORDERS_MARK)
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     pre = "order-%s-" % p
@@ -428,10 +428,10 @@ def read_orders(p):
 
 
 def place_orders(n, it, orders):
-    """The Policy's orders become tasks of iteration n, running beside the shaper and its graph."""
+    """The Policymaker's orders become tasks of iteration n, running beside the shaper and its graph."""
     errs = validate_tasks({"tasks": orders}, ordered=True)
     if errs:
-        c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policy's orders were refused: %s." % "; ".join(errs[:6]))
+        c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
         return
     for num in create_tasks(n, orders):
         c.launch(num)
@@ -460,56 +460,65 @@ def limits_exceeded(profile):
 
 
 def validate_tasks(doc, ordered=False, taken=()):
-    """Errors of a task graph (empty: valid). `ordered`: the Policy's orders, the only tasks of the roles in
-    `policy_only_roles` and only of them. `taken`: ids the iteration already uses."""
-    prof, prm, cfg = c.profiles(), c.params(), c.cfg()
-    only = cfg["policy_only_roles"]
+    """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
+    `policymaker_only_roles` and only of them. `taken`: ids the iteration already uses."""
+    profiles, parameters, config = c.profiles(), c.params(), c.cfg()
+    policymaker_roles = config["policymaker_only_roles"]
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     if not isinstance(tasks, list) or not tasks:
         return ["`tasks` must be a non-empty list"]
-    errs, ids = [], set()
-    for t in tasks:
-        if not isinstance(t, dict):
-            errs.append("a task is not an object")
+    # Validate shapes before membership checks or graph traversal: this is agent-authored JSON.
+    # Only structurally valid tasks enter the graph; malformed tasks return diagnostics, not exceptions.
+    errors, task_ids, graph = [], set(), {}
+    for task in tasks:
+        if not isinstance(task, dict):
+            errors.append("a task is not an object")
             continue
-        i = t.get("id")
-        if not isinstance(i, str) or not i or i in ids or i in taken:
-            errs.append("task id missing or duplicated: %r" % i)
-        ids.add(i)
-        extra = set(t) - TASK_FIELDS
+        task_id = task.get("id")
+        if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9-]+", task_id):
+            errors.append("task id must contain only letters, digits and dashes: %r" % task_id)
+            continue
+        if task_id in task_ids or task_id in taken:
+            errors.append("task id missing or duplicated: %r" % task_id)
+        task_ids.add(task_id)
+        extra = set(task) - TASK_FIELDS
         if extra:
-            errs.append("task %s: unknown fields %s" % (i, sorted(extra)))
-        if "exports" in t:
-            errs.extend("task %s: %s" % (i, error) for error in session_exports.validate(t["exports"]))
-        role = t.get("role")
-        if role not in prof or role == "policy":
-            errs.append("task %s: role %r has no profile" % (i, role))
-        elif ordered and role not in only:
-            errs.append("task %s: the Policy orders only %s" % (i, ", ".join(only)))
-        elif not ordered and role in only:
-            errs.append("task %s: role `%s` is ordered only by the Policy" % (i, role))
-        for k in ("title", "body"):
-            if not isinstance(t.get(k), str) or not t[k].strip():
-                errs.append("task %s: `%s` missing" % (i, k))
-        if t.get("model") and t["model"] not in prm["models"]:
-            errs.append("task %s: unknown model alias %r" % (i, t["model"]))
-        if t.get("effort") and t["effort"] not in prm["efforts"]:
-            errs.append("task %s: unknown effort %r" % (i, t["effort"]))
-    graph = {}
-    for t in tasks:
-        deps = t.get("blocked_by") or []
-        bad = [d for d in deps if d not in ids]
-        if bad:
-            errs.append("task %s: blocked_by unknown %s" % (t.get("id"), bad))
-        graph[t.get("id")] = [d for d in deps if d in ids]
-    if not errs and topological(graph) is None:
-        errs.append("blocked_by has a cycle")
-    return errs
+            errors.append("task %s: unknown fields %s" % (task_id, sorted(extra)))
+        if "exports" in task:
+            errors.extend("task %s: %s" % (task_id, error) for error in session_exports.validate(task["exports"]))
+        role = task.get("role")
+        if not isinstance(role, str) or role not in profiles or role == "policymaker":
+            errors.append("task %s: role %r has no profile" % (task_id, role))
+        elif ordered and role not in policymaker_roles:
+            errors.append("task %s: the Policymaker orders only %s" % (task_id, ", ".join(policymaker_roles)))
+        elif not ordered and role in policymaker_roles:
+            errors.append("task %s: role `%s` is ordered only by the Policymaker" % (task_id, role))
+        for field in ("title", "body"):
+            if not isinstance(task.get(field), str) or not task[field].strip():
+                errors.append("task %s: `%s` missing" % (task_id, field))
+        if task.get("model") and (not isinstance(task["model"], str) or task["model"] not in parameters["models"]):
+            errors.append("task %s: unknown model alias %r" % (task_id, task["model"]))
+        if task.get("effort") and (not isinstance(task["effort"], str) or task["effort"] not in parameters["efforts"]):
+            errors.append("task %s: unknown effort %r" % (task_id, task["effort"]))
+        dependencies = task.get("blocked_by", [])
+        if dependencies is None:
+            dependencies = []
+        if not isinstance(dependencies, list) or any(not isinstance(dependency, str) for dependency in dependencies):
+            errors.append("task %s: blocked_by must be a list of task ids" % task_id)
+        else:
+            graph[task_id] = dependencies
+    for task_id, dependencies in graph.items():
+        unknown_dependencies = [dependency for dependency in dependencies if dependency not in task_ids]
+        if unknown_dependencies:
+            errors.append("task %s: blocked_by unknown %s" % (task_id, unknown_dependencies))
+    if not errors and topological(graph) is None:
+        errors.append("blocked_by has a cycle")
+    return errors
 
 
 def topological(graph):
     """Task ids in an order where blockers come first; None on a cycle."""
-    order, seen, state = [], set(), {}
+    order, state = [], {}
 
     def visit(x):
         if state.get(x) == 1:
@@ -530,7 +539,7 @@ def topological(graph):
 
 
 def width(tasks):
-    """The widest layer of the graph: how many tasks can run side by side."""
+    """Largest dependency-depth level; a graph statistic, not a concurrency limit."""
     depth = {}
     byid = {t["id"]: t for t in tasks}
 
@@ -616,9 +625,9 @@ def resolve_inputs(inputs, number):
 # ---------------------------------------------------------------- advancing and closing
 
 def iteration_issues(n):
-    """The issues of iteration n. A Policy session carries an iteration label too, but belongs to no iteration."""
+    """The issues of iteration n. A Policymaker session carries an iteration label too, but belongs to no iteration."""
     return [x for x in c.list_issues(state="all", labels=(c.ITER + str(n),))
-            if "pull_request" not in x and "role:policy" not in c.label_names(x)]
+            if "pull_request" not in x and "role:policymaker" not in c.label_names(x)]
 
 
 def advance():
@@ -757,9 +766,9 @@ def close_iteration(n, status, failure=None):
     prune_streams(n)
     note_no_progress(n)
     check_goal()
-    why = policy_due(n)
+    why = policymaker_due(n)
     if why and c.guard_ok():
-        start_policy(n, why)
+        start_policymaker(n, why)
     start_iteration()
 
 
@@ -778,8 +787,8 @@ def note_no_progress(n):
     if k and no_progress() >= k and not request_open("notice", ref="no-progress"):
         open_request("notice", "No progress for %s iterations" % no_progress(),
                      "The last %s iterations produced no accepted improvement." % no_progress(),
-                     "The Policy has been told and keeps working toward the current goal; nothing was rolled back.",
-                     "Nothing is blocked. Look at the iteration records and tell the Policy or change the goal.", ref="no-progress", iteration=n)
+                     "The Policymaker has been told and keeps working toward the current goal; nothing was rolled back.",
+                     "Nothing is blocked. Look at the iteration records and tell the Policymaker or change the goal.", ref="no-progress", iteration=n)
 
 
 # ---------------------------------------------------------------- the goal gate
@@ -855,7 +864,7 @@ def run_gate(cand, base, ctx):
 
 def revert_policy(why):
     """Return `policy/` to the state in which the last iteration closed (at the start: the setup baseline), open a
-    notice for the owner. Does nothing when the tree is already there. The Policy's next session sees the notice."""
+    notice for the owner. Does nothing when the tree is already there. The Policymaker's next session sees the notice."""
     c.sync_main()
     last = last_closed()
     target = (last or {}).get("policy", {}).get("commit_end")
@@ -870,8 +879,8 @@ def revert_policy(why):
         return False
     c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, ["policy"]))
     open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
-                 "The loop was not progressing or the Policy failed twice in a row.",
-                 "Nothing is blocked. The Policy sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])
+                 "The loop was not progressing or the Policymaker failed twice in a row.",
+                 "Nothing is blocked. The Policymaker sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])
     return True
 
 
@@ -881,7 +890,7 @@ def waiting_on_owner():
 
 
 def overdue():
-    """The open iteration has run longer than the Policy's ceiling for an iteration (waiting for the owner excepted)."""
+    """The open iteration has run longer than the Policymaker's ceiling for an iteration (waiting for the owner excepted)."""
     m = c.params()["ceilings"].get("iteration_minutes")
     cur = open_iteration()
     if not (m and cur) or waiting_on_owner():

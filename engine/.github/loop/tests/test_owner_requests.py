@@ -10,7 +10,7 @@ import owner_requests as req
 
 class OwnerRequestsTest(unittest.TestCase):
     CONFIG = ("# retained header\nowner: ow\nlimits:\n  tools: [Read]\n  internet_write: []\n"
-              "\n# retained policy comment\npolicy: {max_turns: 12}\ncadence: {daily_iterations: 4}\n")
+              "\n# retained policymaker comment\npolicymaker: {max_turns: 12}\ncadence: {daily_iterations: 4}\n")
     LIMITS = "tools: [Read, Grep]\ninternet_write: []\n"
 
     def setUp(self):
@@ -44,8 +44,8 @@ class OwnerRequestsTest(unittest.TestCase):
         self.answer(n)
         after = self.w.origin_file("engine.yml")
         self.assertIn("- Grep", after)
-        self.assertEqual(after[after.index("\n# retained policy comment"):],
-                         self.CONFIG[self.CONFIG.index("\n# retained policy comment"):])
+        self.assertEqual(after[after.index("\n# retained policymaker comment"):],
+                         self.CONFIG[self.CONFIG.index("\n# retained policymaker comment"):])
         self.assertTrue(after.startswith("# retained header\nowner: ow\n"))
         self.assertEqual(req.read(n)["status"], "approved")
         commit = c.head()

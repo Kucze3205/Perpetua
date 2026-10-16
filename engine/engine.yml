@@ -25,7 +25,7 @@ protected: [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", 
 direct_paths: ["policy/", "audit/", "journal/"]   # not work: merged without the change gate (role `write` paths still apply)
 notes_paths: ["journal/"]        # merged even when the session did not finish
 evaluator_paths: ["policy/evaluator/"]            # only a role whose profile has `owns_evaluator`; merged only after the verifier
-policy_only_roles: [evaluator, audit]             # tasks of these roles come only from the Policy's `orders`
+policymaker_only_roles: [evaluator, audit]             # tasks of these roles come only from the Policymaker's `orders`
 verifier_role: evaluator-verifier
 large_file_bytes: 5000000        # bigger files go to `.session/artifacts/` (release assets), not into git
 
@@ -35,11 +35,11 @@ limits:
   tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
   internet_write: []             # path prefixes a profile with internet may write
 
-# --- the Policy's fixed permissions and owner ceilings -------------------------------------------------------
-policy:
+# --- the Policymaker's fixed permissions and owner ceilings -------------------------------------------------------
+policymaker:
   tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
   write: ["policy/"]
-policy_session_ceilings:          # policy/params.yml can tune sessions only within these owner-approved bounds
+policymaker_session_ceilings:          # policy/params.yml can tune sessions only within these owner-approved bounds
   models: [claude-opus-5-5, claude-sonnet-5-5]
   efforts: [low, medium, high]
   max_turns: 150

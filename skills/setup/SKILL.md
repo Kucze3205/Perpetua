@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 Set up a Perpetua loop in this repository. Terms (loop, owner, setup map, engine) are defined in `${CLAUDE_PLUGIN_ROOT}/CONTEXT.md`.
 
-You do four things, once, then hand over to wayfinder. You decide no roles, policy, secrets or limits: the setup map does. The copied engine supplies architecture defaults; the owner may change them during setup, including the provider, substrate and owner-request channel. The map records and implements each decision and its specific lost guarantees before arming; this grants no additional authority to the Policy after arming. There is no resume mode: if the setup was already run, say so and stop.
+You do four things, once, then hand over to wayfinder. You decide no roles, policy, secrets or limits: the setup map does. The copied engine supplies architecture defaults; the owner may change them during setup, including the provider, substrate and owner-request channel. The map records and implements each decision and its specific lost guarantees before arming; this grants no additional authority to the Policymaker after arming. There is no resume mode: if the setup was already run, say so and stop.
 
 Read `$ARGUMENTS` as free text. Separate the desired outcome (**goal**) from the owner's **context**: architecture choices or constraints, requested engine changes, other background, and the question preference (`none`, `key topics`, or `all`; accept equivalent wording). A goal alone works as before. Keep context out of the goal; preserve the owner's meaning without inventing requirements. If the goal is missing or its boundary with context is genuinely ambiguous, ask one precise question that resolves it and wait; otherwise proceed with the stated goal.
 

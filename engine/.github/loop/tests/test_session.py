@@ -73,8 +73,8 @@ class ResolveTest(SessionCase):
         o = self.outputs()
         self.assertEqual((o["agent_timeout"], o["max_turns"]), ("205", "150"))      # 355 - 30 - 120 for the gate
 
-    def test_the_policy_session_uses_the_engines_own_profile(self):
-        n = self.hub.create_issue("P", "b", labels=["role:policy", "loop:iteration 1"])
+    def test_the_policymaker_session_uses_the_engines_own_profile(self):
+        n = self.hub.create_issue("P", "b", labels=["role:policymaker", "loop:iteration 1"])
         loop.resolve(n)
         o = self.outputs()
         self.assertEqual((o["model"], o["effort"], o["max_turns"]), ("claude-opus-5-5", "high", "150"))
@@ -151,7 +151,7 @@ class StageTest(SessionCase):
         self.assertEqual(read(os.path.join(trusted, "command.sh")), "echo shaping\n")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills", "rule")))
 
-    def test_the_policy_gets_its_prompt_and_its_own_state_and_the_shaper_the_iterations(self):
+    def test_the_policymaker_gets_its_prompt_and_its_own_state_and_the_shaper_the_iterations(self):
         it.start_iteration()
         shaper = self.hub.role_issues("orchestrator")[0]["number"]
         work = self.work()
@@ -159,10 +159,10 @@ class StageTest(SessionCase):
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
         self.assertEqual((state["iteration"], state["engine_version"]), (0, "0.2.0"))
         self.assertFalse(os.path.exists(os.path.join(work, ".session", "macro-plan.md")))
-        pol = it.start_policy(0, "a test")
+        pol = it.start_policymaker(0, "a test")
         work2 = self.work()
         loop.stage(pol, work2, os.path.join(self.w.tmp, "t3"))
-        self.assertIn("You are the Policy", read(os.path.join(work2, ".session", "policy.md")))
+        self.assertIn("You are the Policymaker", read(os.path.join(work2, ".session", "policymaker.md")))
         state = json.loads(read(os.path.join(work2, ".session", "loop-state.json")))
         self.assertEqual(state["trigger"], "a test")
 

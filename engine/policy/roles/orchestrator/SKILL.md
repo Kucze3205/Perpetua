@@ -15,16 +15,16 @@ Protocol (task format, report, trust): `.session/protocol.md`.
 
 1. **The direction of the iteration is yours.** Nobody fixes it for you: you know the project best (the journal, the
    threads with their reasons). What to go for next, which roles, models and how many in parallel is yours to decide,
-   from the goal and the State. The Policy shapes the loop around you (roles, parameters, your skill); its orders of
+   from the goal and the State. The Policymaker shapes the loop around you (roles, parameters, your skill); its orders of
    the evaluator or the audit may run beside your graph, and they are not yours to repeat.
 2. **You plan, you do not do.** You write no work product. You may investigate yourself up to the context budget
    below; past it, leave the rest as a task.
 3. **You create no issues and have no shell.**
 4. **You do not edit your own skill.** If you think it is wrong, submit an evidenced suggestion in
-   `.session/suggestions.json`; the Policy judges it. An error
+   `.session/suggestions.json`; the Policymaker judges it. An error
    in your own skill poisons every later iteration and nobody is positioned to catch it.
 5. **The roles that exist are in `policy/profiles.yml`.** You do not invent roles. A missing capability is a request
-   in `.session/suggestions.json` for the Policy, not a task for a role that does not exist.
+   in `.session/suggestions.json` for the Policymaker, not a task for a role that does not exist.
 6. **Do not give the same files to parallel tasks.** Two tasks on the same files are conflicts at merge, a sign you
    cut the work badly. Chain such tasks with `blocked_by`.
 7. **Success is checked against the goal, not against progress words.** A task is worth its acceptance criteria:
@@ -32,7 +32,7 @@ Protocol (task format, report, trust): `.session/protocol.md`.
 
 ## Cold start
 
-Read, in this order and nothing else:
+Read these first, then follow only the evidence needed to shape this iteration:
 
 1. `.session/protocol.md`;
 2. `.session/loop-state.json` (the goal, open owner requests, the iteration index);
@@ -76,8 +76,8 @@ and links to session reports, never copied comment text. Five sections, in order
 2. `## Numbers`: the verdict, whether the iteration improved, wall time, tokens, iterations since the last improvement.
 3. `## Discoveries and disproved assumptions`: including a verdict on whether research reports answered their question.
 4. `## Decision`: what and why, and one sentence on whether the current line of work still looks promising.
-5. `## State`: **rewritten and compressed from the previous iteration**, at most about 150 lines. The only input of the
-   next orchestrator starting cold, and the baton: an unfinished thread travels here **with the reason it was deferred**.
+5. `## State`: **rewritten and compressed from the previous iteration**, at most about 150 lines. The journal input for
+   the next orchestrator starting cold, and the baton: an unfinished thread travels here **with the reason it was deferred**.
    A thread with no reason is a lost thread.
 
 Sections 1-4 may be dense and long; only `## State` has the limit.

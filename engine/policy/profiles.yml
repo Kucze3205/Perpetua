@@ -1,5 +1,5 @@
 # Role profiles: a role = a skill (policy/roles/<role>/SKILL.md) + a profile from here. The label `role:<name>` picks both.
-# The Policy owns this file. Beyond the owner's accepted limits (engine.yml `limits`) a session needs a consent.
+# The Policymaker owns this file. Beyond the owner's accepted limits (engine.yml `limits`) a session needs a consent.
 #
 #   agent: false + command   a deterministic role: no model, no credential (a rule, a measurement)
 #   write                    paths the role may change; enforced when its branch is merged

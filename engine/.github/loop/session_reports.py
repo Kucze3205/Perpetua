@@ -101,7 +101,7 @@ def references(n):
 
 
 def freeze_decisions(n, work, visible):
-    """Freeze completed Policy output; application waits for acceptance of its branch."""
+    """Freeze completed Policymaker output; application waits for acceptance of its branch."""
     text = c.safe_read(work, ".session/suggestion-decisions.json")
     if text is None:
         return
@@ -119,11 +119,11 @@ def freeze_decisions(n, work, visible):
         if not any(x["body"] == body and c.trusted(x) for x in c.comments(n)):
             c.post_comment(n, body)
     except (ValueError, TypeError) as error:
-        c.say("Policy #%s suggestion-decisions.json refused: %s" % (n, error))
+        c.say("Policymaker #%s suggestion-decisions.json refused: %s" % (n, error))
 
 
 def apply_decisions(n):
-    """Apply only after the Policy branch is accepted; immutable resolutions are replay safe."""
+    """Apply only after the Policymaker branch is accepted; immutable resolutions are replay safe."""
     frozen = [x for x in c.comments(n) if c.trusted(x) and x["body"].startswith(DECISIONS_MARK + "\n")]
     if not frozen:
         return
@@ -133,11 +133,11 @@ def apply_decisions(n):
         old = decisions()
         new = dict(old)
         for item in items:
-            new.setdefault(item["id"], dict(item, policy_issue=n))
+            new.setdefault(item["id"], dict(item, policymaker_issue=n))
         if new == old:
             return
         try:
-            c.commit_main({STATE: encoded(new)}, "policy #%s: resolve suggestions" % n,
+            c.commit_main({STATE: encoded(new)}, "policymaker #%s: resolve suggestions" % n,
                           expected={STATE: baseline})
             return
         except c.ConcurrentChange:

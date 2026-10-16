@@ -1,4 +1,4 @@
-"""Engine-owned tool and network settings. Policy profiles cannot weaken these."""
+"""Engine-owned tool and network settings. Role profiles in policy cannot weaken these."""
 import re
 import os
 import shlex

@@ -1,7 +1,7 @@
 # Session reports and suggestions
 
 Before the agent starts, the engine exports trusted marked comment bodies into
-`.session/reports/` for Policy and shaper sessions. `index.json` lists issue IDs,
+`.session/reports/` for Policymaker and shaper sessions. `index.json` lists issue IDs,
 local paths, comment URLs and body SHA-256 snapshots. Each issue JSON includes the
 complete body. Reports cover the last five iterations in the input state, plus
 sources of pending suggestions. The existing trusted-author check and report marker
@@ -24,17 +24,17 @@ record. Invalid JSON or entries produce runner diagnostics and durable diagnosti
 in the source snapshot; they do not discard the report or other valid entries.
 
 Pending is the default state. Resolutions live separately in the protected
-`.github/loop/data/suggestions-state.json`. Only a successfully completed Policy
+`.github/loop/data/suggestions-state.json`. Only a successfully completed Policymaker
 session can freeze `.session/suggestion-decisions.json`, an array of objects with
 exactly `id`, `status` (`handled` or `rejected`), and a nonempty `reason`. IDs must
-have been staged to that Policy. The engine records the responsible Policy issue.
-Resolution takes effect only after that Policy's branch is accepted at an iteration
+have been staged to that Policymaker. The engine records the responsible Policymaker issue.
+Resolution takes effect only after that Policymaker's branch is accepted at an iteration
 boundary; a failed merge or crashed session does not resolve suggestions. Replaying
 application preserves the original resolution.
 
 `loop-state.json` `suggestions` contains pending entries, evidence and provenance.
-The first Policy input containing a new pending ID consumes its one-shot trigger.
+The first Policymaker input containing a new pending ID consumes its one-shot trigger.
 Later scheduling opportunities still expose unresolved suggestions, without
-repeatedly triggering on the same IDs. Suggestions arriving while Policy is open
+repeatedly triggering on the same IDs. Suggestions arriving while Policymaker is open
 remain eligible for the next opportunity. Resolving a suggestion never changes
 its original source snapshot or a closed iteration record.

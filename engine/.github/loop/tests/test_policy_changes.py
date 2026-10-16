@@ -21,14 +21,14 @@ class ProvenanceTest(unittest.TestCase):
         self.no_reconcile.stop()
         self.w.close()
 
-    def issue(self, role="policy", iteration=6):
+    def issue(self, role="policymaker", iteration=6):
         return self.hub.create_issue("Session", "body", labels=["role:" + role, c.ITER + str(iteration)])
 
     def read(self, filename):
         text = self.w.origin_file(filename)
         return json.loads(text) if text else None
 
-    def test_two_policy_sessions_have_exact_diffs_and_do_not_rewrite_closed_records(self):
+    def test_two_policymaker_sessions_have_exact_diffs_and_do_not_rewrite_closed_records(self):
         old = '{"schema_version":1,"iteration":6,"status":"closed"}\n'
         self.w.push_main({"iterations/0006.json": old})
         a, b = self.issue(), self.issue()
@@ -46,7 +46,7 @@ class ProvenanceTest(unittest.TestCase):
         self.assertEqual(ra["policy_rev_after"], rb["policy_rev_before"])
         self.assertNotEqual(ra["accepted_commit"], rb["accepted_commit"])
         for r in (ra, rb):
-            self.assertEqual(r["role"], "policy")
+            self.assertEqual(r["role"], "policymaker")
             self.assertTrue(r["applied_at"])
             self.assertIsNone(r["applied_iteration"])
             self.assertEqual(r["effective_from_iteration"], 7)
@@ -60,12 +60,12 @@ class ProvenanceTest(unittest.TestCase):
         with ExitStack() as stack:
             for name in ("prune_streams", "note_no_progress", "check_goal", "start_iteration"):
                 stack.enter_context(patch.object(it, name))
-            stack.enter_context(patch.object(it, "policy_due", return_value=None))
+            stack.enter_context(patch.object(it, "policymaker_due", return_value=None))
             it.close_iteration(7, "closed")
         self.assertEqual(self.read(it.record_path(7))["policy"]["change_ids"], [ra["id"], rb["id"]])
         self.assertEqual(self.w.origin_file("iterations/0006.json"), old)
         # Retrying a successful merge cannot alter its provenance.
-        replay = loop.merge_branch(a, "policy", self.hub.issue(a))
+        replay = loop.merge_branch(a, "policymaker", self.hub.issue(a))
         self.assertEqual(loop.merge_outcome(replay)[1]["merged"], "true")
         self.assertEqual(self.read(changes.path(a)), ra)
 
@@ -95,7 +95,7 @@ class ProvenanceTest(unittest.TestCase):
             return git(cwd, *args, **kwargs)
 
         with patch.object(c, "git", side_effect=racing_push), patch.object(c, "iso", side_effect=["2026-01-01T00:00:01Z", "2026-01-01T00:00:02Z"]):
-            r = loop.merge_branch(n, "policy", self.hub.issue(n))
+            r = loop.merge_branch(n, "policymaker", self.hub.issue(n))
         self.assertEqual(r["result"], "merged")
         record = self.read(changes.path(n))
         self.assertEqual(record["applied_at"], "2026-01-01T00:00:02Z")

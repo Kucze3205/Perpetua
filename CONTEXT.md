@@ -21,7 +21,7 @@ _Avoid_: onboarding, wizard
 
 **Engine**:
 The goal-independent machinery of a loop: workflows, scripts, configuration,
-the policy's prompt. Copied into the loop's repository by setup, where it
+the policymaker's prompt. Copied into the loop's repository by setup, where it
 belongs to that loop; a setup map may change it. Changed only by the owner.
 _Avoid_: framework, runtime
 
@@ -62,17 +62,29 @@ The last good state is the last closed one.
 _Avoid_: log, report
 
 **Policy**:
-The agent that runs on triggers beside iterations and owns the loop's
-architecture: the evaluator, the shaper, the roles and the parameters. Its
-accepted changes and orders take effect at the next iteration boundary.
-Never touches what the iteration core produces.
-_Avoid_: strategy, scheduler
+The rules and artifacts the policymaker creates and maintains to govern the
+implementation layer: work rules, role instructions, profiles, parameters and
+evaluation rules.
+_Avoid_: agent, policymaker
+
+**Policymaker**:
+The agent in the policy layer that manages the loop's architecture by creating
+and revising policy; it does not perform the implementation layer's work.
+_Avoid_: policy, politician, strategy, scheduler
+
+**Policy layer**:
+The part of the loop in which the policymaker defines how the implementation
+layer works, within the owner's accepted limits.
+
+**Implementation layer**:
+The part of the loop that applies policy to plan, execute and evaluate work
+toward the goal.
 
 **Orchestrator**:
 A role that turns the goal and the loop's state into concrete work: what to
 analyse, build, search, whom to bring in. Decides what the loop does today;
-may propose changes to its own prompt, which the policy judges. The policy may
-replace it with a deterministic rule or remove it.
+may propose changes to its own prompt, which the policymaker judges. The
+policymaker may replace it with a deterministic rule or remove it.
 _Avoid_: manager
 
 **Shaper**:
@@ -82,17 +94,19 @@ engine creates the issues. It has no GitHub credentials.
 _Avoid_: planner, scheduler
 
 **Task graph**:
-The tasks of one iteration with their blocking edges, as issues. Its width (how
-many tasks can run side by side) is computed from it, not set.
+The tasks of one iteration with their blocking edges, as issues. Its width is the
+number of tasks in the largest dependency-depth level, computed from the graph,
+not set. It is a structural statistic, not a cap or prediction of concurrent jobs.
 
 **Policy artifacts**:
-What the policy owns, kept in version control: the orchestrator's prompt, role
-skills, profiles, parameters, a deterministic rule, the evaluator.
+The version-controlled parts of policy maintained by the policymaker: the
+orchestrator's prompt, role skills, profiles, parameters, a deterministic rule
+and the evaluator.
 
 **Evaluator**:
 The measurement that tells whether work moved the loop toward the goal: a
 script, which may call a model. Its verdict feeds the change gate. The work it
-measures can never change it, only suggest a change to the policy.
+measures can never change it, only suggest a change to the policymaker.
 _Avoid_: benchmark, progress tests
 
 **Evaluator verifier**:
@@ -100,12 +114,12 @@ An independent session that checks a change to the evaluator before it takes
 effect: does the changed evaluator still measure progress toward the goal.
 
 **Audit**:
-A role the policy orders to learn and monitor the loop's whole environment,
+A role the policymaker orders to learn and monitor the loop's whole environment,
 every session included: what the loop consumes, where it waits, what the
-substrate offers that the loop leaves unused. The policy decides, per project,
+substrate offers that the loop leaves unused. The policymaker decides, per project,
 what is measured and what the audit may see and do. Each measurement is done
 by the audit session itself or, when the audit finds it mechanical, turned
-into a script it keeps for later audits. Proposes changes to the policy and
+into a script it keeps for later audits. Proposes changes to the policymaker and
 changes nothing else. Judges how the loop uses its environment, never the
 quality of the work (that is the evaluator).
 _Avoid_: monitoring, telemetry
@@ -129,6 +143,6 @@ _Avoid_: ticket for the owner, approval
 
 **Accepted limits**:
 The bounds the owner has accepted for what roles and their profiles may do.
-The policy widens roles within them on its own; beyond them, work waits for an
+The policymaker widens roles within them on its own; beyond them, work waits for an
 owner request or for the owner to move the limits.
 _Avoid_: permissions, allowlist

@@ -31,7 +31,7 @@ def association(i):
     active.sort(key=lambda x: x["number"])
     applied = c.iteration_of(c.label_names(active[0])) if active else None
     closed = [int(os.path.basename(p)[:-5]) for p in glob.glob("iterations/[0-9][0-9][0-9][0-9].json")]
-    # The iteration label on a Policy session is its trigger, not its application date.
+    # The iteration label on a Policymaker session is its trigger, not its application date.
     return {"source_iteration": c.iteration_of(c.label_names(i)),
             "applied_iteration": applied,
             "effective_from_iteration": applied if applied is not None else max(closed, default=-1) + 1}

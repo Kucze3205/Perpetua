@@ -1,4 +1,4 @@
-"""Producer -> trusted epilogue -> staged evidence -> accepted Policy resolution."""
+"""Producer -> trusted epilogue -> staged evidence -> accepted Policymaker resolution."""
 import json
 import os
 from unittest.mock import patch
@@ -30,7 +30,7 @@ class ReportsTest(SessionCase):
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
         return os.path.join(work, ".session")
 
-    def test_epilogue_stages_proposal_evidence_and_accepted_policy_resolves_once(self):
+    def test_epilogue_stages_proposal_evidence_and_accepted_policymaker_resolves_once(self):
         n, work = self.producer()
         pending = reports.pending()
         self.assertEqual(len(pending), 1)
@@ -40,8 +40,8 @@ class ReportsTest(SessionCase):
         immutable = {path: self.w.origin_file(path) for path, _ in reports.source_records(n)}
         reports.capture(n, work)
         self.assertEqual([s["id"] for s in reports.pending()], [proposal["id"]])
-        self.assertEqual(it.policy_due(1), "new session suggestions")
-        pol = it.start_policy(1, "new session suggestions")
+        self.assertEqual(it.policymaker_due(1), "new session suggestions")
+        pol = it.start_policymaker(1, "new session suggestions")
         sess = self.stage(pol)
         state = self.read(os.path.join(sess, "loop-state.json"))
         self.assertEqual(state["suggestions"][0]["id"], proposal["id"])
@@ -60,7 +60,7 @@ class ReportsTest(SessionCase):
         self.assertEqual(self.w.origin_file(reports.STATE), final)
         for path, text in immutable.items():
             self.assertEqual(self.w.origin_file(path), text)
-        self.assertIsNone(it.policy_due(1))
+        self.assertIsNone(it.policymaker_due(1))
         self.assertIn(proposal["id"], it.session_summary(c.issue(n))["suggestion_ids"])
 
     def test_shaper_reads_report_body_without_network_and_untrusted_marker_is_ignored(self):
@@ -86,19 +86,19 @@ class ReportsTest(SessionCase):
 
     def test_pending_trigger_consumed_once_but_new_suggestion_still_triggers(self):
         self.producer()
-        pol = it.start_policy(1, "new session suggestions")
-        self.assertIsNone(it.policy_due(1))  # Policy is open
+        pol = it.start_policymaker(1, "new session suggestions")
+        self.assertIsNone(it.policymaker_due(1))  # Policymaker is open
         self.producer()
         self.hub.close_issue(pol)
-        self.assertEqual(it.policy_due(1), "new session suggestions")
-        later = it.start_policy(1, "new session suggestions")
+        self.assertEqual(it.policymaker_due(1), "new session suggestions")
+        later = it.start_policymaker(1, "new session suggestions")
         self.hub.close_issue(later)
-        self.assertIsNone(it.policy_due(1))  # still pending; already delivered
+        self.assertIsNone(it.policymaker_due(1))  # still pending; already delivered
 
-    def test_crashed_or_rejected_policy_does_not_resolve_suggestions(self):
+    def test_crashed_or_rejected_policymaker_does_not_resolve_suggestions(self):
         self.producer()
         for status, content in (("crashed", "okay"), ("done", "BAD")):
-            pol = it.start_policy(1, "test")
+            pol = it.start_policymaker(1, "test")
             decision = [{"id": reports.pending()[0]["id"], "status": "rejected", "reason": "Not useful"}]
             self.w.session(pol, status=status, files={"policy/context.md": content},
                            session_files={"suggestion-decisions.json": json.dumps(decision)})
@@ -114,7 +114,7 @@ class ReportsTest(SessionCase):
             {"id": item["id"], "status": "handled", "reason": "worker claim"}]))
         loop.finalize(n, work)
         self.assertEqual(reports.decisions(), {})
-        pol = it.start_policy(1, "test")
+        pol = it.start_policymaker(1, "test")
         self.w.session(pol, files={"policy/context.md": "Read few files"}, session_files={
             "suggestion-decisions.json": json.dumps([{"id": "unknown", "status": "handled", "reason": "wrong"}])})
         loop.apply_policy()
@@ -122,7 +122,7 @@ class ReportsTest(SessionCase):
 
     def test_concurrent_resolution_reloads_without_losing_previous_decisions(self):
         self.producer()
-        pol = it.start_policy(1, "test")
+        pol = it.start_policymaker(1, "test")
         item = reports.pending()[0]
         work = os.path.join(self.w.tmp, "decision-work")
         self.w.write(work, ".session/suggestion-decisions.json", json.dumps([

@@ -22,7 +22,7 @@ iteration open at publication, or is null when between iterations. `effective_fr
 then names the next iteration. New iteration records add `policy.change_ids` and
 `evaluator_verifications` referring to events associated with that iteration. Receipts keep
 the exact application history even if a later publication occurs after its source iteration
-has closed. An evaluator ordered by Policy is attributed to its evaluator role.
+has closed. An evaluator ordered by Policymaker is attributed to its evaluator role.
 
 Verifier issues pin both `checked-commit` and `checked-evaluator-rev` and start from that
 commit. A branch mutation or an evaluator changed by rebase requires fresh verification.
@@ -34,6 +34,6 @@ checked snapshot, and `application_result`. `pass` may accompany `conflict`,
 An owner decision after a passing verification creates a separate
 `verification-<verifier issue>-owner.json`, preserving the original verdict and pending
 application outcome. Owner approval still checks the pinned snapshot. Repeated terminal
-events cannot overwrite receipts. Policy sessions retain the existing iteration-boundary
+events cannot overwrite receipts. Policymaker sessions retain the existing iteration-boundary
 application of their policy changes and orders. The evaluator role owns evaluator changes;
-the Policy cannot write evaluator files directly.
+the Policymaker cannot write evaluator files directly.

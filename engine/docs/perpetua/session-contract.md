@@ -1,10 +1,10 @@
 # Session instructions and network access
 
-The engine owns `.github/loop/session-protocol.md` and the policy ownership/order
-contract in `.github/loop/policy.md`. Staging writes the contract to a trusted file
+The engine owns `.github/loop/session-protocol.md` and the Policymaker's ownership/order
+contract in `.github/loop/policymaker.md`. Staging writes the contract to a trusted file
 passed with `--append-system-prompt-file`. It also combines that contract with
 `policy/protocol.md` in `.session/protocol.md`. Editable work rules and starting
-templates (`policy/prompts/role.md`, `policy/prompts/policy.md`) take effect at the
+templates (`policy/prompts/role.md`, `policy/prompts/policymaker.md`) take effect at the
 next stage from the accepted tree. They cannot change parsed outputs, field
 ownership, required inputs, or merge/security restrictions. Role skills remain
 editable under `policy/roles/`.

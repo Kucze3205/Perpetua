@@ -26,9 +26,9 @@ Every mode still requires a precise question when a necessary owner decision rem
 - blocking: `gh api repos/{{REPO}}/issues/<blocked>/dependencies/blocked_by -F issue_id=<id>` with the blocker's database id
 - claim: assign `@me`; frontier: open, unassigned child issues with no open blocker
 
-**Glossary.** One glossary: `CONTEXT.md` at the repo root. Add terms of the goal's domain there. When an owner decision changes a Perpetua concept, update its definition and its uses in the setup, configuration and engine documentation together; keep owner, Policy, engine, goal gate and owner request distinct.
+**Glossary.** One glossary: `CONTEXT.md` at the repo root. Add terms of the goal's domain there. When an owner decision changes a Perpetua concept, update its definition and its uses in the setup, configuration and engine documentation together; keep owner, policy (rules and artifacts), Policymaker (the agent), engine, goal gate and owner request distinct.
 
-**Topics.** The goal was settled when the map was charted (`goal/goal.md`). Every topic below has a ticket. For each, investigate what the goal and this repo need, using the owner context and question mode above to guide discussion and grilling. A topic that does not apply to this goal is recorded as "not applicable" with the reason, never skipped silently. The Policy maintains the evaluator, roles and parameters in separate triggered sessions beside iterations, so this map sets their **starting state**. Adapt the topics and dependencies to the architecture the owner chooses. Every key and file is described in `docs/perpetua/engine.md`.
+**Topics.** The goal was settled when the map was charted (`goal/goal.md`). Every topic below has a ticket. For each, investigate what the goal and this repo need, using the owner context and question mode above to guide discussion and grilling. A topic that does not apply to this goal is recorded as "not applicable" with the reason, never skipped silently. The Policymaker maintains the evaluator, roles and parameters in separate triggered sessions beside iterations, so this map sets their **starting state**. Adapt the topics and dependencies to the architecture the owner chooses. Every key and file is described in `docs/perpetua/engine.md`.
 
 | # | Topic | Content |
 |---|---|---|
@@ -36,8 +36,8 @@ Every mode still requires a precise question when a necessary owner decision rem
 | C | Starting evaluator and change gate | A script (it may call a model with a rubric), or "owner only"; the check command; protected paths. |
 | D | Goal reformulation and goal gate | Proposed reformulations (realistic only after B and C); whether a goal gate exists and the `owner_confirms` field. |
 | E | Starting roles | Propose existing skills first (plugins, personal, project); a role built on one gets a copy of it in `policy/roles/<role>/`, since only that folder reaches the runner. Write a new skill only when nothing fits. |
-| F | Accepted limits and owner interaction | The boundary within which the Policy may widen roles and profiles on its own (`limits` in `engine.yml`); the owner-request channel and its acceptance, refusal and wake-up semantics. Implement any changed channel and its authority checks. |
-| G | Starting parameters | The watchdog's "time without an iteration" and whether time spent waiting for the owner counts toward it; ceilings and models; the shaper's starting instructions and Policy triggers in `policy/params.yml`. |
+| F | Accepted limits and owner interaction | The boundary within which the Policymaker may widen roles and profiles on its own (`limits` in `engine.yml`); the owner-request channel and its acceptance, refusal and wake-up semantics. Implement any changed channel and its authority checks. |
+| G | Starting parameters | The watchdog's "time without an iteration" and whether time spent waiting for the owner counts toward it; ceilings and models; the shaper's starting instructions and Policymaker triggers in `policy/params.yml`. |
 | H | Arming | A `task` ticket, last. Preserve owner decisions, specific lost guarantees and replacement checks in `docs/perpetua/setup-decisions.md`, with links to the implementing files, then delete `docs/perpetua/setup-notes.md`. By default merge `{{BRANCH}}` into the default branch, tag the merge commit `setup-baseline`, switch on `AUTOPILOT`, then `gh workflow run watchdog.yml` to start iteration 0 now. For a changed substrate, use the implemented equivalents for accepting the setup, recording the baseline, enabling the owner's switch and starting work; verify its credentials and controls before enabling it. No trial run: the first iteration is the trial. |
 
 Dependencies: B → C → D; E needs B and C; F needs B and E; G needs C, E and F; H needs all.
@@ -47,10 +47,10 @@ Dependencies: B → C → D; E needs B and C; F needs B and E; G needs C, E and 
 | Topic | Default |
 |---|---|
 | G: cadence, criterion | cadence "iteration after iteration"; design criterion "shortest wall-clock time to the goal" |
-| Orchestrator | the generic LLM role from the engine; the owner may choose a different starting shaper during setup, and the Policy may later choose an orchestrator or rule within its authority |
+| Orchestrator | the generic LLM role from the engine; the owner may choose a different starting shaper during setup, and the Policymaker may later choose an orchestrator or rule within its authority |
 | F | the engine's limits (`limits` in `engine.yml`) |
 | E | existing skills first, a new skill only when nothing fits |
-| C | the Policy owns the evaluator; it changes only through the evaluator verifier |
+| C | the Policymaker owns the evaluator; it changes only through the evaluator verifier |
 | D | **none** for the goal gate; without an accepted gate the loop never declares its own end |
 | G: watchdog | **none** for "time without an iteration" and for the waiting-time question; they follow from the goal |
 
@@ -62,7 +62,7 @@ Dependencies: B → C → D; E needs B and C; F needs B and E; G needs C, E and 
 
 These consequences inform the owner's choice; they do not automatically block it. The engine has no generic backend abstraction: choosing another substrate or channel means changing and checking the relevant engine integration, topic instructions, tools and arming procedure. An unimplemented integration is unfinished setup, not a reason to reject the choice.
 
-**Authority after arming.** The owner's power to change setup does not pass to the Policy. Under the shipped boundaries only the owner accepts a goal gate or changes the engine, accepted limits and `AUTOPILOT`; the Policy changes only its permitted artifacts and proposes other changes through owner requests. A setup decision changes those boundaries only when the owner explicitly chooses it and the map implements and documents it. See `docs/perpetua/engine.md`, "Who may change what".
+**Authority after arming.** The owner's power to change setup does not pass to the Policymaker. Under the shipped boundaries only the owner accepts a goal gate or changes the engine, accepted limits and `AUTOPILOT`; the Policymaker changes only its permitted artifacts and proposes other changes through owner requests. A setup decision changes those boundaries only when the owner explicitly chooses it and the map implements and documents it. See `docs/perpetua/engine.md`, "Who may change what".
 
 **Where things are.** Glossary: `CONTEXT.md`. Engine documentation: `docs/perpetua/engine.md`. Engine version: `{{ENGINE_VERSION}}`, stamped in `ENGINE_VERSION`. For provider integration points see `docs/perpetua/engine.md`, "Sessions".
 

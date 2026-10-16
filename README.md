@@ -1,8 +1,36 @@
 # Perpetua
 
-A Claude Code plugin that prepares an autonomous agent loop in a target repository.
+A Claude Code and Codex plugin that prepares an autonomous agent loop in a target repository.
 This repository contains the setup skill and engine template; a running loop uses
 the copy installed in its own repository.
+
+## Install and invoke
+
+In Claude Code:
+
+```text
+/plugin marketplace add Kucze3205/Perpetua
+/plugin install perpetua@perpetua
+/perpetua:setup <goal and optional owner context>
+```
+
+In Codex, install from a terminal:
+
+```sh
+codex plugin marketplace add Kucze3205/Perpetua --ref main
+codex plugin add perpetua@perpetua
+```
+
+Then start a new conversation in the target repository and invoke
+`$perpetua:setup <goal and optional owner context>`, or select Perpetua Setup from
+the skill picker. You can also write `Use perpetua:setup to <goal>`.
+Both clients run the same setup, create the same GitHub setup map, and continue
+through wayfinder. Install the `mattpocock-skills` dependencies (`wayfinder`,
+`grilling`, `domain-modeling`, `research`, `prototype`) for the client first.
+Codex follows their instructions directly when no Skill tool is available.
+
+The shipped loop still runs Claude sessions on GitHub Actions. Using Codex for
+setup does not switch that provider; provider changes are resolved in the setup map.
 
 ## Where to start
 

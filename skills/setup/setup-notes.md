@@ -1,6 +1,6 @@
 # Setup notes
 
-The standing rules of the setup map of this loop. Every session working the map reads this file first. Written by `/perpetua:setup`; topic H deletes it.
+The standing rules of the setup map of this loop. Every session working the map reads this file first. Written by the Perpetua setup skill in Claude Code or Codex; topic H deletes it.
 
 **What this map is.** Its main job is to prepare the environment: the loop can reach every source, piece of information and tool it needs. Its second job is to propose reformulations of the goal that make it easier for the loop to reach. Only the owner accepts a reformulation. Unlike plain wayfinding, this map carries execution: each topic writes its piece of configuration on the setup branch `{{BRANCH}}` when its ticket closes (the decision lives in the file, the ticket points at it). The map does no work toward the goal itself. The default branch is untouched until topic H.
 
@@ -19,6 +19,8 @@ These separate fields carry the owner's architecture choices or constraints, req
 Every mode still requires a precise question when a necessary owner decision remains unresolved, including acceptance of a goal reformulation or a change outside existing authority. `none` reduces optional questions; it does not supply that decision. Update these fields and the map's Notes when the owner changes context or preference, and record resulting decisions in configuration and ticket resolutions. Continuations apply the latest recorded choices rather than resetting to Defaults. At topic H, preserve this context and the resulting decisions in `docs/perpetua/setup-decisions.md` before deleting these notes.
 
 ## Map rules
+
+**Client skill calls.** In Claude Code use the Skill tool. In Codex, where wayfinder or its dependencies say to call that tool, read and follow the named skill's `SKILL.md` with the same input in the current conversation. Resolve installed skills by their available paths and plugin-qualified names; filesystem-backed skills also work. Give research subagents the research skill path and the applicable map notes. Continue the map with `/wayfinder <URL>` in Claude Code or `$wayfinder <URL>` / `Use wayfinder for <URL>` in Codex. The setup client does not select the loop's provider; retain the Defaults unless the owner changes them.
 
 **Tracker.** By default the tracker is GitHub issues of `{{REPO}}`, driven with `gh`. The commands below describe that integration; if the owner changes the tracker or substrate, replace them with the implemented equivalents before using them. Do not run `/setup-matt-pocock-skills`.
 - map: the issue labelled `wayfinder:map`; ticket: an issue labelled `wayfinder:<type>`

@@ -15,8 +15,8 @@ gate, and approves what the loop's policy reserves for them.
 _Avoid_: user, operator
 
 **Setup map**:
-The wayfinder map the skill charts in the loop's repository. Working through it
-prepares everything the loop needs; closing it arms the loop.
+The wayfinder map that connects a clarified goal to an initial approach and the
+environment the loop needs to pursue it; closing it arms the loop.
 _Avoid_: onboarding, wizard
 
 **Engine**:
@@ -31,8 +31,13 @@ per loop during setup, preferably from existing skills.
 _Avoid_: persona, agent type
 
 **Goal**:
-What the loop works toward. May start fuzzy; the loop proposes sharper
-versions, only the owner accepts them.
+The outcome the loop works toward, with a clear scope and verifiable success
+criteria and evidence; numerical metrics are optional. Only the owner accepts
+the goal and its reformulations.
+
+**Initial approach**:
+A revisable plan of how the loop could reach the goal: steps, dependencies and
+unknowns from which its environment requirements follow.
 
 **Goal gate**:
 The check that decides the goal is reached. Without an owner-accepted gate the

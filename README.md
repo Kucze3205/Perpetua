@@ -32,6 +32,13 @@ Codex follows their instructions directly when no Skill tool is available.
 The shipped loop still runs Claude sessions on GitHub Actions. Using Codex for
 setup does not switch that provider; provider changes are resolved in the setup map.
 
+Setup first clarifies the goal with the owner, including its scope and verifiable
+success criteria and evidence; numerical metrics are optional. An initial approach
+informs the environment requirements. The map also covers evaluator and gates,
+roles, limits and parameters, with a separate arming ticket last. These are required
+outcomes, not a fixed issue list: Wayfinder chooses the tickets and dependencies,
+expands the map as it learns, and splits work that outgrows one session.
+
 ## Where to start
 
 - **Understand the domain:** [CONTEXT.md](CONTEXT.md) defines the shared terms;

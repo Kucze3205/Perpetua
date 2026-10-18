@@ -216,18 +216,24 @@ The offline module (not shipped) replays decisions from `input_state` plus the i
 without modifying closed records. [Reports and suggestions](session-reports.md) describes frozen source evidence,
 staged report bodies and the separate suggestion lifecycle.
 
-## Setup topics and where they write
+## Setup outcomes and where they write
 
-| Topic | Writes |
+Setup clarifies the goal first, then analyses an initial approach, then prepares the environment from that
+analysis. The approach is a revisable plan; the loop can adapt it as it learns. Success criteria and evidence
+must be verifiable; numerical metrics are optional. Goal criteria do not themselves enable a goal gate.
+The rows describe required outcomes, not one issue each. Wayfinder chooses and revises ticket boundaries,
+types and dependencies; arming is a separate final ticket after coverage is verified and no in-scope fog remains.
+
+| Outcome | Writes |
 |---|---|
-| charting (no ticket) | `goal/goal.md` (accepted by the owner) |
-| B environment | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings |
-| C evaluator and change gate | `engine.yml`: `check`, `gate`, `protected`, `evaluator_paths`; `policy/evaluator/` |
-| D goal reformulation and gate | `goal/goal.md`, `goal/gate.yml` (`command`, `owner_confirms`) |
-| E starting roles | `policy/roles/<role>/SKILL.md`, `policy/profiles.yml` (from `policy/roles/ROLE-TEMPLATE.md`) |
-| F accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
-| G parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
-| H arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
+| charting (no ticket) | `goal/goal.md`: clear outcome, scope, success criteria and evidence, accepted by the owner |
+| Initial approach | `docs/perpetua/approach.md`: steps, dependencies, unknowns, verification needs and the sources, information, tools and access each step requires |
+| Environment (derived from the approach) | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings; requirement coverage in `docs/perpetua/approach.md` |
+| Evaluator, change gate and goal gate | `engine.yml`: `check`, `gate`, `protected`, `evaluator_paths`; `policy/evaluator/`; owner-accepted `goal/gate.yml` (`command`, `owner_confirms`) |
+| Starting roles | `policy/roles/<role>/SKILL.md`, `policy/profiles.yml` (from `policy/roles/ROLE-TEMPLATE.md`) |
+| Accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
+| Parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
+| Arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
 
 ## Not exercised here
 

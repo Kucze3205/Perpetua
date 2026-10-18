@@ -171,3 +171,25 @@ class LayeredSessionTest(sessions.SessionCase):
         self.w.branch(n, {'src/script.txt': 'product'})
         result = loop.merge_branch(n, 'worker', self.hub.issue(n), override={'verdict': 'accepted'})
         self.assertEqual(result['result'], 'merged')
+
+    @unittest.skipIf(os.name == 'nt', 'symlink cases run on Linux')
+    def test_staging_rejects_redirected_skills_and_references(self):
+        targets = ['execution/roles/worker', 'execution/roles/worker/SKILL.md',
+                   'execution/roles/worker/reference.md']
+        for rel in targets:
+            with self.subTest(path=rel):
+                location = os.path.join(self.w.loop, rel)
+                backup = location + '.saved'
+                exists = os.path.exists(location)
+                if exists:
+                    os.rename(location, backup)
+                os.symlink(os.path.join(self.w.loop, 'policy/roles/audit') if rel.endswith('worker')
+                           else os.path.join(self.w.loop, 'policy/roles/audit/SKILL.md'), location)
+                try:
+                    n = self.issue()
+                    with self.assertRaisesRegex(SystemExit, 'redirected managed'):
+                        loop.stage(n, self.work(), os.path.join(self.w.tmp, 'redirect-trusted'))
+                finally:
+                    os.unlink(location)
+                    if exists:
+                        os.rename(backup, location)

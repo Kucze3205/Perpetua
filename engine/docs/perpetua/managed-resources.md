@@ -64,7 +64,8 @@ audit:
 ```
 
 The catalog rejects duplicate YAML keys, a role appearing in both profile
-files, conflicting skill directories, explicit layer overrides, and policy
+files, conflicting skill directories, redirected definitions (including skill
+and reference symlinks), explicit layer overrides, and policy
 roles selected as the execution shaper. The configured shaper belongs to
 execution; `audit`, `evaluator` (maintenance), and the configured verifier role
 belong to policy. Other goal roles are installed in execution; additional

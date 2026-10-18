@@ -55,11 +55,28 @@ def _load_profiles(path):
         raise ValueError("invalid profiles YAML in %s" % path) from error
 
 
+def _check_local_tree(cwd, root):
+    """Definitions are local copies, never aliases into another layer or host."""
+    checkout = os.path.realpath(cwd)
+    tree = os.path.join(checkout, root)
+
+    def check(path):
+        if os.path.islink(path) or os.path.normcase(os.path.realpath(path)) != os.path.normcase(os.path.abspath(path)):
+            raise ValueError("redirected managed definition: " + os.path.relpath(path, checkout))
+
+    check(tree)
+    for directory, directories, files in os.walk(tree, followlinks=False):
+        for name in directories + files:
+            check(os.path.join(directory, name))
+
+
 def role_profiles(cwd="."):
     """Validate the whole active catalog before selecting any role."""
     import common as c
     if not layered(cwd):
         return c.load_yaml(os.path.join(cwd, PROFILES))
+    for layer in LAYERS:
+        _check_local_tree(cwd, layer)
     shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
     out = {}
     for layer in LAYERS:

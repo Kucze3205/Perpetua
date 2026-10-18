@@ -4,6 +4,7 @@ import json
 import os
 
 import common as c
+import managed_resources as resources
 
 ROOT = "iterations/changes"
 
@@ -21,7 +22,7 @@ def read(filename):
 
 
 def evaluator_rev(rev, cwd="."):
-    return {p: c.tree_hash(rev, p, cwd) for p in c.cfg()["evaluator_paths"]}
+    return resources.evaluator_revision(rev, cwd)
 
 
 def association(i):
@@ -43,12 +44,12 @@ def receipt(cand, n, role, i, session_base, baseline, candidate, changed, verifi
     accepted_commit names the code commit. The following engine-only receipt commit does
     not alter policy/evaluator trees. A failed push publishes neither code nor receipt.
     """
-    if not any(p.startswith("policy/") or c.path_match(p, c.cfg()["evaluator_paths"]) for p in changed):
+    if not any(resources.is_managed(p) for p in changed):
         return None
     record = dict(schema_version=1, id="change-%s" % n, issue=n, role=role,
                   base_commit=session_base, applied_base_commit=baseline, accepted_commit=candidate,
-                  policy_rev_before=c.tree_hash(baseline, "policy", cand),
-                  policy_rev_after=c.tree_hash(candidate, "policy", cand),
+                  policy_rev_before=resources.revision(baseline, cand),
+                  policy_rev_after=resources.revision(candidate, cand),
                   evaluator_rev_before=evaluator_rev(baseline, cand),
                   evaluator_rev_after=evaluator_rev(candidate, cand),
                   changed_paths=changed, applied_at=c.iso(), verifier_issue=verifier,

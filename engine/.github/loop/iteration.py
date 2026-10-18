@@ -14,6 +14,7 @@ import os
 import re
 
 import common as c
+import managed_resources as resources
 import owner_requests as requests
 import session_exports
 import session_reports
@@ -205,11 +206,11 @@ def policymaker_failures():
 
 
 def policy_rev():
-    return c.tree_hash("HEAD", "policy")
+    return resources.revision()
 
 
 def evaluator_rev():
-    return ",".join(c.tree_hash("HEAD", p) for p in c.cfg()["evaluator_paths"])
+    return ",".join(resources.evaluator_revision().values())
 
 
 def request_summary(x):
@@ -875,9 +876,9 @@ def revert_policy(why):
         c.open_outage("cannot roll back policy/", "Nothing to return to: no closed iteration and no `setup-baseline` tag. Reason: %s." % why,
                       "Restore `policy/` by hand to a state you trust.")
         return False
-    if c.tree_hash("HEAD", "policy") == c.tree_hash(target, "policy"):
+    if resources.revision() == resources.revision(target):
         return False
-    c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, ["policy"]))
+    c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, resources.restore_paths()))
     open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
                  "The loop was not progressing or the Policymaker failed twice in a row.",
                  "Nothing is blocked. The Policymaker sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])

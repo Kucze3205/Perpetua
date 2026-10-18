@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import common as c
+import managed_resources as resources
 import iteration as it
 import session_security as security
 import session_exports
@@ -101,7 +102,7 @@ def resolve(n):
     granted = False
     if not why and role != "policymaker":
         granted, why = consent_status(p, labels)
-    if not why and role != "policymaker" and p.get("agent") is not False and not os.path.exists("policy/roles/%s/SKILL.md" % role):
+    if not why and role != "policymaker" and p.get("agent") is not False and not os.path.exists(resources.role_directory(role) + "/SKILL.md"):
         why = "no skill for role `%s`" % role
     if not why and p.get("agent") is False and not p.get("command"):
         why = "script role `%s` has no command" % role
@@ -157,9 +158,8 @@ def stage(n, work, trusted):
     contract = c.safe_read(".", ".github/loop/session-protocol.md") or ""
     if role == "policymaker":
         contract += "\n\n" + (c.safe_read(".", ".github/loop/policymaker.md") or "")
-    rules = c.safe_read(".", "policy/protocol.md") or ""
-    prompt_name = "policymaker" if role == "policymaker" else "role"
-    template = c.safe_read(".", "policy/prompts/%s.md" % prompt_name) or ""
+    rules = c.safe_read(".", resources.RULES) or ""
+    template = c.safe_read(".", resources.prompt(role)) or ""
     # The trusted contract is also passed as a system instruction; editable rules are user instructions.
     with open(os.path.join(sess, "protocol.md"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(contract + "\n\n# Policy work rules (subordinate to the engine contract)\n\n" + rules)
@@ -194,11 +194,11 @@ def stage(n, work, trusted):
     else:
         dest = os.path.join(os.path.expanduser("~"), ".claude", "skills", role)
         shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree("policy/roles/%s" % role, dest)
+        shutil.copytree(resources.role_directory(role), dest)
         if not p.get("internet", False):
             staged_role = os.path.join(sess, "role")
             shutil.rmtree(staged_role, ignore_errors=True)
-            shutil.copytree("policy/roles/%s" % role, staged_role)
+            shutil.copytree(resources.role_directory(role), staged_role)
     # Skill hooks and interpolation execute outside the Bash tool sandbox.
     if p.get("agent") is not False and not p.get("internet", False):
         for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
@@ -282,17 +282,14 @@ def fetch_candidate(work, n):
     d = c.default_branch()
     c.git(".", "fetch", "-q", "origin", d, check=False, remote=True)
     touched = [f for f in c.git(".", "diff", "--name-only", "origin/%s...task/%s" % (d, n), check=False).stdout.split()
-               if c.path_match(f, c.cfg()["protected"])]
+               if resources.is_protected(f)]
     if not touched:
         c.git(".", "push", "-q", "-f", "origin", "task/%s:refs/heads/task/%s" % (n, n), check=False, remote=True)
     return c.git(".", "rev-parse", "--short", "task/%s" % n).stdout.strip(), touched
 
 
 def may_write(profile, path):
-    ok = c.path_match(path, profile.get("write") or [])
-    if ok and c.path_match(path, c.cfg()["evaluator_paths"]):
-        return bool(profile.get("owns_evaluator"))
-    return ok
+    return resources.may_write(profile, path)
 
 
 def run_verification(cand, body):
@@ -329,14 +326,14 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
         res["changed"] = changed
         if not changed:
             return dict(res, result="nothing")
-        bad = [f for f in changed if c.path_match(f, cfg["protected"])]
+        bad = [f for f in changed if resources.is_protected(f)]
         if bad:
             return dict(res, result="protected", detail=", ".join(bad))
         out = [f for f in changed if not may_write(prof, f)]
         if out:
             return dict(res, result="scope", detail=", ".join(out))
-        work_paths = [f for f in changed if not c.path_match(f, cfg["direct_paths"])]
-        if any(c.path_match(f, cfg["evaluator_paths"]) for f in changed) and not verified:
+        work_paths = [f for f in changed if not resources.is_direct(f)]
+        if any(resources.is_evaluator(f) for f in changed) and not verified:
             return dict(res, result="awaiting-verifier")
         with Tree("origin/%s" % br) as cand:
             if c.git(cand, "rebase", "origin/%s" % d, check=False).returncode:

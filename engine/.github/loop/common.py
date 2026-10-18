@@ -17,6 +17,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+import managed_resources as resources
+
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
 MARK = "<!-- session-report -->"
 TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
@@ -38,16 +40,16 @@ DEFAULTS = {
     "owner": "",
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
-    "direct_paths": ["policy/", "audit/", "journal/"],
+    "direct_paths": [resources.ROOT + "/", "audit/", "journal/"],
     "notes_paths": ["journal/"],
-    "evaluator_paths": ["policy/evaluator/"],
+    "evaluator_paths": [resources.EVALUATOR],
     "policymaker_only_roles": ["evaluator", "audit"],
     "verifier_role": "evaluator-verifier",
     "large_file_bytes": 5000000,
     "gate": {"kind": "owner", "command": "", "timeout_minutes": 120, "env_passthrough": []},
     "limits": {"tools": DEFAULT_TOOLS, "internet_write": []},
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
-               "tools": DEFAULT_TOOLS, "write": ["policy/"]},
+               "tools": DEFAULT_TOOLS, "write": [resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
     "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
                "stream_retention_iterations": None},
@@ -82,11 +84,11 @@ def params():
     p = {"shaper": "orchestrator", "criterion": "", "models": {"default": "claude-sonnet-5-5"}, "efforts": ["low", "medium", "high"],
          "ceilings": {"job_minutes": 240, "iteration_minutes": None, "max_turns": 150},
          "policymaker_triggers": {"every_iterations": None, "no_progress": None}}
-    return merged(p, load_yaml("policy/params.yml"))
+    return merged(p, load_yaml(resources.PARAMS))
 
 
 def profiles():
-    return load_yaml("policy/profiles.yml")
+    return load_yaml(resources.PROFILES)
 
 
 def engine_version():

@@ -167,6 +167,51 @@ class StageTest(SessionCase):
         self.assertEqual(state["trigger"], "a test")
 
 
+class ManagedResourcesRegressionTest(SessionCase):
+    work = StageTest.work
+
+    def test_legacy_role_admission_receipt_and_rollback_stay_consistent(self):
+        baseline = c.head()
+        legacy_revision = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD:policy")
+        fakes.sh(self.w.loop, "git", "tag", "setup-baseline", baseline)
+        self.assertEqual(it.policy_rev(), legacy_revision)
+
+        n = self.issue()
+        loop.resolve(n)
+        self.assertEqual(self.outputs()["tools"], "Read,Grep,Glob,Write,Edit,Skill")
+        work = self.work()
+        loop.stage(n, work, os.path.join(self.w.tmp, "trusted-regression"))
+        self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")),
+                         "---\nname: worker\ndescription: fixture\n---\nx\n")
+        self.w.branch(n, {"policy/roles/worker/SKILL.md": "forbidden"})
+        self.assertEqual(loop.merge_branch(n, "worker", self.hub.issue(n))["result"], "scope")
+
+        pol = self.issue("policymaker")
+        replacement = "---\nname: worker\ndescription: adapted\n---\nnew instructions\n"
+        self.w.branch(pol, {"policy/roles/worker/SKILL.md": replacement})
+        accepted = loop.merge_branch(pol, "policymaker", self.hub.issue(pol))
+        self.assertEqual((accepted["result"], accepted["verdict"]), ("merged", None))
+        receipt = accepted["change"]
+        self.assertEqual(receipt["schema_version"], 1)
+        self.assertEqual(receipt["policy_rev_before"], legacy_revision)
+        self.assertEqual(receipt["changed_paths"], ["policy/roles/worker/SKILL.md"])
+        self.assertEqual(receipt["policy_rev_after"],
+                         fakes.sh(self.w.origin, "git", "rev-parse", "main:policy"))
+        c.sync_main()
+        self.assertEqual(it.policy_rev(), receipt["policy_rev_after"])
+        work = self.work()
+        loop.stage(n, work, os.path.join(self.w.tmp, "trusted-adapted"))
+        self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")), replacement)
+
+        self.w.push_main({"src/kept.txt": "product", "journal/kept.md": "report"})
+        self.assertTrue(it.revert_policy("legacy regression"))
+        self.assertEqual(it.policy_rev(), legacy_revision)
+        self.assertEqual(self.w.origin_file("src/kept.txt"), "product")
+        self.assertEqual(self.w.origin_file("journal/kept.md"), "report")
+        self.assertEqual(json.loads(self.w.origin_file("iterations/changes/change-%s.json" % pol)), receipt)
+        self.assertFalse(it.revert_policy("already restored"))
+
+
 class EpilogueTest(SessionCase):
     def limit_result(self):
         return {"type": "result", "is_error": True, "result": "You've hit your session limit · resets 7:20am (UTC)"}

@@ -210,7 +210,7 @@ def policy_rev():
 
 
 def evaluator_rev():
-    return ",".join(resources.evaluator_revision().values())
+    return resources.evaluator_revision_string()
 
 
 def request_summary(x):

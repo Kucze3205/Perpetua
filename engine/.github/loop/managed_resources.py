@@ -5,8 +5,6 @@ module describes the existing policy tree; it does not activate a new layout.
 Persisted policy revisions remain the Git tree hash, including an empty string
 when that tree is absent. Evaluator revisions retain their path-to-hash shape.
 """
-import common as c
-
 ROOT = "policy"
 PARAMS = ROOT + "/params.yml"
 PROFILES = ROOT + "/profiles.yml"
@@ -27,29 +25,43 @@ def restore_paths():
 
 
 def revision(rev="HEAD", cwd="."):
+    import common as c
     return c.tree_hash(rev, ROOT, cwd)
 
 
 def evaluator_revision(rev="HEAD", cwd="."):
+    import common as c
     return {path: c.tree_hash(rev, path, cwd) for path in c.cfg()["evaluator_paths"]}
 
 
 def is_managed(path):
+    import common as c
     return c.path_match(path, [ROOT + "/"]) or is_evaluator(path)
 
 
 def is_protected(path):
+    import common as c
     return c.path_match(path, c.cfg()["protected"])
 
 
 def is_direct(path):
+    import common as c
     return c.path_match(path, c.cfg()["direct_paths"])
 
 
 def is_evaluator(path):
+    import common as c
     return c.path_match(path, c.cfg()["evaluator_paths"])
 
 
 def may_write(profile, path):
+    import common as c
     allowed = c.path_match(path, profile.get("write") or [])
     return allowed and (not is_evaluator(path) or bool(profile.get("owns_evaluator")))
+
+
+def evaluator_revision_string(rev="HEAD", cwd="."):
+    """Legacy iteration records preserve path order and repeated configured paths."""
+    import common as c
+    hashes = evaluator_revision(rev, cwd)
+    return ",".join(hashes[path] for path in c.cfg()["evaluator_paths"])

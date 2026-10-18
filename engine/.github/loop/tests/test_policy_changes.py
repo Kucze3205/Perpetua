@@ -28,6 +28,15 @@ class ProvenanceTest(unittest.TestCase):
         text = self.w.origin_file(filename)
         return json.loads(text) if text else None
 
+    def test_evaluator_revisions_preserve_configured_order_and_duplicate_paths(self):
+        self.w.push_main({"engine.yml": "evaluator_paths: [checks/, policy/evaluator/, checks/]\n",
+                          "checks/measure.txt": "external", "policy/evaluator/measure.txt": "internal"})
+        c.sync_main()
+        external = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD:checks")
+        internal = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD:policy/evaluator")
+        self.assertEqual(it.evaluator_rev(), external + "," + internal + "," + external)
+        self.assertEqual(changes.evaluator_rev("HEAD"), {"checks/": external, "policy/evaluator/": internal})
+
     def test_two_policymaker_sessions_have_exact_diffs_and_do_not_rewrite_closed_records(self):
         old = '{"schema_version":1,"iteration":6,"status":"closed"}\n'
         self.w.push_main({"iterations/0006.json": old})

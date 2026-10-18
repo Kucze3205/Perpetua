@@ -88,7 +88,7 @@ def params():
 
 
 def profiles():
-    return load_yaml(resources.PROFILES)
+    return resources.role_profiles()
 
 
 def engine_version():

@@ -1,10 +1,10 @@
-"""The engine's contract for managed definitions in the current loop format.
+"""Managed definitions: storage, execution layer and admission permissions.
 
-Locations and ownership are separate from a session's write permissions. This
-module describes the existing policy tree; it does not activate a new layout.
-Persisted policy revisions remain the Git tree hash, including an empty string
-when that tree is absent. Evaluator revisions retain their path-to-hash shape.
+Legacy remains the default. The owner selects the additive layered format in
+engine.yml; profiles then assign each role to exactly one execution layer.
 """
+import os
+import re
 ROOT = "policy"
 PARAMS = ROOT + "/params.yml"
 PROFILES = ROOT + "/profiles.yml"
@@ -12,12 +12,109 @@ RULES = ROOT + "/protocol.md"
 EVALUATOR = ROOT + "/evaluator/"
 
 
+EXECUTION = "execution"
+LAYERS = (EXECUTION, ROOT)
+
+
+def layered(cwd="."):
+    import common as c
+    value = c.load_yaml(os.path.join(cwd, "engine.yml")).get("resources", {})
+    if not isinstance(value, dict) or set(value) - {"format"}:
+        raise ValueError("resources supports only format: legacy or layered")
+    fmt = value.get("format", "legacy")
+    if fmt not in ("legacy", "layered"):
+        raise ValueError("unknown managed resources format: %s" % fmt)
+    return fmt == "layered"
+
+
+def _load_profiles(path):
+    """Reject duplicate keys rather than silently selecting a layer/profile."""
+    import yaml
+
+    class UniqueLoader(yaml.SafeLoader):
+        pass
+
+    def mapping(loader, node):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            if not isinstance(key, str):
+                raise ValueError("profile keys must be strings in %s" % path)
+            if key in result:
+                raise ValueError("duplicate profile key `%s` in %s" % (key, path))
+            result[key] = loader.construct_object(value_node)
+        return result
+
+    UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return yaml.load(fh, Loader=UniqueLoader) or {}
+    except FileNotFoundError:
+        return {}
+    except yaml.YAMLError as error:
+        raise ValueError("invalid profiles YAML in %s" % path) from error
+
+
+def role_profiles(cwd="."):
+    """Validate the whole active catalog before selecting any role."""
+    import common as c
+    if not layered(cwd):
+        return c.load_yaml(os.path.join(cwd, PROFILES))
+    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
+    out = {}
+    for layer in LAYERS:
+        profiles = _load_profiles(os.path.join(cwd, layer, "profiles.yml"))
+        if not isinstance(profiles, dict):
+            raise ValueError("%s/profiles.yml must map role names to profiles" % layer)
+        for role, profile in profiles.items():
+            if not isinstance(role, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", role):
+                raise ValueError("invalid role name: %s" % role)
+            if role in out:
+                raise ValueError("role `%s` belongs to both execution and policy layers" % role)
+            if role == "policymaker":
+                raise ValueError("Policymaker profile belongs to engine.yml; its skill belongs to policy")
+            if not isinstance(profile, dict):
+                raise ValueError("role `%s` must have a profile mapping" % role)
+            if "layer" in profile:
+                raise ValueError("role `%s` layer is assigned by its profiles.yml location" % role)
+            required = ROOT if role in ("audit", "evaluator", c.cfg()["verifier_role"]) else None
+            if role == shaper:
+                if required == ROOT:
+                    raise ValueError("policy role `%s` cannot be the execution shaper" % role)
+                required = EXECUTION
+            if required and layer != required:
+                raise ValueError("role `%s` must belong to the %s layer" % (role, required))
+            out[role] = dict(profile, layer=layer)
+    # A skill directory in both layers is ambiguous even with only one profile.
+    active = dict(out, policymaker={"layer": ROOT})
+    for role, profile in active.items():
+        other = ROOT if profile["layer"] == EXECUTION else EXECUTION
+        if os.path.exists(os.path.join(cwd, other, "roles", role)):
+            raise ValueError("role `%s` has a skill in the wrong or both layers" % role)
+    return out
+
+
+def role_layer(role):
+    if not layered():
+        return ROOT
+    profiles = role_profiles()
+    if role == "policymaker":
+        return ROOT
+    if role not in profiles:
+        raise ValueError("no layer/profile for role `%s`" % role)
+    return profiles[role]["layer"]
+
+
 def role_directory(role):
-    return ROOT + "/roles/" + role
+    return role_layer(role) + "/roles/" + role
+
+
+def rules(role):
+    return role_layer(role) + "/protocol.md" if layered() else RULES
 
 
 def prompt(role):
-    return ROOT + "/prompts/" + ("policymaker" if role == "policymaker" else "role") + ".md"
+    return role_layer(role) + "/prompts/" + ("policymaker" if role == "policymaker" else "role") + ".md"
 
 
 def restore_paths():
@@ -36,7 +133,7 @@ def evaluator_revision(rev="HEAD", cwd="."):
 
 def is_managed(path):
     import common as c
-    return c.path_match(path, [ROOT + "/"]) or is_evaluator(path)
+    return c.path_match(path, [ROOT + "/"] + ([EXECUTION + "/"] if layered() else [])) or is_evaluator(path)
 
 
 def is_protected(path):
@@ -46,7 +143,7 @@ def is_protected(path):
 
 def is_direct(path):
     import common as c
-    return c.path_match(path, c.cfg()["direct_paths"])
+    return (layered() and is_managed(path)) or c.path_match(path, c.cfg()["direct_paths"])
 
 
 def is_evaluator(path):
@@ -56,6 +153,8 @@ def is_evaluator(path):
 
 def may_write(profile, path):
     import common as c
+    if layered() and profile.get("layer") == EXECUTION and is_managed(path):
+        return False
     allowed = c.path_match(path, profile.get("write") or [])
     return allowed and (not is_evaluator(path) or bool(profile.get("owns_evaluator")))
 

@@ -102,7 +102,7 @@ def resolve(n):
     granted = False
     if not why and role != "policymaker":
         granted, why = consent_status(p, labels)
-    if not why and role != "policymaker" and p.get("agent") is not False and not os.path.exists(resources.role_directory(role) + "/SKILL.md"):
+    if not why and (role != "policymaker" or resources.layered()) and p.get("agent") is not False and not os.path.exists(resources.role_directory(role) + "/SKILL.md"):
         why = "no skill for role `%s`" % role
     if not why and p.get("agent") is False and not p.get("command"):
         why = "script role `%s` has no command" % role
@@ -158,7 +158,7 @@ def stage(n, work, trusted):
     contract = c.safe_read(".", ".github/loop/session-protocol.md") or ""
     if role == "policymaker":
         contract += "\n\n" + (c.safe_read(".", ".github/loop/policymaker.md") or "")
-    rules = c.safe_read(".", resources.RULES) or ""
+    rules = c.safe_read(".", resources.rules(role)) or ""
     template = c.safe_read(".", resources.prompt(role)) or ""
     # The trusted contract is also passed as a system instruction; editable rules are user instructions.
     with open(os.path.join(sess, "protocol.md"), "w", encoding="utf-8", newline="\n") as fh:
@@ -167,9 +167,11 @@ def stage(n, work, trusted):
         fh.write(contract)
     bootstrap = ("You are the Policymaker" if role == "policymaker" else "You are role `%s`" % role)
     bootstrap += " of this loop. Read .session/protocol.md and .session/issue.md. "
+    if resources.layered() and p.get("agent") is not False:
+        bootstrap += "Read your staged role skill .session/role/SKILL.md and its relevant references. "
     if role == "policymaker":
         bootstrap += "Read .session/policymaker.md and .session/loop-state.json. "
-    else:
+    elif not resources.layered():
         bootstrap += ("Call the Skill tool with `%s`. " % role if p.get("internet", False)
                       else "Read your staged role skill .session/role/SKILL.md and its relevant references. ")
     bootstrap += "Write .session/report.md. Work on branch task/%s.\n\n" % n
@@ -185,13 +187,18 @@ def stage(n, work, trusted):
         json.dump({"mcpServers": {}}, fh)
     for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py"):
         shutil.copy(".github/loop/" + f, trusted)
+    if resources.layered() and p.get("agent") is not False:
+        staged_role = os.path.join(sess, "role")
+        shutil.rmtree(staged_role, ignore_errors=True)
+        shutil.copytree(resources.role_directory(role), staged_role)
+        security.check_skills(staged_role)
     if role == "policymaker":
         with open(os.path.join(sess, "policymaker.md"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write("You are the Policymaker. Follow the engine contract in .session/protocol.md.\n\n" + template)
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")
-    else:
+    elif not resources.layered():
         dest = os.path.join(os.path.expanduser("~"), ".claude", "skills", role)
         shutil.rmtree(dest, ignore_errors=True)
         shutil.copytree(resources.role_directory(role), dest)
@@ -339,6 +346,11 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
             if c.git(cand, "rebase", "origin/%s" % d, check=False).returncode:
                 c.git(cand, "rebase", "--abort", check=False)
                 return dict(res, result="conflict")
+            if resources.layered():
+                try:
+                    resources.role_profiles(cand)
+                except ValueError as error:
+                    return dict(res, result="invalid-resources", detail=str(error))
             if checked_evaluator_rev and policy_changes.evaluator_rev("HEAD", cand) != checked_evaluator_rev:
                 return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
             # The accepted range contains this session's rebased commits only.
@@ -412,6 +424,8 @@ def merge_outcome(r):
         return "blocked", dict(upd, merged="false"), "The change touches protected paths: %s. Merge refused." % detail
     if res == "scope":
         return "blocked", dict(upd, merged="false"), "The change writes outside the role's `write` paths: %s. Merge refused." % detail
+    if res == "invalid-resources":
+        return "blocked", dict(upd, merged="false"), "Invalid managed definitions: %s. Merge refused." % detail
     if res == "large":
         return "blocked", dict(upd, merged="false"), "Files over the size limit: %s. Put large outputs in `.session/artifacts/`." % detail
     if res == "check":

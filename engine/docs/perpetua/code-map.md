@@ -40,7 +40,7 @@ The engine uses the accepted checkout; agent commits enter through `fetch_candid
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
 | Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |
-| Historical input staging | `session_exports.py` | `test_exports.py` |
+| Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
 | Isolation and credentials | `session_security.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | `test_watchdog.py`, `test_stream.py` |
 

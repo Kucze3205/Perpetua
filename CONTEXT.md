@@ -20,13 +20,16 @@ environment the loop needs to pursue it; closing it arms the loop.
 _Avoid_: onboarding, wizard
 
 **Engine**:
-The goal-independent machinery of a loop: workflows, scripts, protected configuration and session contracts. Copied into the loop's repository by setup, where it
+The goal-independent machinery of a loop: workflows, scripts, configuration
+and protected session contracts. Copied into the loop's repository by setup, where it
 belongs to that loop; a setup map may change it. Changed only by the owner.
 _Avoid_: framework, runtime
 
 **Role**:
 A pair of skill + permission profile, selected by a label on an issue. Built
-per loop during setup, preferably from existing skills.
+per loop during setup, using existing global or project skills and supplied
+templates as sources. Each active role skill belongs to one layer; separate
+layer-specific skills may be adapted from the same source.
 _Avoid_: persona, agent type
 
 **Goal**:
@@ -73,16 +76,22 @@ _Avoid_: agent, policymaker
 
 **Policymaker**:
 The agent in the policy layer that manages the loop's architecture by creating
-and revising policy; it does not perform the implementation layer's work.
+and revising policy, including skills in both layers and its own skill. It does
+not perform the implementation layer's work or change protected engine contracts.
 _Avoid_: policy, politician, strategy, scheduler
 
 **Policy layer**:
 The part of the loop in which the policymaker defines how the implementation
-layer works, within the owner's accepted limits.
+layer works, within the owner's accepted limits. Its skills and session tool
+access are separate from those of the implementation layer. It includes the
+Policymaker, audit, evaluator maintenance and evaluator verification.
 
 **Implementation layer**:
 The part of the loop that applies policy to plan, execute and evaluate work
-toward the goal.
+toward the goal. Its skills belong to this layer even when the Policymaker
+creates or revises them. It includes the orchestrator and roles performing
+goal-directed tasks. Its sessions cannot read policy-layer internals; they
+receive their work instructions and may submit suggestions for policy changes.
 
 **Orchestrator**:
 A role that turns the goal and the loop's state into concrete work: what to
@@ -103,22 +112,22 @@ number of tasks in the largest dependency-depth level, computed from the graph,
 not set. It is a structural statistic, not a cap or prediction of concurrent jobs.
 
 **Managed definitions**:
-The version-controlled definitions maintained by the Policymaker in both
-`execution/` and `policy/`: skills, profiles, prompts, parameters and measurement.
+The version-controlled definitions maintained by the Policymaker across both
+layers: skills, profiles, prompts, parameters and measurement.
 They share one revision, activate at iteration boundaries and roll back together.
 Governance ownership is independent of the layer that executes a definition.
 
 **Implementation resources**:
-The local definitions in `execution/` used by the selected shaper and work roles.
+The local definitions used by the selected shaper and goal-directed work roles.
 Implementation sessions receive their own instructions and public contracts;
 they cannot read policy internals and submit suggestions to the Policymaker.
 
 **Policy resources**:
-The local definitions in `policy/` used by the Policymaker, audit, evaluator
+The local definitions used by the Policymaker, audit, evaluator
 maintenance and evaluator verifier. The engine invokes measurement separately.
 
 **Role template**:
-An inactive candidate under `templates/`, or another project/global/plugin source.
+An inactive candidate supplied by the plugin or another project/global source.
 Setup selects and copies complete skills into exactly one active layer. Sources
 remain unchanged, and separate local adaptations may share the same source.
 

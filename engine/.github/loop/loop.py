@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -25,6 +26,7 @@ import session_exports
 import session_reports
 import policymaker_session
 import policy_changes
+import executor_boundary
 
 BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
 MAX_ATTEMPTS = 3                # resume attempts
@@ -225,6 +227,9 @@ def stage(n, work, trusted):
             security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
         json.dump(security.settings(p, trusted), fh)
+    if session_inputs.restricted(role) and p.get("agent") is False and not p.get("internet", False):
+        shutil.copy(".github/loop/executor_boundary.py", trusted)
+        executor_boundary.prepare(work, trusted)
 
 
 # ---------------------------------------------------------------- artifacts: large outputs live in release assets
@@ -326,9 +331,23 @@ def fetch_candidate(work, n):
     (its config, its hooks) is ever executed. Returns (short sha, protected paths the change touches). The branch goes
     to origin only when it touches none: GitHub refuses a token's push of workflow files, and such a change is refused
     at merge anyway."""
-    r = c.git(".", "fetch", "-q", "--no-tags", "--no-recurse-submodules", os.path.join(work, ".git"), "+HEAD:refs/heads/task/%s" % n, check=False)
-    if r.returncode:
-        return None, []
+    metadata = os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "trusted", "executor-baseline.json")
+    if os.path.isfile(metadata):
+        try:
+            with open(metadata, encoding="utf-8") as fh:
+                executor_boundary.import_candidate(work, json.load(fh), ".", "refs/heads/task/%s" % n)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            print("Executor output could not be admitted safely")
+            return None, []
+    else:
+        role = c.roles_of(c.label_names(c.issue(n)))[0]
+        profile = profile_of(role)
+        if session_inputs.restricted(role) and profile.get("agent") is False and not profile.get("internet", False):
+            print("Required executor admission metadata unavailable")
+            return None, []
+        r = c.git(".", "fetch", "-q", "--no-tags", "--no-recurse-submodules", os.path.join(work, ".git"), "+HEAD:refs/heads/task/%s" % n, check=False)
+        if r.returncode:
+            return None, []
     d = c.default_branch()
     c.git(".", "fetch", "-q", "origin", d, check=False, remote=True)
     touched = [f for f in c.git(".", "diff", "--name-only", "origin/%s...task/%s" % (d, n), check=False).stdout.split()

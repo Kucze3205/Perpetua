@@ -36,9 +36,9 @@ Compatibility is deliberate:
 The owner selects `resources: {format: layered}` in protected `engine.yml`.
 Omitting it (or setting `format: legacy`) preserves the shipped legacy layout.
 No existing installation is migrated. This is an additive format, pending the
-final template switch. It establishes role selection and write admission;
-read isolation is separate work. Until it lands, this option is for controlled
-preparation and tests.
+final template switch. Offline script executors also use the filesystem and
+admission boundary described below. Model and online isolation remains separate
+work; this option is still for controlled preparation and tests.
 
 The execution layer uses `execution/profiles.yml`, `execution/roles/<role>/`,
 `execution/protocol.md`, and `execution/prompts/role.md`. The policy layer uses
@@ -118,3 +118,39 @@ iteration's commit, or `setup-baseline` before the first closed iteration. It
 restores deleted definitions and removes newly added definitions, retaining
 products, reports, receipts and Git history. Quiet time, consecutive failed
 Policymaker sessions and owner-wait accounting retain their existing rules.
+
+## Offline executor boundary
+
+Layered execution profiles with `agent: false` and `internet: false` run in a
+Linux bubblewrap namespace with a private process tree, network, home and temp
+directory. Only OS runtime directories, the sanitized work snapshot and the
+selected script/offline enforcement program are mounted. Neither the engine
+checkout, staged engine metadata, host home, host temp nor other host checkouts
+are mounted. Seccomp also denies socket creation by the script and its children.
+Missing bubblewrap, namespace denial or missing admission metadata fails closed.
+
+The work snapshot excludes managed definitions in both layers, inactive
+`templates/`, engine internals/configuration, policy iteration/audit records and
+tool discovery directories. It retains regular tracked product files and the
+already filtered `.session/` recipient view. Redirected product inputs are
+refused. Its fresh Git root commit contains only that view: no original commit
+IDs, object store, alternates, reflogs, remotes, credential configuration or
+hooks. Scripts can use Git locally, but must leave their final files in the
+working tree; the engine admits those bytes, including uncommitted work.
+
+The trusted epilogue never invokes worker Git for these sessions. It reads
+regular output files as data and builds an index against the staged original
+baseline in the engine repository, retaining excluded definitions unchanged.
+Symlinks, hardlinks and special output files are refused. Binary contents,
+executable modes and deletion of visible inputs are preserved. Worker Git
+configuration, hooks and attributes cannot execute during this import. The
+result then passes the existing protected/write checks and merge path; the
+change gate still runs from the accepted tree with the reconstructed candidate
+and accepted baseline. This does not migrate legacy installations.
+
+Run `python3 -m unittest discover -s tests -p test_executor_boundary.py -v`
+from `.github/loop` on Linux with bubblewrap namespaces enabled. These tests
+execute the staged script and epilogue, probe host/files/Git/network access,
+attempt credential-bearing worker Git hooks/configuration, and check data
+preservation and admission refusals. A skip on another platform is not evidence
+of isolation. No provider or actual GitHub credential is needed.

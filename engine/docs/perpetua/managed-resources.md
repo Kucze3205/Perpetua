@@ -175,3 +175,10 @@ execute the staged script and epilogue, probe host/files/Git/network access,
 attempt credential-bearing worker Git hooks/configuration, and check data
 preservation and admission refusals. A skip on another platform is not evidence
 of isolation. No provider or actual GitHub credential is needed.
+## New-loop setup
+
+`setup_roles.py prepare` converts copied engine defaults into inactive `templates/`, creates empty layered catalogs and clears the shaper before the setup branch is committed. It does not change the plugin installation. The shipped legacy template is retained during the ADR-0004 transition; setup preparation selects the additive layered format explicitly.
+
+The setup map chooses sources from project/global/plugin skills (including optional Matt Pocock skills), inactive templates, or a newly authored skill when no source fits. `setup_roles.py install` copies a complete skill directory and installs the explicitly supplied profile in one layer. Adaptations modify local copies only; separate names allow independent adaptations of one source in both layers. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
+
+Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires a selected execution shaper, all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline matching HEAD. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This adds no migration, update or reconfiguration mode.

@@ -239,6 +239,13 @@ ARTIFACT_LINE = re.compile(r"^- artifact: (\S+) \| release: (\S+) \| size: (\d+)
 
 def upload_artifacts(n, work, k):
     """Files the session left in `.session/artifacts/` go to the release `iter-NNNN`; the manifest goes into the report."""
+    try:
+        # Check ancestors too: a directory link can resolve only on the host
+        # after the namespace ends, exposing files the worker could not read.
+        security.check_session_directory(work)
+    except SystemExit:
+        print("Session artifacts refused: redirected output")
+        return 0
     d = os.path.join(work, ".session", "artifacts")
     if not os.path.isdir(d):
         return 0

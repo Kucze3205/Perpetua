@@ -174,6 +174,27 @@ echo '{"verdict":"rejected","detail":"accepted gate ran with correct candidate a
         self.assertIn("isolation unavailable", result.stderr)
         self.assertFalse(os.path.exists(marker))
 
+    def test_artifact_directory_redirect_does_not_export_host_policy_but_real_artifact_uploads(self):
+        for redirected in (True, False):
+            with self.subTest(redirected=redirected):
+                command = "echo result > src/product.txt\n"
+                command += ("ln -s " + self.w.loop + "/policy .session/artifacts" if redirected else
+                            "mkdir .session/artifacts\necho legitimate-artifact > .session/artifacts/product.txt")
+                self.configure(command)
+                n = self.issue()
+                work, _, _ = self.run_script(n)
+                before = len(self.hub.gh_calls)
+                with patch.object(loop.it, "run_gate", return_value={"verdict": "accepted"}):
+                    loop.finalize(n, work)
+                calls = self.hub.gh_calls[before:]
+                uploads = [call for call in calls if call[:2] == ("release", "upload")]
+                if redirected:
+                    self.assertFalse(uploads)
+                    self.assertNotIn("POLICY_SECRET_NEVER_VISIBLE", self.hub.prose(n))
+                else:
+                    self.assertEqual(len(uploads), 1)
+                    self.assertEqual(Path(uploads[0][3]).read_text(), "legitimate-artifact\n")
+
 
 class MissingIsolationTest(unittest.TestCase):
     def test_missing_namespace_tool_fails_closed(self):

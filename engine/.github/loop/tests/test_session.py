@@ -8,6 +8,7 @@ from datetime import timedelta
 import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 from test_merge import GATE_SH, SCRIPT_GATE
+import managed_resources as resources
 
 def read(path):
     with open(path, encoding="utf-8") as fh:
@@ -32,7 +33,7 @@ class SessionCase(unittest.TestCase):
     def setUp(self):
         self.w = fakes.worker_world(self.YML)
         self.hub = self.w.hub
-        self.w.push_main({"policy/evaluator/gate.sh": GATE_SH, "policy/profiles.yml": fakes.WORKER_PROFILES + EXTRA_PROFILES}, "setup")
+        self.w.push_main({"policy/evaluator/gate.sh": GATE_SH, "execution/profiles.yml": fakes.EXECUTION_PROFILES + EXTRA_PROFILES}, "setup")
         c.sync_main()
         self.out = os.path.join(self.w.tmp, "gh-output")
         os.environ["GITHUB_OUTPUT"] = self.out
@@ -127,7 +128,7 @@ class StageTest(SessionCase):
         self.assertIn("Session protocol", read(os.path.join(work, ".session", "protocol.md")))
         for f in ("agent.sh", "stream_filter.py", "remaining.py", "settings.json"):
             self.assertTrue(os.path.exists(os.path.join(trusted, f)), f)
-        self.assertTrue(os.path.exists(os.path.join(self.home, ".claude", "skills", "worker", "SKILL.md")))
+        self.assertTrue(os.path.exists(os.path.join(work, ".session", "role", "SKILL.md")))
         self.assertIn(".session/", read(os.path.join(work, ".git", "info", "exclude")))
         hook = json.loads(read(os.path.join(trusted, "settings.json")))
         self.assertIn("remaining.py", hook["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
@@ -157,7 +158,7 @@ class StageTest(SessionCase):
         work = self.work()
         loop.stage(shaper, work, os.path.join(self.w.tmp, "t1"))
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
-        self.assertEqual((state["iteration"], state["engine_version"]), (0, "0.2.0"))
+        self.assertEqual((state["iteration"], state["engine_version"]), (0, c.engine_version()))
         self.assertFalse(os.path.exists(os.path.join(work, ".session", "macro-plan.md")))
         pol = it.start_policymaker(0, "a test")
         work2 = self.work()
@@ -170,11 +171,11 @@ class StageTest(SessionCase):
 class ManagedResourcesRegressionTest(SessionCase):
     work = StageTest.work
 
-    def test_legacy_role_admission_receipt_and_rollback_stay_consistent(self):
+    def test_layered_role_admission_receipt_and_rollback_stay_consistent(self):
         baseline = c.head()
-        legacy_revision = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD:policy")
+        initial_revision = resources.revision()
         fakes.sh(self.w.loop, "git", "tag", "setup-baseline", baseline)
-        self.assertEqual(it.policy_rev(), legacy_revision)
+        self.assertEqual(it.policy_rev(), initial_revision)
 
         n = self.issue()
         loop.resolve(n)
@@ -183,20 +184,20 @@ class ManagedResourcesRegressionTest(SessionCase):
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted-regression"))
         self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")),
                          "---\nname: worker\ndescription: fixture\n---\nx\n")
-        self.w.branch(n, {"policy/roles/worker/SKILL.md": "forbidden"})
+        self.w.branch(n, {"execution/roles/worker/SKILL.md": "forbidden"})
         self.assertEqual(loop.merge_branch(n, "worker", self.hub.issue(n))["result"], "scope")
 
         pol = self.issue("policymaker")
         replacement = "---\nname: worker\ndescription: adapted\n---\nnew instructions\n"
-        self.w.branch(pol, {"policy/roles/worker/SKILL.md": replacement})
-        accepted = loop.merge_branch(pol, "policymaker", self.hub.issue(pol))
+        self.w.branch(pol, {"execution/roles/worker/SKILL.md": replacement})
+        accepted = loop.merge_branch(pol, "policymaker", self.hub.issue(pol), boundary=True)
         self.assertEqual((accepted["result"], accepted["verdict"]), ("merged", None))
         receipt = accepted["change"]
         self.assertEqual(receipt["schema_version"], 1)
-        self.assertEqual(receipt["policy_rev_before"], legacy_revision)
-        self.assertEqual(receipt["changed_paths"], ["policy/roles/worker/SKILL.md"])
+        self.assertEqual(receipt["policy_rev_before"], initial_revision)
+        self.assertEqual(receipt["changed_paths"], ["execution/roles/worker/SKILL.md"])
         self.assertEqual(receipt["policy_rev_after"],
-                         fakes.sh(self.w.origin, "git", "rev-parse", "main:policy"))
+                         resources.revision("main", self.w.origin))
         c.sync_main()
         self.assertEqual(it.policy_rev(), receipt["policy_rev_after"])
         work = self.work()
@@ -204,8 +205,8 @@ class ManagedResourcesRegressionTest(SessionCase):
         self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")), replacement)
 
         self.w.push_main({"src/kept.txt": "product", "journal/kept.md": "report"})
-        self.assertTrue(it.revert_policy("legacy regression"))
-        self.assertEqual(it.policy_rev(), legacy_revision)
+        self.assertTrue(it.revert_policy("layered regression"))
+        self.assertEqual(it.policy_rev(), initial_revision)
         self.assertEqual(self.w.origin_file("src/kept.txt"), "product")
         self.assertEqual(self.w.origin_file("journal/kept.md"), "report")
         self.assertEqual(json.loads(self.w.origin_file("iterations/changes/change-%s.json" % pol)), receipt)

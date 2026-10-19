@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -25,6 +26,7 @@ import session_exports
 import session_reports
 import policymaker_session
 import policy_changes
+import executor_boundary
 
 BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
 MAX_ATTEMPTS = 3                # resume attempts
@@ -225,6 +227,9 @@ def stage(n, work, trusted):
             security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
         json.dump(security.settings(p, trusted), fh)
+    if session_inputs.restricted(role) and p.get("agent") is False and not p.get("internet", False):
+        shutil.copy(".github/loop/executor_boundary.py", trusted)
+        executor_boundary.prepare(work, trusted)
 
 
 # ---------------------------------------------------------------- artifacts: large outputs live in release assets
@@ -234,6 +239,13 @@ ARTIFACT_LINE = re.compile(r"^- artifact: (\S+) \| release: (\S+) \| size: (\d+)
 
 def upload_artifacts(n, work, k):
     """Files the session left in `.session/artifacts/` go to the release `iter-NNNN`; the manifest goes into the report."""
+    try:
+        # Check ancestors too: a directory link can resolve only on the host
+        # after the namespace ends, exposing files the worker could not read.
+        security.check_session_directory(work)
+    except SystemExit:
+        print("Session artifacts refused: redirected output")
+        return 0
     d = os.path.join(work, ".session", "artifacts")
     if not os.path.isdir(d):
         return 0
@@ -326,9 +338,23 @@ def fetch_candidate(work, n):
     (its config, its hooks) is ever executed. Returns (short sha, protected paths the change touches). The branch goes
     to origin only when it touches none: GitHub refuses a token's push of workflow files, and such a change is refused
     at merge anyway."""
-    r = c.git(".", "fetch", "-q", "--no-tags", "--no-recurse-submodules", os.path.join(work, ".git"), "+HEAD:refs/heads/task/%s" % n, check=False)
-    if r.returncode:
-        return None, []
+    metadata = os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "trusted", "executor-baseline.json")
+    if os.path.isfile(metadata):
+        try:
+            with open(metadata, encoding="utf-8") as fh:
+                executor_boundary.import_candidate(work, json.load(fh), ".", "refs/heads/task/%s" % n)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            print("Executor output could not be admitted safely")
+            return None, []
+    else:
+        role = c.roles_of(c.label_names(c.issue(n)))[0]
+        profile = profile_of(role)
+        if session_inputs.restricted(role) and profile.get("agent") is False and not profile.get("internet", False):
+            print("Required executor admission metadata unavailable")
+            return None, []
+        r = c.git(".", "fetch", "-q", "--no-tags", "--no-recurse-submodules", os.path.join(work, ".git"), "+HEAD:refs/heads/task/%s" % n, check=False)
+        if r.returncode:
+            return None, []
     d = c.default_branch()
     c.git(".", "fetch", "-q", "origin", d, check=False, remote=True)
     touched = [f for f in c.git(".", "diff", "--name-only", "origin/%s...task/%s" % (d, n), check=False).stdout.split()
@@ -342,12 +368,13 @@ def may_write(profile, path):
     return resources.may_write(profile, path)
 
 
-def run_verification(cand, body):
+def run_verification(cand, body, role=None):
     """`## Verification` of the task: commands from code blocks or backticked lines. No secrets."""
     text = c.section(body, "Verification")
     cmds = [x.strip() for x in re.findall(r"```[a-z]*\n(.*?)```", text, re.S)] or re.findall(r"`([^`\n]+)`", text)
     for cmd in cmds:
-        r = c.run_command(cmd, cand)
+        r = (executor_boundary.run_candidate(cmd, cand) if role and session_inputs.restricted(role)
+             else c.run_command(cmd, cand))
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -406,7 +433,8 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                 return dict(res, result="large", detail=", ".join(big))
             if work_paths:
                 if cfg["check"]:
-                    t = c.run_command(cfg["check"], cand)
+                    t = (executor_boundary.run_candidate(cfg["check"], cand) if session_inputs.restricted(role)
+                         else c.run_command(cfg["check"], cand))
                     if t.returncode:
                         return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
                 if override:
@@ -630,7 +658,7 @@ def finalize(n, work):
         upload_artifacts(n, work, k)
     if status == "done" and sha and not script:
         with Tree("task/%s" % n) as cand:
-            ok, out = run_verification(cand, i["body"])
+            ok, out = run_verification(cand, i["body"], role=role)
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"

@@ -36,9 +36,9 @@ Compatibility is deliberate:
 The owner selects `resources: {format: layered}` in protected `engine.yml`.
 Omitting it (or setting `format: legacy`) preserves the shipped legacy layout.
 No existing installation is migrated. This is an additive format, pending the
-final template switch. It establishes role selection and write admission;
-read isolation is separate work. Until it lands, this option is for controlled
-preparation and tests.
+final template switch. Offline script executors also use the filesystem and
+admission boundary described below. Model and online isolation remains separate
+work; this option is still for controlled preparation and tests.
 
 The execution layer uses `execution/profiles.yml`, `execution/roles/<role>/`,
 `execution/protocol.md`, and `execution/prompts/role.md`. The policy layer uses
@@ -126,3 +126,59 @@ Policymaker sessions and owner-wait accounting retain their existing rules.
 The setup map chooses sources from project/global/plugin skills (including optional Matt Pocock skills), inactive templates, or a newly authored skill when no source fits. `setup_roles.py install` copies a complete skill directory and installs the explicitly supplied profile in one layer. Adaptations modify local copies only; separate names allow independent adaptations of one source in both layers. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
 
 Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires a selected execution shaper, all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline matching HEAD. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This adds no migration, update or reconfiguration mode.
+## Offline executor boundary
+
+Layered execution profiles with `agent: false` and `internet: false` run in a
+Linux bubblewrap namespace with a private process tree, network, home and temp
+directory. Only explicit runtime files, the sanitized work snapshot and the
+selected script/offline enforcement program are mounted. Neither the engine
+checkout, staged engine metadata, host home, host temp nor other host checkouts
+are mounted. Seccomp also denies socket creation by the script and its children.
+Missing bubblewrap, required runtime files, namespace denial or missing admission
+metadata fails closed. Runtime directory names confer no access: policy copies
+under `/usr`, executable/library parents and Python's library directory stay
+private too.
+
+Candidate-owned product checks and task verification for layered execution roles
+use the same offline namespace and narrow runtime after admission. Each command
+gets a disposable product-only snapshot with a new Git root; check writes do not
+alter the candidate. Missing isolation fails the check, without a host fallback.
+The accepted change gate still runs through its trusted measurement path with
+the full candidate and baseline required by ADR-0003.
+
+The supported runtime is Bash, Git, Python 3 and the basic file/text commands
+listed in `executor_boundary.runtime_files`. Python supports the standard modules
+explicitly imported by its trusted `-I -S` probe and their imported dependencies;
+site packages and arbitrary additional modules are excluded. The engine resolves
+each executable and imported Python file separately, then adds individual ELF
+shared-library dependencies from `ldd`. It never mounts a runtime parent
+directory. Adding tools or Python modules requires extending this trusted list;
+work scripts cannot expand it through their environment, current directory or
+Python startup customization. This same file allowlist can be used by the model
+and online boundaries without granting access to host directories.
+
+The work snapshot excludes managed definitions in both layers, inactive
+`templates/`, engine internals/configuration, policy iteration/audit records and
+tool discovery directories. It retains regular tracked product files and the
+already filtered `.session/` recipient view. Redirected product inputs are
+refused. Its fresh Git root commit contains only that view: no original commit
+IDs, object store, alternates, reflogs, remotes, credential configuration or
+hooks. Scripts can use Git locally, but must leave their final files in the
+working tree; the engine admits those bytes, including uncommitted work.
+
+The trusted epilogue never invokes worker Git for these sessions. It reads
+regular output files as data and builds an index against the staged original
+baseline in the engine repository, retaining excluded definitions unchanged.
+Symlinks, hardlinks and special output files are refused. Binary contents,
+executable modes and deletion of visible inputs are preserved. Worker Git
+configuration, hooks and attributes cannot execute during this import. The
+result then passes the existing protected/write checks and merge path; the
+change gate still runs from the accepted tree with the reconstructed candidate
+and accepted baseline. This does not migrate legacy installations.
+
+Run `python3 -m unittest discover -s tests -p test_executor_boundary.py -v`
+from `.github/loop` on Linux with bubblewrap namespaces enabled. These tests
+execute the staged script and epilogue, probe host/files/Git/network access,
+attempt credential-bearing worker Git hooks/configuration, and check data
+preservation and admission refusals. A skip on another platform is not evidence
+of isolation. No provider or actual GitHub credential is needed.

@@ -6,9 +6,11 @@ set -u
 TRUSTED="$(cd "$(dirname "$0")" && pwd)"
 OUT="${RUNNER_TEMP:-/tmp}"
 cd "$WORK" || exit 1
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git checkout -q -B "task/$ISSUE"
+if [ ! -f "$TRUSTED/executor-mode" ]; then
+  git config user.name "github-actions[bot]"
+  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  git checkout -q -B "task/$ISSUE"
+fi
 date +%s > "$OUT/agent-start"
 
 NETWORK_MODE="$(cat "$TRUSTED/network-mode")"
@@ -17,6 +19,13 @@ case "$NETWORK_MODE" in online|offline) ;; *) echo "Invalid staged network mode"
 if [ "$KIND" = script ]; then
   # a deterministic role: no model, no credential
   unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN
+  if [ -f "$TRUSTED/executor-mode" ]; then
+    timeout "${AGENT_TIMEOUT}m" python3 "$TRUSTED/executor_boundary.py" "$WORK" "$TRUSTED" > "$OUT/script-output.txt" 2>&1
+    echo $? > "$OUT/agent-exit"
+    cat "$OUT/script-output.txt"
+    date +%s > "$OUT/agent-end"
+    exit 0
+  fi
   # A shell function cannot be invoked by timeout. Keep the namespace command in an array.
   isolation=()
   if [ "$NETWORK_MODE" = offline ] || [ "${LOOP_SANDBOX:-}" = 1 ]; then

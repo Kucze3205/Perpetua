@@ -197,6 +197,22 @@ PY
         self.assertNotIn("POLICY_SECRET_NEVER_VISIBLE", str(self.hub.report(n)))
         self.assertIn("private input unavailable", self.hub.prose(n))
 
+    def test_missing_check_isolation_cannot_fallback_to_host(self):
+        marker = Path(self.w.tmp, "check-must-not-run")
+        self.configure("echo result > src/product.txt")
+        with open(Path(self.w.loop, "engine.yml"), "a") as stream:
+            stream.write("check: touch " + str(marker) + "\n")
+        fakes.sh(self.w.loop, "git", "add", "engine.yml")
+        fakes.sh(self.w.loop, "git", "commit", "-qm", "accepted check")
+        fakes.sh(self.w.loop, "git", "push", "-q", "origin", "HEAD:main")
+        n = self.issue()
+        work, _, _ = self.run_script(n)
+        with patch.object(boundary.shutil, "which", return_value=None):
+            loop.finalize(n, work)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.hub.report(n)["merged"], "false")
+        self.assertIn("isolation unavailable", self.hub.prose(n))
+
     def test_useful_check_and_verification_run_in_product_view(self):
         command = """cat > src/check.py <<'PY'
 from pathlib import Path

@@ -7,8 +7,6 @@ import os
 import re
 ROOT = "policy"
 PARAMS = ROOT + "/params.yml"
-PROFILES = ROOT + "/profiles.yml"
-RULES = ROOT + "/protocol.md"
 EVALUATOR = ROOT + "/evaluator/"
 
 
@@ -173,7 +171,7 @@ def is_evaluator(path):
 
 def may_write(profile, path):
     import common as c
-    if layered() and profile.get("layer") == EXECUTION and is_managed(path):
+    if profile.get("layer") == EXECUTION and is_managed(path):
         return False
     allowed = c.path_match(path, profile.get("write") or [])
     return allowed and (not is_evaluator(path) or bool(profile.get("owns_evaluator")))

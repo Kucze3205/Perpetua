@@ -15,6 +15,7 @@ PROPOSAL = {"kind": "role-change", "what": "Reduce worker context", "why": "Repe
 class ReportsTest(SessionCase):
     def producer(self, text=None):
         n = self.issue()
+        loop.resolve(n)
         work = self.w.session(n, files={"src/report.txt": "measured"},
                               report_extra="Evidence: three full-tree reads.",
                               session_files={"suggestions.json": text if text is not None else json.dumps([PROPOSAL])})

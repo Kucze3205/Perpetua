@@ -102,7 +102,7 @@ class FirstIterationTest(Flow):
         self.assertEqual(rec["outcome"]["tokens"]["in"], 100 * 4)               # the shaper counts too
         self.assertIn("m1", rec["outcome"]["tokens"]["by_model"])
         self.assertTrue(rec["outcome"]["critical_path_s"] >= 0)
-        self.assertEqual(rec["engine_version"], "0.2.0")
+        self.assertEqual(rec["engine_version"], c.engine_version())
         self.assertNotIn("iterations", rec["input_state"])
         self.assertEqual(self.hub.issues[cur["number"]]["state"], "closed")
 

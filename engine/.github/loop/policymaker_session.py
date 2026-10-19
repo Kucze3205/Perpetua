@@ -6,14 +6,9 @@ import managed_resources as resources
 def profile():
     cfg = c.cfg()
     base = dict(cfg["policymaker"], agent=True)
-    if resources.layered():
-        resources.role_profiles()
-        base["layer"] = resources.ROOT
-        # Only the built-in profile expands with the owner's format selection.
-        # Explicit engine write restrictions continue to win.
-        if "write" not in c.load_yaml("engine.yml").get("policymaker", {}):
-            base["write"] = [resources.ROOT + "/", resources.EXECUTION + "/"]
-    # Old installations use their existing engine profile as the owner ceiling.
+    resources.role_profiles()
+    base["layer"] = resources.ROOT
+    # Explicit owner ceilings take precedence over the configured session defaults.
     ceilings = cfg.get("policymaker_session_ceilings") or {
         "models": [base["model"]], "efforts": ["low", "medium", base["effort"]],
         "max_turns": base["max_turns"], "timeout_minutes": base["timeout_minutes"],

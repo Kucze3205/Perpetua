@@ -70,15 +70,16 @@ class CompositionTest(SessionCase):
             if role == "policymaker":
                 original += "\n\n" + read(".github/loop/policymaker.md")
             prompt_name = "policymaker" if role == "policymaker" else "role"
+            layer = "policy" if role == "policymaker" else "execution"
             for revision in ("first", "second"):
                 with self.subTest(role=role, revision=revision):
-                    self.w.write(self.w.loop, "policy/protocol.md", "Rules " + revision)
-                    self.w.write(self.w.loop, "policy/prompts/%s.md" % prompt_name, "Prompt " + revision)
+                    self.w.write(self.w.loop, layer + "/protocol.md", "Rules " + revision)
+                    self.w.write(self.w.loop, layer + "/prompts/%s.md" % prompt_name, "Prompt " + revision)
                     work = self.work()
                     # A task branch cannot supply its own engine contract or accepted policy.
                     self.w.write(work, ".github/loop/policymaker.md", "Untrusted contract")
-                    self.w.write(work, "policy/protocol.md", "Unaccepted rules")
-                    self.w.write(work, "policy/prompts/%s.md" % prompt_name, "Unaccepted prompt")
+                    self.w.write(work, layer + "/protocol.md", "Unaccepted rules")
+                    self.w.write(work, layer + "/prompts/%s.md" % prompt_name, "Unaccepted prompt")
                     trusted = os.path.join(self.w.tmp, role + "-" + revision)
                     loop.stage(n, work, trusted)
                     protocol = read(os.path.join(work, ".session", "protocol.md"))

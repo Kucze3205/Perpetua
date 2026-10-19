@@ -8,9 +8,9 @@ Read `.session/reports/index.json` and the referenced report bodies. Review pend
 you act on or reject using `.session/suggestion-decisions.json`, with a reason;
 leave a suggestion pending when its decision needs more evidence.
 
-Create and maintain policy, the rules and artifacts in `policy/` governing the
-implementation layer: role skills, profiles, parameters, work rules and starting
-prompts. Keep changes small and explain the evidence for them.
+Create and maintain managed definitions in `execution/` and `policy/`: role skills,
+profiles, common parameters, layer work rules and starting prompts, including your
+own local skill. Keep changes small and explain the evidence for them.
 The shaper decides the work of each iteration from the goal and current state.
 
 Order audit and evaluator work through `.session/orders.json`, in the task graph

@@ -3,11 +3,11 @@
 The engine owns `.github/loop/session-protocol.md` and the Policymaker's ownership/order
 contract in `.github/loop/policymaker.md`. Staging writes the contract to a trusted file
 passed with `--append-system-prompt-file`. It also combines that contract with
-`policy/protocol.md` in `.session/protocol.md`. Editable work rules and starting
-templates (`policy/prompts/role.md`, `policy/prompts/policymaker.md`) take effect at the
+the selected layer's `protocol.md` in `.session/protocol.md`. Editable work rules and starting
+templates (`<layer>/prompts/role.md`, `policy/prompts/policymaker.md`) take effect at the
 next stage from the accepted tree. They cannot change parsed outputs, field
 ownership, required inputs, or merge/security restrictions. Role skills remain
-editable under `policy/roles/`.
+local to `<layer>/roles/` and staged with their complete references; global skill installations remain sources.
 
 `internet` defaults to false and must be a boolean, including on script profiles.
 Offline model sessions use the pinned Claude CLI's strict Bash sandbox: subprocesses

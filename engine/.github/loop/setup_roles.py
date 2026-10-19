@@ -17,47 +17,20 @@ import managed_resources as resources
 
 def write_yaml(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding='utf-8')
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding='utf-8', newline='\n')
 
 
 def prepare(repo):
-    """Deactivate copied defaults before setup commits or selects any role."""
+    """Check a fresh copied template; setup never converts existing definitions."""
     root = Path(repo).resolve()
-    if (root / 'templates').exists() or resources.layered(root):
-        raise ValueError('setup already prepared; no reconfiguration mode')
-    profiles = c.load_yaml(root / 'policy/profiles.yml')
-    for role, profile in profiles.items():
-        layer = 'execution' if role == 'orchestrator' else 'policy'
-        dest = root / 'templates' / layer
-        source = root / 'policy/roles' / role
-        if source.exists():
-            (dest / 'roles').mkdir(parents=True, exist_ok=True)
-            shutil.move(str(source), str(dest / 'roles' / role))
-        catalog = c.load_yaml(dest / 'profiles.yml')
-        catalog[role] = profile
-        write_yaml(dest / 'profiles.yml', catalog)
-    role_template = root / 'policy/roles/ROLE-TEMPLATE.md'
-    if role_template.exists():
-        shutil.move(str(role_template), str(root / 'templates/ROLE-TEMPLATE.md'))
-    shutil.rmtree(root / 'policy/roles', ignore_errors=True)
-    pm = root / 'templates/policy/roles/policymaker/SKILL.md'
-    pm.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(root / '.github/loop/policymaker.md', pm)
-    for layer in resources.LAYERS:
-        for rel in ('protocol.md', 'prompts/role.md'):
-            path = root / layer / rel
-            if not path.exists():
-                path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(root / 'policy' / rel, path)
-        write_yaml(root / layer / 'profiles.yml', {})
-    params = c.load_yaml(root / 'policy/params.yml')
-    params['shaper'] = None
-    write_yaml(root / 'policy/params.yml', params)
-    config = c.load_yaml(root / 'engine.yml')
-    config['resources'] = {'format': 'layered'}
-    config.setdefault('policymaker', {})['write'] = ['execution/', 'policy/']
-    config['protected'] = list(dict.fromkeys(config.get('protected', c.DEFAULTS['protected']) + ['templates/']))
-    write_yaml(root / 'engine.yml', config)
+    resources.layered(root)
+    if not (root / 'templates').is_dir():
+        raise ValueError('fresh layered engine template required; no migration mode')
+    if any(c.load_yaml(root / layer / 'profiles.yml') or
+           (root / layer / 'roles').exists() for layer in resources.LAYERS):
+        raise ValueError('setup already prepared with selected roles; no reconfiguration mode')
+    if c.load_yaml(root / resources.PARAMS).get('shaper') is not None:
+        raise ValueError('fresh template must have no selected shaper')
 
 
 def install(repo, role, layer, source, profile=None):
@@ -96,7 +69,7 @@ def install(repo, role, layer, source, profile=None):
                 metadata = yaml.safe_load(parts[1])
                 if isinstance(metadata, dict):
                     metadata['name'] = role
-                    skill.write_text('---\n' + yaml.safe_dump(metadata, sort_keys=False) + '---\n' + parts[2], encoding='utf-8')
+                    skill.write_text('---\n' + yaml.safe_dump(metadata, sort_keys=False) + '---\n' + parts[2], encoding='utf-8', newline='\n')
     if role != 'policymaker':
         path = root / layer / 'profiles.yml'
         catalog = c.load_yaml(path)

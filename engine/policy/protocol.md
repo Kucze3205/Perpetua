@@ -1,8 +1,7 @@
 # Work rules
 
-These work rules are part of policy: the rules and artifacts in `policy/` maintained
-by the Policymaker to govern the implementation layer. The engine's session contract
-takes precedence.
+These local layer work rules are maintained by the Policymaker. The engine's
+session contract takes precedence.
 
 Read the whole task and the files named in its context budget. Start from named evidence;
 expand the investigation when the task needs it. When measuring or researching, report the

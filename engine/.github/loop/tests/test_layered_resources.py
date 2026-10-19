@@ -13,7 +13,6 @@ class LayeredSessionTest(sessions.SessionCase):
     def setUp(self):
         super().setUp()
         # A controlled owner-selected layout, leaving unrelated inactive skills.
-        shutil.rmtree(os.path.join(self.w.loop, "policy/roles/worker"))
         self.w.write(self.w.loop, 'engine.yml', 'resources:\n  format: layered\n')
         self.w.write(self.w.loop, 'policy/params.yml', fakes.POLICY_PARAMS.replace('orchestrator', 'worker'))
         self.w.write(self.w.loop, 'execution/profiles.yml', 'worker:\n  tools: [Read, Write]\n  write: [src/**, execution/**, policy/**]\n')

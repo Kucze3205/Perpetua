@@ -198,9 +198,12 @@ class World:
         shutil.copy(os.path.join(ENGINE, "ENGINE_VERSION"), self.loop)
         self.write(self.loop, "engine.yml", engine_yml if engine_yml is not None else "")
         self.write(self.loop, "policy/params.yml", POLICY_PARAMS)
-        self.write(self.loop, "policy/profiles.yml", WORKER_PROFILES)
-        for role in ("orchestrator", "worker", "net", "evaluator", "evaluator-verifier", "audit"):
-            self.write(self.loop, "policy/roles/%s/SKILL.md" % role, "---\nname: %s\ndescription: fixture\n---\nx\n" % role)
+        self.write(self.loop, "execution/profiles.yml", EXECUTION_PROFILES)
+        self.write(self.loop, "policy/profiles.yml", POLICY_PROFILES)
+        for layer, roles in (("execution", ("orchestrator", "worker", "net")),
+                             ("policy", ("evaluator", "evaluator-verifier", "audit", "policymaker"))):
+            for role in roles:
+                self.write(self.loop, "%s/roles/%s/SKILL.md" % (layer, role), "---\nname: %s\ndescription: fixture\n---\nx\n" % role)
         for p, text in (files or {}).items():
             self.write(self.loop, p, text)
         sh(self.loop, "git", "init", "-q", "-b", "main")
@@ -348,6 +351,9 @@ models:
   opus: claude-opus-5-5
 efforts: [low, medium, high]
 """
+
+EXECUTION_PROFILES, POLICY_PROFILES = WORKER_PROFILES.split("evaluator:\n", 1)
+POLICY_PROFILES = "evaluator:\n" + POLICY_PROFILES
 
 
 def worker_world(engine_yml=None):

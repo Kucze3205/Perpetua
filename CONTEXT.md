@@ -20,8 +20,7 @@ environment the loop needs to pursue it; closing it arms the loop.
 _Avoid_: onboarding, wizard
 
 **Engine**:
-The goal-independent machinery of a loop: workflows, scripts, configuration,
-the policymaker's prompt. Copied into the loop's repository by setup, where it
+The goal-independent machinery of a loop: workflows, scripts, protected configuration and session contracts. Copied into the loop's repository by setup, where it
 belongs to that loop; a setup map may change it. Changed only by the owner.
 _Avoid_: framework, runtime
 
@@ -103,10 +102,25 @@ The tasks of one iteration with their blocking edges, as issues. Its width is th
 number of tasks in the largest dependency-depth level, computed from the graph,
 not set. It is a structural statistic, not a cap or prediction of concurrent jobs.
 
-**Policy artifacts**:
-The version-controlled parts of policy maintained by the policymaker: the
-orchestrator's prompt, role skills, profiles, parameters, a deterministic rule
-and the evaluator.
+**Managed definitions**:
+The version-controlled definitions maintained by the Policymaker in both
+`execution/` and `policy/`: skills, profiles, prompts, parameters and measurement.
+They share one revision, activate at iteration boundaries and roll back together.
+Governance ownership is independent of the layer that executes a definition.
+
+**Implementation resources**:
+The local definitions in `execution/` used by the selected shaper and work roles.
+Implementation sessions receive their own instructions and public contracts;
+they cannot read policy internals and submit suggestions to the Policymaker.
+
+**Policy resources**:
+The local definitions in `policy/` used by the Policymaker, audit, evaluator
+maintenance and evaluator verifier. The engine invokes measurement separately.
+
+**Role template**:
+An inactive candidate under `templates/`, or another project/global/plugin source.
+Setup selects and copies complete skills into exactly one active layer. Sources
+remain unchanged, and separate local adaptations may share the same source.
 
 **Evaluator**:
 The measurement that tells whether work moved the loop toward the goal: a
@@ -137,7 +151,7 @@ _Avoid_: review, merge check
 
 **Setup baseline**:
 The state of the loop's repository at the moment the setup map is closed and
-the loop is armed, marked by a tag. The engine returns the policy artifacts to
+the loop is armed, marked by a tag. The engine returns the managed definitions to
 it when they are rolled back before any iteration has closed.
 
 **Owner request**:

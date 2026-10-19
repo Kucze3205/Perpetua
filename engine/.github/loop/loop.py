@@ -311,7 +311,7 @@ def run_verification(cand, body):
     return True, ""
 
 
-def merge_branch(n, role, i, override=None, verified=False, checked_commit=None, checked_evaluator_rev=None, verifier=None):
+def merge_branch(n, role, i, override=None, verified=False, checked_commit=None, checked_evaluator_rev=None, verifier=None, boundary=False):
     """Rebase `task/N` on the default branch, run the checks, get the change gate's verdict, push.
     Returns {"result", "detail", "verdict", "gate_s", "changed"}. Git orders competitors: a rejected push is retried."""
     cfg, d = c.cfg(), c.default_branch()
@@ -349,6 +349,8 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
             if resources.layered():
                 try:
                     resources.role_profiles(cand)
+                    if boundary:
+                        resources.validate_activation(cand)
                 except ValueError as error:
                     return dict(res, result="invalid-resources", detail=str(error))
             if checked_evaluator_rev and policy_changes.evaluator_rev("HEAD", cand) != checked_evaluator_rev:
@@ -382,6 +384,8 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                     return dict(res, result="gate-rejected", detail=res["verdict"].get("detail", ""))
                 if res["verdict"]["verdict"] != "accepted":
                     return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
+            if resources.layered() and role == "policymaker" and not boundary:
+                return dict(res, result="awaiting-iteration")
             change = policy_changes.receipt(cand, n, role, i, session_base, baseline, c.head(cand), changed, verifier)
             if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
                 return dict(res, result="merged", change=change)
@@ -657,7 +661,35 @@ def apply_policy():
     that merged. An unmerged one counts as a failed Policymaker session."""
     orders = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
-        r = merge_branch(x["number"], "policymaker", x)
+        fields = c.report_fields(x["number"])
+        verified = resources.layered() and fields.get("verifier_passed") == "true"
+        verification = {}
+        if verified:
+            verifier = int(fields["verifier_issue"])
+            body = c.issue(verifier)["body"]
+            verification = dict(verified=True, verifier=verifier,
+                                checked_commit=c.marker(body, "checked-commit"),
+                                checked_evaluator_rev=json.loads(c.marker(body, "checked-evaluator-rev") or "null"))
+            if not verification["checked_commit"] or not verification["checked_evaluator_rev"]:
+                close_out(x["number"], x, "blocked", {"merged": "false"}, "Verifier has no pinned snapshot; request a fresh verification.")
+                continue
+        if fields.get("owner_accepted") == "true":
+            verification["override"] = {"verdict": "accepted", "improved": True, "detail": "accepted by the owner"}
+        r = merge_branch(x["number"], "policymaker", x, boundary=True, **verification)
+        if r["result"] == "awaiting-owner":
+            req = it.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (x["number"], x["title"]),
+                                  "The complete Policymaker candidate needs your change gate verdict.",
+                                  "The change gate is set to you.", "Completed accepts the candidate for the next iteration boundary.",
+                                  ref="task-%s" % x["number"], iteration=c.iteration_of(c.label_names(x)))
+            c.edit_labels(x["number"], add=["awaiting:owner"], remove=["awaiting:iteration"])
+            c.update_report(x["number"], {"status": "done", "merged": "pending-owner"}, "Waiting for the owner: request #%s." % req)
+            continue
+        if r["result"] == "awaiting-verifier":
+            v = request_verifier(x["number"], x, c.iteration_of(c.label_names(x)) or 0, r["changed"])
+            c.edit_labels(x["number"], add=["awaiting:verifier"], remove=["awaiting:iteration"])
+            c.update_report(x["number"], {"status": "done", "merged": "pending-verifier"},
+                            "The complete managed set waits for the evaluator verifier (#%s)." % v)
+            continue
         st, upd, pr = merge_outcome(r)
         if st == "done":
             orders += it.read_orders(x["number"])
@@ -758,6 +790,15 @@ def settle_verification(n, i, status, result, prose):
         rev = json.loads(c.marker(i["body"], "checked-evaluator-rev") or "null")
         if not checked or not rev:
             r = {"result": "verification-stale", "detail": "Verifier has no pinned snapshot; request a fresh verification."}
+        elif resources.layered() and trole == "policymaker":
+            # Verification is evidence, not authority to activate during an iteration.
+            # The boundary rechecks the entire pinned candidate and rebased measurement.
+            r = {"result": "pending-iteration"}
+            policy_changes.verification(n, i, status, result, r)
+            c.edit_labels(t, add=["awaiting:iteration"], remove=["awaiting:verifier"])
+            c.update_report(t, {"merged": "pending-iteration", "verifier_passed": "true"},
+                            "Verified; the complete managed set waits for the next iteration boundary.")
+            return status, prose
         else:
             r = merge_branch(t, trole, ti, verified=True, checked_commit=checked, checked_evaluator_rev=rev, verifier=n)
         policy_changes.verification(n, i, status, result, r)
@@ -887,6 +928,14 @@ def settle_owner_merge(t, yes):
     fields = c.report_fields(t)
     verifier = int(fields["verifier_issue"]) if fields.get("verifier_passed") == "true" and fields.get("verifier_issue", "").isdigit() else None
     vi = c.issue(verifier) if verifier else None
+    if yes and resources.layered() and role == "policymaker":
+        c.edit_labels(t, add=["awaiting:iteration"], remove=["awaiting:owner"])
+        c.update_report(t, {"merged": "pending-iteration", "owner_accepted": "true"},
+                        "Accepted by the owner; the complete managed set waits for the next iteration boundary.")
+        if verifier:
+            vf = c.report_fields(verifier)
+            policy_changes.verification(verifier, vi, vf.get("status"), vf.get("result"), {"result": "pending-iteration"}, owner=True)
+        return
     if yes:
         r = merge_branch(t, role, ti, override={"verdict": "accepted", "improved": True, "detail": "accepted by the owner"},
                          verified=bool(verifier), verifier=verifier,

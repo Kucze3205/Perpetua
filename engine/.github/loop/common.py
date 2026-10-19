@@ -604,7 +604,9 @@ def commit_main(files, message, remove=(), restore=None, expected=None):
         if restore:
             sha, paths = restore
             git(".", "rm", "-r", "-q", "-f", "--ignore-unmatch", *paths)
-            git(".", "checkout", sha, "--", *paths)
+            present = [path for path in paths if tree_hash(sha, path)]
+            if present:
+                git(".", "checkout", sha, "--", *present)
         for p in remove:
             git(".", "rm", "-q", "-f", "--ignore-unmatch", p)
         for p, text in files.items():

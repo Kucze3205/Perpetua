@@ -15,6 +15,7 @@ class LayeredSessionTest(sessions.SessionCase):
         # A controlled owner-selected layout, leaving unrelated inactive skills.
         shutil.rmtree(os.path.join(self.w.loop, "policy/roles/worker"))
         self.w.write(self.w.loop, 'engine.yml', 'resources:\n  format: layered\n')
+        self.w.write(self.w.loop, 'policy/params.yml', fakes.POLICY_PARAMS.replace('orchestrator', 'worker'))
         self.w.write(self.w.loop, 'execution/profiles.yml', 'worker:\n  tools: [Read, Write]\n  write: [src/**, execution/**, policy/**]\n')
         self.w.write(self.w.loop, 'policy/profiles.yml', 'audit:\n  tools: [Read]\n  write: [audit/**]\n')
         for layer, role in (('execution', 'worker'), ('policy', 'audit'), ('policy', 'policymaker')):
@@ -59,7 +60,7 @@ class LayeredSessionTest(sessions.SessionCase):
                  'policy/roles/audit/reference.md': 'audit reference',
                  'policy/roles/policymaker/SKILL.md': 'revised own skill'}
         self.w.branch(n, files)
-        result = loop.merge_branch(n, 'policymaker', self.hub.issue(n))
+        result = loop.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)
         self.assertEqual((result['result'], result['verdict']), ('merged', None))
         for path, content in files.items():
             self.assertEqual(self.w.origin_file(path), content)
@@ -84,14 +85,14 @@ class LayeredSessionTest(sessions.SessionCase):
             with self.subTest(path=path):
                 n = self.issue('policymaker')
                 self.w.branch(n, {path: 'proposed'})
-                self.assertEqual(loop.merge_branch(n, 'policymaker', self.hub.issue(n))['result'], expected)
+                self.assertEqual(loop.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)['result'], expected)
         self.w.write(self.w.loop, 'engine.yml', 'resources: {format: layered}\npolicymaker: {owns_evaluator: true}\n')
         fakes.sh(self.w.loop, 'git', 'add', 'engine.yml')
         fakes.sh(self.w.loop, 'git', 'commit', '-qm', 'owner permits evaluator maintenance')
         fakes.sh(self.w.loop, 'git', 'push', '-q', 'origin', 'HEAD:main')
         n = self.issue('policymaker')
         self.w.branch(n, {'policy/evaluator/new.py': 'proposed'})
-        self.assertEqual(loop.merge_branch(n, 'policymaker', self.hub.issue(n))['result'], 'awaiting-verifier')
+        self.assertEqual(loop.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)['result'], 'awaiting-verifier')
         self.assertIsNone(self.w.origin_file('policy/evaluator/new.py'))
 
     def test_staging_rejects_conflicting_or_ambiguous_layer_assignments(self):
@@ -136,7 +137,7 @@ class LayeredSessionTest(sessions.SessionCase):
     def test_invalid_candidate_catalog_is_not_admitted(self):
         n = self.issue('policymaker')
         self.w.branch(n, {'policy/profiles.yml': 'worker: {tools: [Read]}\n'})
-        result = loop.merge_branch(n, 'policymaker', self.hub.issue(n))
+        result = loop.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)
         self.assertEqual(result['result'], 'invalid-resources')
         self.assertIn('both execution and policy', result['detail'])
         self.assertNotIn('worker:', self.w.origin_file('policy/profiles.yml'))

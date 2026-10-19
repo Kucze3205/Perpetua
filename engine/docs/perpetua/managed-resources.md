@@ -37,8 +37,8 @@ The owner selects `resources: {format: layered}` in protected `engine.yml`.
 Omitting it (or setting `format: legacy`) preserves the shipped legacy layout.
 No existing installation is migrated. This is an additive format, pending the
 final template switch. It establishes role selection and write admission;
-read isolation and coherent cross-layer activation/rollback are separate work.
-Until those changes land, this option is for controlled preparation and tests.
+read isolation is separate work. Until it lands, this option is for controlled
+preparation and tests.
 
 The execution layer uses `execution/profiles.yml`, `execution/roles/<role>/`,
 `execution/protocol.md`, and `execution/prompts/role.md`. The policy layer uses
@@ -96,6 +96,25 @@ the product change gate while preserving separate evaluator verification.
 The engine rejects an ambiguous candidate catalog before publication. Products
 continue through protected/write checks and the accepted-tree change gate.
 
-Legacy revision hashes and rollback behavior above remain unchanged at this
-stage. Shared layered revision identity and atomic activation/rollback are
-implemented by the subsequent ADR-0004 activation ticket.
+## Layered activation and recovery
+
+A layered revision has a `layered-v1:` identity over both managed roots and the
+accepted evaluator paths. Receipts record this same before/after identity;
+legacy revision hashes keep their original meaning.
+
+A finished Policymaker session queues its entire candidate for the next
+iteration boundary. Only `apply_policy` activates that candidate. Independent
+evaluator verification and owner acceptance can release a held candidate back
+to that queue, but neither completion activates it during an iteration. At the
+boundary the engine rechecks the pinned evaluator snapshot, permissions,
+accepted-tree change gate and complete shaper profile/skill before publishing
+the candidate and its receipt in one ref update. Pending, rejected or stale
+verification and failed publication
+leave the accepted set in force. Products in a mixed candidate stay with the
+same candidate and retain their gate requirements.
+
+Rollback restores both roots and accepted evaluator paths from the last closed
+iteration's commit, or `setup-baseline` before the first closed iteration. It
+restores deleted definitions and removes newly added definitions, retaining
+products, reports, receipts and Git history. Quiet time, consecutive failed
+Policymaker sessions and owner-wait accounting retain their existing rules.

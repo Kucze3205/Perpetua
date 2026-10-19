@@ -135,12 +135,18 @@ def prompt(role):
 
 
 def restore_paths():
-    return [ROOT]
+    import common as c
+    return list(dict.fromkeys([EXECUTION, ROOT] + c.cfg()["evaluator_paths"])) if layered() else [ROOT]
 
 
 def revision(rev="HEAD", cwd="."):
     import common as c
-    return c.tree_hash(rev, ROOT, cwd)
+    if not layered(cwd):
+        return c.tree_hash(rev, ROOT, cwd)
+    import hashlib
+    import json
+    trees = {path: c.tree_hash(rev, path, cwd) for path in restore_paths()}
+    return "layered-v1:" + hashlib.sha256(json.dumps(trees, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def evaluator_revision(rev="HEAD", cwd="."):
@@ -181,3 +187,18 @@ def evaluator_revision_string(rev="HEAD", cwd="."):
     import common as c
     hashes = evaluator_revision(rev, cwd)
     return ",".join(hashes[path] for path in c.cfg()["evaluator_paths"])
+
+
+def validate_activation(cwd):
+    """A layered boundary must publish a shaper together with its complete definition."""
+    import common as c
+    profiles = role_profiles(cwd)
+    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
+    if shaper not in profiles or profiles[shaper]["layer"] != EXECUTION:
+        raise ValueError("shaper `%s` has no execution profile" % shaper)
+    profile = profiles[shaper]
+    if profile.get("agent", True):
+        if not os.path.isfile(os.path.join(cwd, EXECUTION, "roles", shaper, "SKILL.md")):
+            raise ValueError("shaper `%s` has no complete local skill" % shaper)
+    elif not profile.get("command"):
+        raise ValueError("script shaper `%s` has no command" % shaper)

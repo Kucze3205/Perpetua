@@ -20,7 +20,6 @@ class OfflineExecutorTest(sessions.SessionCase):
 
     def setUp(self):
         super().setUp()
-        shutil.rmtree(os.path.join(self.w.loop, "policy/roles/worker"))
         for path, text in {
             "engine.yml": "resources: {format: layered}\n",
             "policy/params.yml": fakes.POLICY_PARAMS.replace("orchestrator", "worker"),

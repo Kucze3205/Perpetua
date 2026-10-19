@@ -2,6 +2,8 @@
 
 This boundary does not isolate checkout/host reads (handled by session security).
 """
+import json
+
 import common as c
 import managed_resources as resources
 
@@ -10,13 +12,54 @@ def restricted(role):
     return resources.layered() and resources.role_layer(role) == resources.EXECUTION
 
 
+ORIGIN_MARK = '<!-- session-origin -->'
+
+
+def origins(issue):
+    """Only standalone engine envelopes count; published agent reports have another marker."""
+    found = []
+    for comment in c.comments(issue):
+        if (comment.get('user', {}).get('login') != c.BOT
+                or not comment.get('body', '').startswith(ORIGIN_MARK + '\n')):
+            continue
+        try:
+            value = json.loads(comment['body'].split('\n', 1)[1])
+            if (not isinstance(value, dict)
+                    or set(value) != {'schema_version', 'issue', 'role', 'layer'}
+                    or value['schema_version'] != 1 or type(value['issue']) is not int
+                    or value['issue'] != issue or not isinstance(value['role'], str)
+                    or value['layer'] not in resources.LAYERS):
+                raise ValueError('invalid session origin')
+        except (ValueError, TypeError):
+            return [None]
+        found.append(value)
+    return found
+
+
+def capture_origin(issue, role):
+    """Pin the engine-selected layer before any agent output; retries cannot reclassify it."""
+    if not resources.layered():
+        return
+    value = {'schema_version': 1, 'issue': issue, 'role': role,
+             'layer': resources.role_layer(role)}
+    found = origins(issue)
+    if found:
+        if any(item != value for item in found):
+            raise SystemExit('session origin conflicts with the selected role or layer')
+        return
+    if c.find_report(issue) is not None:
+        raise SystemExit('session with historical output has no trusted origin')
+    c.post_comment(issue, ORIGIN_MARK + '\n' + json.dumps(value, sort_keys=True))
+
+
 def visible(issue):
+    if type(issue) is not int:
+        return False
     try:
-        item = c.issue(issue)
-        labels = c.label_names(item)
-        roles = c.roles_of(labels)
-        return (c.in_loop(labels) and len(roles) == 1
-                and resources.role_layer(roles[0]) == resources.EXECUTION)
+        found = origins(issue)
+        return (bool(found) and found[0] is not None
+                and all(item == found[0] for item in found)
+                and found[0]['layer'] == resources.EXECUTION)
     except (SystemExit, ValueError, KeyError, TypeError):
         return False
 

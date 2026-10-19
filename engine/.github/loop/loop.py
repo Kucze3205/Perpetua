@@ -117,6 +117,7 @@ def resolve(n):
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
+    session_inputs.capture_origin(n, role)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
     c.set_output(**options, start=start, consented="true" if granted else "false")
 
@@ -145,6 +146,7 @@ def stage(n, work, trusted):
             if env_key in os.environ and os.environ[env_key] != str(value):
                 raise SystemExit("session configuration changed after prep: " + env_key)
     security.check_session_directory(work)
+    session_inputs.capture_origin(n, role)
     sess = os.path.join(work, ".session")
     # Discard prior recipient views before staging a new scope.
     if os.path.isdir(sess):
@@ -155,7 +157,7 @@ def stage(n, work, trusted):
     with open(os.path.join(work, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
         fh.write("\n.session/\n")
     c.export_issue(n, os.path.join(sess, "issue.md"),
-                   omit_markers=(it.STATE_MARK, it.ORDERS_MARK, session_reports.DECISIONS_MARK)
+                   omit_markers=(it.STATE_MARK, it.ORDERS_MARK, session_reports.DECISIONS_MARK, session_inputs.ORIGIN_MARK)
                    if session_inputs.restricted(role) else ())
     if role == "policymaker" or "loop:shaper" in labels:
         it.export_state(n, sess, role=role)

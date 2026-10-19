@@ -79,6 +79,10 @@ graph; it contains no policy role instructions or tool profiles.
 
 The engine allowlists public loop-state and iteration-record fields and excludes
 policy sessions from staged report bodies, indexes, Actions metadata and streams.
+Session origin is pinned before execution in a dedicated engine bot comment. It
+is immutable across retries and role transfers; report fields and agent text cannot
+set it. Missing, malformed or conflicting origins fail closed. Legacy sessions
+without origin evidence remain unavailable to execution recipients.
 Explicit policy or unknown session selectors return `denied` without downloading
 the requested content. Trusted engine state/orders/decision comments are omitted
 from execution issue snapshots. Re-staging removes the previous recipient view.

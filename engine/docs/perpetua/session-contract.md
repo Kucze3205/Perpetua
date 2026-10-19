@@ -9,6 +9,22 @@ next stage from the accepted tree. They cannot change parsed outputs, field
 ownership, required inputs, or merge/security restrictions. Role skills remain
 local to `<layer>/roles/` and staged with their complete references; global skill installations remain sources.
 
+Every implementation session also runs inside the filesystem boundary in
+`executor_boundary.py`, including model sessions and online scripts. Its work
+repository has a new root commit containing product files and the filtered
+recipient view; policy definitions, original Git objects and host checkouts are
+absent. The trusted engine imports regular output bytes against the recorded
+baseline, without executing worker Git. Missing isolation or admission metadata
+fails closed. Policymaker sessions retain access to definitions in both layers;
+protected contracts and accepted limits remain enforced at admission.
+
+Model sessions require the pinned native CLI and run as a non-root user. The
+outer namespace admits individual runtime files, DNS/CA files and selected engine
+contracts, with private home, temp and process namespaces. The CLI can connect to
+its provider. Its PID 1 environment, memory and task views are masked; an inherited
+seccomp filter blocks ptrace and cross-process memory syscalls. Provider credentials
+remain scrubbed from subprocess environments. These controls also apply online.
+
 `internet` defaults to false and must be a boolean, including on script profiles.
 Offline model sessions use the pinned Claude CLI's strict Bash sandbox: subprocesses
 inherit network isolation; WebFetch/WebSearch and unsandboxed retries are unavailable.
@@ -41,3 +57,11 @@ set `LOOP_NETWORK_INTEGRATION=1` plus `CLAUDE_CODE_OAUTH_TOKEN`, and run the sam
 It first checks host internet, then requires a successful model result and a proof
 file written by its Bash/Python subprocess with blocked HTTP, IPv4, and loopback
 connections. This live check is skipped on other hosts or without explicit opt-in.
+
+Run `test_model_boundary.py` separately on non-root Linux with the pinned native
+CLI, bubblewrap and socat. Its local tests check namespace access, useful online
+connectivity and credential-free native startup. With the same explicit opt-in
+and credential, its provider matrix requires actual Read, Glob, Grep and Bash
+tool calls in online and offline sessions, denied policy reads and a useful work
+product. A surrogate CLI, successful startup, authenticated API error or skipped
+provider test does not prove that matrix. See [validation](validation.md).

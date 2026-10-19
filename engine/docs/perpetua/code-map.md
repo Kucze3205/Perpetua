@@ -43,7 +43,7 @@ The engine uses the accepted checkout; agent commits enter through `fetch_candid
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
 | Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
-| Isolation and credentials | `session_security.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_static.py` |
+| Isolation, credentials and data-only admission | `session_security.py`, `executor_boundary.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_executor_boundary.py`, `test_model_boundary.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | `test_watchdog.py`, `test_stream.py` |
 
 `managed_resources.py` describes the managed definition tree and its role, prompt,

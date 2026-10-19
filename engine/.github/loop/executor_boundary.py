@@ -127,17 +127,61 @@ def import_candidate(work, metadata, trusted, ref):
     return commit
 
 
+def runtime_files():
+    """Resolve a small trusted runtime, never expose a host directory wholesale.
+
+    The isolated interpreter probe enumerates individual imported module files;
+    arbitrary files added beside executables, libraries or stdlib stay private.
+    Extend the explicit program/module lists when supporting additional tools.
+    """
+    programs = ("bash", "sh", "git", "python3", "cat", "mkdir", "dirname", "echo",
+                "ln", "rm", "cp", "mv", "chmod", "touch", "ls", "find", "sort",
+                "head", "tail", "wc", "cut", "tr", "sed", "grep", "printf", "env")
+    paths = set()
+    for name in programs:
+        executable = shutil.which(name, path=environment()["PATH"])
+        if not executable:
+            raise RuntimeError("required executor runtime unavailable: " + name)
+        paths.add(executable)
+    probe = '''import ctypes, socket, subprocess, pathlib, json, shutil, tempfile, platform
+import hashlib, math, random, datetime, collections, itertools, functools, typing
+import encodings.utf_8, encodings.ascii, encodings.latin_1
+import sys
+print(json.dumps(sorted({m.__file__ for m in sys.modules.values()
+                        if getattr(m, '__file__', None)})))'''
+    python = shutil.which("python3", path=environment()["PATH"])
+    result = subprocess.run([python, "-I", "-S", "-c", probe], cwd="/", env=environment(),
+                            capture_output=True, check=True, text=True)
+    paths.update(json.loads(result.stdout))
+    # ldd is run only by the trusted engine on explicitly selected runtime files.
+    # Every dependency becomes an individual bind; no lib directory is admitted.
+    for path in list(paths):
+        with open(path, "rb") as stream:
+            if stream.read(4) != b"\x7fELF":
+                continue
+        result = subprocess.run(["ldd", path], cwd="/", env=environment(),
+                                capture_output=True, text=True, check=True)
+        for line in result.stdout.splitlines():
+            if "not found" in line:
+                raise RuntimeError("executor runtime dependency unavailable")
+            for word in line.split():
+                if word.startswith("/"):
+                    paths.add(word)
+    if not all(Path(path).is_file() for path in paths):
+        raise RuntimeError("executor runtime requires regular files")
+    return sorted(paths)
+
+
 def launch(work, trusted, online=False):
     if sys.platform != "linux" or not shutil.which("bwrap"):
         raise RuntimeError("required executor filesystem isolation unavailable")
-    # Only immutable OS runtime directories, never /, /home, /tmp, /run, /etc
-    # (credentials and other checkouts can exist in any of those).
+    # OS directory names are not a trust boundary: host policy copies may live
+    # under /usr or beside Python. Admit only the explicit runtime file closure.
     command = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"]
     if online:
         command += ["--share-net"]
-    for directory in ("/usr", "/bin", "/sbin", "/lib", "/lib64"):
-        if os.path.exists(directory):
-            command += ["--ro-bind", directory, directory]
+    for path in runtime_files():
+        command += ["--ro-bind", path, path]
     command += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home/executor",
                 "--bind", os.path.abspath(work), "/work", "--dir", "/engine",
                 "--ro-bind", os.path.join(trusted, "command.sh"), "/engine/command.sh",

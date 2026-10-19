@@ -123,11 +123,25 @@ Policymaker sessions and owner-wait accounting retain their existing rules.
 
 Layered execution profiles with `agent: false` and `internet: false` run in a
 Linux bubblewrap namespace with a private process tree, network, home and temp
-directory. Only OS runtime directories, the sanitized work snapshot and the
+directory. Only explicit runtime files, the sanitized work snapshot and the
 selected script/offline enforcement program are mounted. Neither the engine
 checkout, staged engine metadata, host home, host temp nor other host checkouts
 are mounted. Seccomp also denies socket creation by the script and its children.
-Missing bubblewrap, namespace denial or missing admission metadata fails closed.
+Missing bubblewrap, required runtime files, namespace denial or missing admission
+metadata fails closed. Runtime directory names confer no access: policy copies
+under `/usr`, executable/library parents and Python's library directory stay
+private too.
+
+The supported runtime is Bash, Git, Python 3 and the basic file/text commands
+listed in `executor_boundary.runtime_files`. Python supports the standard modules
+explicitly imported by its trusted `-I -S` probe and their imported dependencies;
+site packages and arbitrary additional modules are excluded. The engine resolves
+each executable and imported Python file separately, then adds individual ELF
+shared-library dependencies from `ldd`. It never mounts a runtime parent
+directory. Adding tools or Python modules requires extending this trusted list;
+work scripts cannot expand it through their environment, current directory or
+Python startup customization. This same file allowlist can be used by the model
+and online boundaries without granting access to host directories.
 
 The work snapshot excludes managed definitions in both layers, inactive
 `templates/`, engine internals/configuration, policy iteration/audit records and

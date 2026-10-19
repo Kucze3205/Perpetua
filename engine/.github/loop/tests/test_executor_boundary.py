@@ -63,8 +63,13 @@ class OfflineExecutorTest(sessions.SessionCase):
     def test_real_offline_process_cannot_read_policy_and_epilogue_accepts_binary_modes_deletion(self):
         host = Path(self.w.tmp, "host-policy-copy")
         host.write_text("POLICY_SECRET_NEVER_VISIBLE")
-        oid = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD:policy/roles/audit/SKILL.md")
-        old = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD")
+        # These are real host copies, including runtime parents, not just /tmp.
+        runtime_copies = [Path(parent, "perpetua-policy-canary.txt") for parent in
+                          ("/usr/local/share", "/usr/bin", "/bin", "/lib", "/lib64",
+                           str(Path(os.__file__).parent)) if Path(parent).is_dir()]
+        for copy in runtime_copies:
+            copy.write_text("POLICY_SECRET_NEVER_VISIBLE")
+            self.addCleanup(copy.unlink, missing_ok=True)
         command = r'''set -eu
 test "$(cat src/input.txt)" = "allowed work"
 test "$(git show HEAD:src/input.txt)" = "allowed work"
@@ -72,7 +77,7 @@ python3 - <<'PY'
 import os, socket, subprocess
 from pathlib import Path
 secret = b'POLICY_SECRET_NEVER_VISIBLE'
-for path in ['policy/private.txt', '/work/policy/private.txt', 'templates/policy/SKILL.md', HOST, TRUSTED, '/proc/1/root' + HOST]:
+for path in ['policy/private.txt', '/work/policy/private.txt', 'templates/policy/SKILL.md', HOST, TRUSTED, '/proc/1/root' + HOST, *RUNTIME_COPIES]:
     try:
         data = Path(path).read_bytes()
     except OSError:
@@ -81,6 +86,8 @@ for path in ['policy/private.txt', '/work/policy/private.txt', 'templates/policy
 for args in [('log', '-p', '--all'), ('fsck', '--full', '--no-reflogs', '--unreachable'), ('cat-file', '-p', OID), ('show', OLD + ':policy/private.txt')]:
     r = subprocess.run(['git', *args], capture_output=True)
     assert secret not in r.stdout + r.stderr
+for oid in (OID, OLD):
+    assert subprocess.run(['git', 'cat-file', '-e', oid], capture_output=True).returncode != 0
 for family, target in [(socket.AF_INET, ('1.1.1.1', 80)), (socket.AF_UNIX, HOST)]:
     try:
         s = socket.socket(family)
@@ -96,10 +103,22 @@ Path('src/run.sh').write_text('#!/bin/sh\necho result\n')
 Path('src/run.sh').chmod(0o755)
 Path('src/remove.bin').unlink()
 PY
-'''.replace("HOST", repr(str(host))).replace("TRUSTED", repr(self.w.loop + "/policy/private.txt")).replace("OID", repr(oid)).replace("OLD", repr(old))
+git add -f src/product.bin src/run.sh
+git add -u src/remove.bin
+git commit -qm 'Useful local Git work'
+test "$(git show HEAD:src/run.sh)" = '#!/bin/sh
+echo result'
+'''.replace("HOST", repr(str(host))).replace("TRUSTED", repr(self.w.loop + "/policy/private.txt")).replace("RUNTIME_COPIES", repr([str(p) for p in runtime_copies]))
         self.configure(command, write="[src/**, .gitattributes]")
+        oid = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD:policy/private.txt")
+        old = fakes.sh(self.w.loop, "git", "rev-parse", "HEAD")
+        self.assertEqual(fakes.sh(self.w.loop, "git", "cat-file", "-p", oid), "POLICY_SECRET_NEVER_VISIBLE")
+        self.assertEqual(fakes.sh(self.w.loop, "git", "show", old + ":policy/private.txt"), "POLICY_SECRET_NEVER_VISIBLE")
+        # Pin the canary-bearing objects after configuration, before staging.
+        profile = Path(self.w.loop, "execution/profiles.yml")
+        profile.write_text(profile.read_text().replace("OID", repr(oid)).replace("OLD", repr(old)))
         self.w.write(self.w.loop, ".gitignore", "src/*\n")
-        fakes.sh(self.w.loop, "git", "add", ".gitignore")
+        fakes.sh(self.w.loop, "git", "add", ".gitignore", "execution/profiles.yml")
         fakes.sh(self.w.loop, "git", "commit", "-qm", "ignore already tracked inputs")
         fakes.sh(self.w.loop, "git", "push", "-q", "origin", "HEAD:main")
         n = self.issue()

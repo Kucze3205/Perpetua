@@ -172,7 +172,7 @@ class ExportPipelineTest(SessionCase):
         n = it.create_tasks(1, [task])[0]
         self.assertEqual(json.loads(c.marker(self.hub.issue(n)["body"], "exports")), declaration)
         work = os.path.join(self.w.tmp, "selected-work")
-        os.makedirs(os.path.join(work, ".git"))
+        fakes.sh(self.w.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.w.origin, work)
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted"))
         with open(os.path.join(work, ".session", "exports", "manifest.json"), encoding="utf-8") as fh:
             result = json.load(fh)["results"][0]

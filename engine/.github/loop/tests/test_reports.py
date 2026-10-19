@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from fakes import common as c, iteration as it, loop
 import session_reports as reports
-from test_session import SessionCase
+from test_session import SessionCase, StageTest
 
 
 PROPOSAL = {"kind": "role-change", "what": "Reduce worker context", "why": "Repeated expensive reads",
@@ -26,8 +26,7 @@ class ReportsTest(SessionCase):
             return json.load(fh)
 
     def stage(self, n):
-        work = os.path.join(self.w.tmp, "stage-%s" % n)
-        os.makedirs(os.path.join(work, ".git", "info"), exist_ok=True)
+        work = StageTest.work(self)
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
         return os.path.join(work, ".session")
 

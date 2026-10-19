@@ -262,6 +262,7 @@ class EpilogueTest(SessionCase):
 
     def test_resumes_run_out(self):
         n = self.issue()
+        loop.resolve(n)
         c.update_report(n, {"attempts": 3})
         self.w.session(n, report=False, exit_code="1", result=self.limit_result())
         self.assertEqual(self.hub.report(n)["status"], "crashed")

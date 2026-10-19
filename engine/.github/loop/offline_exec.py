@@ -7,14 +7,17 @@ import platform
 import sys
 
 
-def restrict():
+def restrict(network=True):
     if sys.platform != "linux":
         raise RuntimeError("offline script enforcement requires Linux")
     # seccomp syscall numbers on the runner architectures we support; unknown architectures fail closed.
-    numbers = {"x86_64": (41, 53, 425, 426, 427), "aarch64": (198, 199, 425, 426, 427)}
+    numbers = {"x86_64": (101, 310, 311), "aarch64": (117, 270, 271)}
+    sockets = {"x86_64": (41, 53, 425, 426, 427), "aarch64": (198, 199, 425, 426, 427)}
     blocked = numbers.get(platform.machine())
     if blocked is None:
         raise RuntimeError("unsupported offline script architecture")
+    if network:
+        blocked += sockets[platform.machine()]
 
     class Filter(ctypes.Structure):
         _fields_ = [("code", ctypes.c_ushort), ("jt", ctypes.c_ubyte), ("jf", ctypes.c_ubyte), ("k", ctypes.c_uint)]
@@ -37,5 +40,7 @@ def restrict():
 
 
 if __name__ == "__main__":
-    restrict()
-    os.execvp(sys.argv[1], sys.argv[1:])
+    process_only = sys.argv[1] == "--process-only"
+    restrict(network=not process_only)
+    arguments = sys.argv[2:] if process_only else sys.argv[1:]
+    os.execvp(arguments[0], arguments)

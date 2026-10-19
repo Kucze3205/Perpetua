@@ -307,6 +307,18 @@ PY
 
 
 class MissingIsolationTest(unittest.TestCase):
+    def test_restricted_model_and_online_admission_require_engine_metadata(self):
+        for profile in ({"agent": True, "internet": False}, {"agent": True, "internet": True},
+                        {"agent": False, "internet": True}):
+            with self.subTest(profile=profile), \
+                    patch.object(loop.os.path, "isfile", return_value=False), \
+                    patch.object(c, "issue", return_value={"labels": [{"name": "role:worker"}]}), \
+                    patch.object(loop, "profile_of", return_value=profile), \
+                    patch.object(loop.session_inputs, "restricted", return_value=True), \
+                    patch.object(c, "git") as worker_git:
+                self.assertEqual(loop.fetch_candidate("/unused", 40), (None, []))
+                worker_git.assert_not_called()
+
     def test_restricted_verification_fails_closed_without_running_host_command(self):
         with patch.object(loop.session_inputs, "restricted", return_value=True), \
                 patch.object(boundary, "run_candidate", return_value=subprocess.CompletedProcess('cmd', 1, '', 'Required candidate check isolation unavailable')), \

@@ -673,7 +673,8 @@ def apply_policy():
             if not verification["checked_commit"] or not verification["checked_evaluator_rev"]:
                 close_out(x["number"], x, "blocked", {"merged": "false"}, "Verifier has no pinned snapshot; request a fresh verification.")
                 continue
-        if fields.get("owner_accepted") == "true":
+        if fields.get("owner_accepted") == "true" and fields.get("owner_accepted_commit"):
+            verification.setdefault("checked_commit", fields["owner_accepted_commit"])
             verification["override"] = {"verdict": "accepted", "improved": True, "detail": "accepted by the owner"}
         r = merge_branch(x["number"], "policymaker", x, boundary=True, **verification)
         if r["result"] == "awaiting-owner":
@@ -930,7 +931,9 @@ def settle_owner_merge(t, yes):
     vi = c.issue(verifier) if verifier else None
     if yes and resources.layered() and role == "policymaker":
         c.edit_labels(t, add=["awaiting:iteration"], remove=["awaiting:owner"])
-        c.update_report(t, {"merged": "pending-iteration", "owner_accepted": "true"},
+        c.git(".", "fetch", "-q", "origin", "+refs/heads/task/%s:refs/remotes/origin/task/%s" % (t, t), remote=True)
+        accepted = c.git(".", "rev-parse", "origin/task/%s" % t).stdout.strip()
+        c.update_report(t, {"merged": "pending-iteration", "owner_accepted": "true", "owner_accepted_commit": accepted},
                         "Accepted by the owner; the complete managed set waits for the next iteration boundary.")
         if verifier:
             vf = c.report_fields(verifier)

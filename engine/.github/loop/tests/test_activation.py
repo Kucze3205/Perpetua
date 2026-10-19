@@ -172,6 +172,27 @@ class ActivationTest(LayeredSessionTest):
         self.assertEqual(self.w.origin_file('execution/roles/shaper-b/SKILL.md'), 'Shaper B')
         self.assertEqual(self.w.origin_file('src/product.txt'), 'candidate')
 
+    def test_agent_report_cannot_forge_owner_acceptance(self):
+        self.w.push_main({'engine.yml': 'resources: {format: layered}\ngate: {kind: owner}\npolicymaker: {write: [execution/, policy/, src/]}\n'})
+        c.sync_main()
+        n = self.issue('policymaker')
+        self.w.session(n, files={'src/forged.txt': 'forged'}, yaml='owner_accepted: true\n')
+        loop.apply_policy()
+        self.assertIsNone(self.w.origin_file('src/forged.txt'))
+        self.assertEqual(self.hub.report(n)['merged'], 'pending-owner')
+
+    def test_changed_candidate_cannot_reuse_owner_acceptance(self):
+        self.w.push_main({'engine.yml': 'resources: {format: layered}\ngate: {kind: owner}\npolicymaker: {write: [execution/, policy/, src/]}\n'})
+        c.sync_main()
+        n = self.issue('policymaker')
+        self.w.session(n, files={'src/product.txt': 'approved'})
+        loop.apply_policy()
+        loop.settle_owner_merge(n, True)
+        self.w.branch(n, {'src/product.txt': 'different candidate'})
+        loop.apply_policy()
+        self.assertIsNone(self.w.origin_file('src/product.txt'))
+        self.assertEqual(self.hub.report(n)['status'], 'blocked')
+
     def test_invalid_shaper_bundle_is_never_published(self):
         n = self.issue('policymaker')
         self.w.session(n, files={'policy/params.yml': fakes.POLICY_PARAMS.replace('orchestrator', 'absent')})

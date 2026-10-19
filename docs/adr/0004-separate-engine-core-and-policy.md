@@ -47,7 +47,10 @@ or two consecutive failed Policymaker sessions. Evaluator changes still require
 independent verification before taking effect.
 
 The owner confirmed the consolidated design. This records the accepted target
-architecture; runtime and setup behavior have not yet been changed.
+architecture. The shipped template and setup now use the layered format; runtime
+implementation and its validation limits are documented in
+[managed resources](../../engine/docs/perpetua/managed-resources.md) and
+[validation](../../engine/docs/perpetua/validation.md).
 
 ## Existing isolation and remaining gap
 

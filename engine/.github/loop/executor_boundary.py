@@ -25,6 +25,7 @@ def visible(path):
 def environment():
     # Do not inherit GIT_CONFIG_*, hooks, Python startup, shell injection or tokens.
     return {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/home/executor",
+            "LD_LIBRARY_PATH": "/usr/local/lib",
             "LANG": "C.UTF-8", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_AUTHOR_NAME": "executor", "GIT_AUTHOR_EMAIL": "executor@localhost",
             "GIT_COMMITTER_NAME": "executor", "GIT_COMMITTER_EMAIL": "executor@localhost"}
@@ -127,7 +128,7 @@ def import_candidate(work, metadata, trusted, ref):
     return commit
 
 
-def runtime_files():
+def runtime_files(extra=()):
     """Resolve a small trusted runtime, never expose a host directory wholesale.
 
     The isolated interpreter probe enumerates individual imported module files;
@@ -138,14 +139,15 @@ def runtime_files():
                 "ln", "rm", "cp", "mv", "chmod", "touch", "ls", "find", "sort",
                 "head", "tail", "wc", "cut", "tr", "sed", "grep", "printf", "env")
     paths = set()
-    for name in programs:
+    for name in (*programs, *extra):
         executable = shutil.which(name, path=environment()["PATH"])
         if not executable:
             raise RuntimeError("required executor runtime unavailable: " + name)
         paths.add(executable)
     probe = '''import ctypes, socket, subprocess, pathlib, json, shutil, tempfile, platform
 import hashlib, math, random, datetime, collections, itertools, functools, typing
-import encodings.utf_8, encodings.ascii, encodings.latin_1
+import encodings.utf_8, encodings.ascii, encodings.latin_1, encodings.idna
+import ssl, urllib.request
 import sys
 print(json.dumps(sorted({m.__file__ for m in sys.modules.values()
                         if getattr(m, '__file__', None)})))'''
@@ -172,6 +174,59 @@ print(json.dumps(sorted({m.__file__ for m in sys.modules.values()
     return sorted(paths)
 
 
+def model_command(work, trusted, arguments):
+    """Isolate every CLI file tool, independently of its permission settings.
+
+    Only the native pinned CLI is supported. A script/package installation must
+    not cause its parent directory (possibly containing policy) to be mounted.
+    The provider connection remains in the CLI; offline Bash uses the existing
+    strict tool sandbox inside this filesystem boundary.
+    """
+    if sys.platform != "linux" or not shutil.which("bwrap"):
+        raise RuntimeError("required model filesystem isolation unavailable")
+    cli = shutil.which("claude", path=environment()["PATH"])
+    if not cli:
+        raise RuntimeError("isolated models require the native pinned Claude CLI")
+    with open(cli, "rb") as stream:
+        native = stream.read(4) == b"\x7fELF"
+    if not native:
+        raise RuntimeError("isolated models require the native pinned Claude CLI")
+    command = ["bwrap", "--unshare-all", "--share-net", "--die-with-parent",
+               "--new-session", "--cap-drop", "ALL"]
+    for path in runtime_files(("claude", "bwrap", "socat", "timeout")):
+        command += ["--ro-bind", path, path]
+    # Explicit connection resources, never /etc or the certificate directory.
+    for path in ("/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf",
+                 "/etc/ssl/certs/ca-certificates.crt"):
+        if Path(path).is_file():
+            command += ["--ro-bind", path, path]
+    # Private procfs needs real process maps for the native runtime. PID 1 is
+    # the CLI; mask credential-bearing process views, including self aliases.
+    command += ["--as-pid-1", "--proc", "/proc",
+                "--ro-bind", "/dev/null", "/proc/1/environ",
+                "--ro-bind", "/dev/null", "/proc/1/mem",
+                "--tmpfs", "/proc/1/task",
+                "--dev", "/dev", "--tmpfs", "/tmp",
+                "--dir", "/home/executor", "--bind", os.path.abspath(work), "/work",
+                "--dir", "/engine"]
+    command += ["--ro-bind", str(Path(__file__).with_name("offline_exec.py")), "/engine/process_guard.py"]
+    for name in ("contract.md", "mcp.json", "settings.json", "remaining.py"):
+        command += ["--ro-bind", os.path.join(trusted, name), "/engine/" + name]
+    command += ["--chdir", "/work", "python3", "/engine/process_guard.py", "--process-only", cli, *arguments]
+    return command
+
+
+def launch_model(work, trusted, arguments, capture=False):
+    env = environment()
+    for key in ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS",
+                "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "CLAUDE_CODE_RETRY_WATCHDOG",
+                "BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS", "SESSION_END"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return subprocess.run(model_command(work, trusted, arguments), env=env,
+                          capture_output=capture, text=capture, check=False)
+
+
 def launch(work, trusted, online=False, capture=False):
     if sys.platform != "linux" or not shutil.which("bwrap"):
         raise RuntimeError("required executor filesystem isolation unavailable")
@@ -182,6 +237,11 @@ def launch(work, trusted, online=False, capture=False):
         command += ["--share-net"]
     for path in runtime_files():
         command += ["--ro-bind", path, path]
+    if online:
+        for path in ("/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf",
+                     "/etc/ssl/certs/ca-certificates.crt"):
+            if Path(path).is_file():
+                command += ["--ro-bind", path, path]
     command += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home/executor",
                 "--bind", os.path.abspath(work), "/work", "--dir", "/engine",
                 "--ro-bind", os.path.join(trusted, "command.sh"), "/engine/command.sh",
@@ -232,7 +292,11 @@ def run_candidate(command, candidate):
 
 if __name__ == "__main__":
     try:
-        sys.exit(launch(sys.argv[1], sys.argv[2]))
+        if sys.argv[1] == "model":
+            sys.exit(launch_model(sys.argv[2], sys.argv[3], sys.argv[4:]).returncode)
+        work, trusted = sys.argv[1:3]
+        online = Path(trusted, "network-mode").read_text().strip() == "online"
+        sys.exit(launch(work, trusted, online=online))
     except (OSError, RuntimeError):
         print("Required executor filesystem isolation unavailable", file=sys.stderr)
         sys.exit(1)

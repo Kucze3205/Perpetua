@@ -184,9 +184,6 @@ def stage(n, work, trusted):
         bootstrap += "Read your staged role skill .session/role/SKILL.md and its relevant references. "
     if role == "policymaker":
         bootstrap += "Read .session/policymaker.md and .session/loop-state.json. "
-    elif not resources.layered():
-        bootstrap += ("Call the Skill tool with `%s`. " % role if p.get("internet", False)
-                      else "Read your staged role skill .session/role/SKILL.md and its relevant references. ")
     if "loop:shaper" in labels and session_inputs.restricted(role):
         bootstrap += "Plan using .session/capabilities.json and .session/loop-state.json. "
     bootstrap += "Write .session/report.md. Work on branch task/%s.\n\n" % n
@@ -213,21 +210,13 @@ def stage(n, work, trusted):
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")
-    elif not resources.layered():
-        dest = os.path.join(os.path.expanduser("~"), ".claude", "skills", role)
-        shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree(resources.role_directory(role), dest)
-        if not p.get("internet", False):
-            staged_role = os.path.join(sess, "role")
-            shutil.rmtree(staged_role, ignore_errors=True)
-            shutil.copytree(resources.role_directory(role), staged_role)
     # Skill hooks and interpolation execute outside the Bash tool sandbox.
     if p.get("agent") is not False and not p.get("internet", False):
         for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
             security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
-        json.dump(security.settings(p, trusted), fh)
-    if session_inputs.restricted(role) and p.get("agent") is False and not p.get("internet", False):
+        json.dump(security.settings(p, "/engine" if session_inputs.restricted(role) else trusted), fh)
+    if session_inputs.restricted(role):
         shutil.copy(".github/loop/executor_boundary.py", trusted)
         executor_boundary.prepare(work, trusted)
 
@@ -348,8 +337,7 @@ def fetch_candidate(work, n):
             return None, []
     else:
         role = c.roles_of(c.label_names(c.issue(n)))[0]
-        profile = profile_of(role)
-        if session_inputs.restricted(role) and profile.get("agent") is False and not profile.get("internet", False):
+        if session_inputs.restricted(role):
             print("Required executor admission metadata unavailable")
             return None, []
         r = c.git(".", "fetch", "-q", "--no-tags", "--no-recurse-submodules", os.path.join(work, ".git"), "+HEAD:refs/heads/task/%s" % n, check=False)

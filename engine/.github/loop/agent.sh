@@ -67,13 +67,19 @@ export SESSION_END=$(( $(date +%s) + AGENT_TIMEOUT * 60 ))
 TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
 unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN
 
-CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" claude -p "$PROMPT" \
+MODEL_LAUNCH=(claude)
+MODEL_TRUSTED="$TRUSTED"
+if [ -f "$TRUSTED/executor-mode" ]; then
+  MODEL_LAUNCH=(python3 "$TRUSTED/executor_boundary.py" model "$WORK" "$TRUSTED")
+  MODEL_TRUSTED=/engine
+fi
+CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" "${MODEL_LAUNCH[@]}" -p "$PROMPT" \
   --model "$MODEL" --effort "$EFFORT" \
   --permission-mode acceptEdits --allowedTools "$TOOLS" --disallowedTools Monitor \
-  --tools "$AVAILABLE_TOOLS" --strict-mcp-config --mcp-config "$TRUSTED/mcp.json" \
+  --tools "$AVAILABLE_TOOLS" --strict-mcp-config --mcp-config "$MODEL_TRUSTED/mcp.json" \
   "${SKILL_FLAGS[@]}" \
-  --setting-sources '' --append-system-prompt-file "$TRUSTED/contract.md" \
-  --settings "$TRUSTED/settings.json" \
+  --setting-sources '' --append-system-prompt-file "$MODEL_TRUSTED/contract.md" \
+  --settings "$MODEL_TRUSTED/settings.json" \
   --max-turns "$MAX_TURNS" --output-format stream-json --verbose \
   2> "$OUT/claude-stderr.txt" \
   | python3 "$TRUSTED/stream_filter.py" "$OUT"

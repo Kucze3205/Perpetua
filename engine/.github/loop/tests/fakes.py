@@ -262,8 +262,8 @@ class World:
         os.makedirs(rt)
         os.environ["RUNNER_TEMP"] = rt
         role = common.roles_of(common.label_names(self.hub.issue(n)))[0]
-        if loop.profile_of(role).get("agent") is False:
-            # Model the real staging/admission handshake even when the script's
+        if loop.session_inputs.restricted(role):
+            # Model the real staging/admission handshake even when the session's
             # output itself is supplied by the test rather than executed.
             loop.stage(n, work, os.path.join(rt, "trusted"))
         for p, t in (files or {}).items():

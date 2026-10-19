@@ -487,11 +487,13 @@ def safe_read(root, rel):
         return fh.read()
 
 
-def export_issue(n, path):
+def export_issue(n, path, omit_markers=()):
     """Agent input: the issue body and the comments of trusted authors. The agent has no `gh`."""
     i = issue(n)
     parts = ["# Issue #%s: %s\n\n%s\n" % (n, i["title"], i["body"] or "")]
     for c in trusted_comments(n):
+        if any(marker in c["body"] for marker in omit_markers):
+            continue
         parts.append("\n---\ncomment %s (%s)\n\n%s\n" % (c["id"], c["user"]["login"], c["body"]))
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:

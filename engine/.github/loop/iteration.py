@@ -271,7 +271,7 @@ def read_state(it, mark=STATE_MARK):
     return None
 
 
-def export_state(n, directory):
+def export_state(n, directory, role=None):
     """`.session/loop-state.json`: the snapshot taken when the Policymaker session was opened, or, for the shaper, when
     its iteration began."""
     state = read_state(n)
@@ -281,7 +281,10 @@ def export_state(n, directory):
         state = read_state(it["number"]) if it else None
     os.makedirs(directory, exist_ok=True)
     if state is not None:
-        session_reports.stage(state, directory)
+        import session_inputs
+        if role and session_inputs.restricted(role):
+            state = session_inputs.state(state)
+        session_reports.stage(state, directory, role=role)
         with open(os.path.join(directory, "loop-state.json"), "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=1, ensure_ascii=False)
 

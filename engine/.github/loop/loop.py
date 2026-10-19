@@ -20,6 +20,7 @@ import common as c
 import managed_resources as resources
 import iteration as it
 import session_security as security
+import session_inputs
 import session_exports
 import session_reports
 import policymaker_session
@@ -116,6 +117,7 @@ def resolve(n):
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
+    session_inputs.capture_origin(n, role)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
     c.set_output(**options, start=start, consented="true" if granted else "false")
 
@@ -144,17 +146,26 @@ def stage(n, work, trusted):
             if env_key in os.environ and os.environ[env_key] != str(value):
                 raise SystemExit("session configuration changed after prep: " + env_key)
     security.check_session_directory(work)
+    session_inputs.capture_origin(n, role)
     sess = os.path.join(work, ".session")
+    # Discard prior recipient views before staging a new scope.
+    if os.path.isdir(sess):
+        shutil.rmtree(sess)
     os.makedirs(sess, exist_ok=True)
     os.makedirs(trusted, exist_ok=True)
     os.makedirs(os.path.join(work, ".git", "info"), exist_ok=True)
     with open(os.path.join(work, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
         fh.write("\n.session/\n")
-    c.export_issue(n, os.path.join(sess, "issue.md"))
+    c.export_issue(n, os.path.join(sess, "issue.md"),
+                   omit_markers=(it.STATE_MARK, it.ORDERS_MARK, session_reports.DECISIONS_MARK, session_inputs.ORIGIN_MARK)
+                   if session_inputs.restricted(role) else ())
     if role == "policymaker" or "loop:shaper" in labels:
-        it.export_state(n, sess)
-    fetch_inputs(i["body"], os.path.join(sess, "inputs"))
+        it.export_state(n, sess, role=role)
+    fetch_inputs(i["body"], os.path.join(sess, "inputs"), role=role)
     session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess)
+    if "loop:shaper" in labels and session_inputs.restricted(role):
+        with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
+            json.dump(session_inputs.capabilities(), fh, indent=1)
     contract = c.safe_read(".", ".github/loop/session-protocol.md") or ""
     if role == "policymaker":
         contract += "\n\n" + (c.safe_read(".", ".github/loop/policymaker.md") or "")
@@ -174,6 +185,8 @@ def stage(n, work, trusted):
     elif not resources.layered():
         bootstrap += ("Call the Skill tool with `%s`. " % role if p.get("internet", False)
                       else "Read your staged role skill .session/role/SKILL.md and its relevant references. ")
+    if "loop:shaper" in labels and session_inputs.restricted(role):
+        bootstrap += "Plan using .session/capabilities.json and .session/loop-state.json. "
     bootstrap += "Write .session/report.md. Work on branch task/%s.\n\n" % n
     with open(os.path.join(trusted, "prompt.md"), "w", encoding="utf-8", newline="\n") as fh:
         # The Policymaker reads its template from the staged file named in bootstrap.
@@ -243,21 +256,51 @@ def upload_artifacts(n, work, k):
     return len(lines)
 
 
-def fetch_inputs(body, dest):
-    """Before the agent starts (it has no token): download the artifacts a task lists in `inputs`."""
+def fetch_inputs(body, dest, role=None):
+    """Fetch only engine-published assets of sessions visible to this recipient."""
     refs = json.loads(c.marker(body, "inputs") or "[]")
+    results = []
+    restricted = bool(role and session_inputs.restricted(role))
     for ref in refs:
         rel, asset = ref.get("release"), None
-        if "issue" in ref:
-            r = c.find_report(ref["issue"])
-            for m in ARTIFACT_LINE.finditer(r["body"] if r else ""):
-                if m.group(1) == ref.get("name"):
-                    rel, size, sha = m.group(2), int(m.group(3)), m.group(4)
+        issue = ref.get("issue")
+        if restricted:
+            # A direct release selector must identify an engine-published asset;
+            # arbitrary release patterns/globs have no trustworthy origin.
+            match = re.fullmatch(r"iter-[0-9]{4,}/([0-9]+)-[A-Za-z0-9._-]+", rel or "")
+            if issue is None and match:
+                issue = int(match.group(1))
+            if type(issue) is not int or not session_inputs.visible(issue):
+                results.append({"status": "denied", "detail": "artifact is not available to this recipient"})
+                continue
+            report = c.find_report(issue)
+            candidates = [m for m in ARTIFACT_LINE.finditer(report["body"] if report else "")
+                          if (m.group(1) == ref.get("name") if "issue" in ref else m.group(2) == rel)]
+            if not candidates:
+                results.append({"status": "unavailable", "detail": "no matching published artifact"})
+                continue
+            rel = candidates[0].group(2)
+            if not re.fullmatch(r"iter-[0-9]{4,}/%s-[A-Za-z0-9._-]+" % issue, rel):
+                results.append({"status": "denied", "detail": "artifact has no supported origin"})
+                continue
+        elif "issue" in ref:
+            report = c.find_report(issue)
+            for match in ARTIFACT_LINE.finditer(report["body"] if report else ""):
+                if match.group(1) == ref.get("name"):
+                    rel = match.group(2)
         if not rel or "/" not in rel:
             continue
         tag, asset = rel.split("/", 1)
         os.makedirs(dest, exist_ok=True)
-        c.gh("release", "download", tag, "--pattern", asset, "--dir", dest, "--clobber", check=False)
+        try:
+            c.gh("release", "download", tag, "--pattern", asset, "--dir", dest, "--clobber")
+            results.append({"status": "downloaded"})
+        except (SystemExit, OSError):
+            results.append({"status": "unavailable", "detail": "artifact download failed"})
+    if restricted and refs:
+        os.makedirs(dest, exist_ok=True)
+        with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8", newline="\n") as fh:
+            json.dump({"schema_version": 1, "results": results}, fh, indent=1)
 
 
 # ---------------------------------------------------------------- the candidate: the agent's commits in a trusted tree

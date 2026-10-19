@@ -258,6 +258,14 @@ class World:
         sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
         sh(work, "git", "config", "core.autocrlf", "false")
         sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base or "origin/main")
+        rt = os.path.join(self.tmp, "rt%s" % self.n_work)
+        os.makedirs(rt)
+        os.environ["RUNNER_TEMP"] = rt
+        role = common.roles_of(common.label_names(self.hub.issue(n)))[0]
+        if loop.profile_of(role).get("agent") is False:
+            # Model the real staging/admission handshake even when the script's
+            # output itself is supplied by the test rather than executed.
+            loop.stage(n, work, os.path.join(rt, "trusted"))
         for p, t in (files or {}).items():
             self.write(work, p, t)
         for p in delete:
@@ -270,8 +278,6 @@ class World:
                 common.MARK, status, yaml, n, report_extra))
         for p, t in (session_files or {}).items():
             self.write(work, ".session/" + p, t)
-        rt = os.path.join(self.tmp, "rt%s" % self.n_work)
-        os.makedirs(rt)
         self.write(rt, "agent-exit", exit_code)
         self.write(rt, "session-start", str(int(datetime.now().timestamp()) - 50))
         self.write(rt, "agent-start", str(int(datetime.now().timestamp()) - 40))

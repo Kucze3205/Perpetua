@@ -174,6 +174,82 @@ echo '{"verdict":"rejected","detail":"accepted gate ran with correct candidate a
                     if expected == "gate-rejected":
                         self.assertIn("correct candidate and baseline", result["detail"])
 
+    def test_candidate_check_cannot_export_policy_in_final_report(self):
+        command = """cat > src/check.py <<'PY'
+from pathlib import Path
+try:
+    print(Path('policy/private.txt').read_text())
+except OSError:
+    print('private input unavailable')
+raise SystemExit(1)
+PY
+"""
+        self.configure(command)
+        with open(Path(self.w.loop, "engine.yml"), "a") as stream:
+            stream.write("check: python3 src/check.py\n")
+        fakes.sh(self.w.loop, "git", "add", "engine.yml")
+        fakes.sh(self.w.loop, "git", "commit", "-qm", "accepted product check")
+        fakes.sh(self.w.loop, "git", "push", "-q", "origin", "HEAD:main")
+        n = self.issue()
+        work, _, _ = self.run_script(n)
+        loop.finalize(n, work)
+        self.assertNotIn("POLICY_SECRET_NEVER_VISIBLE", self.hub.prose(n))
+        self.assertNotIn("POLICY_SECRET_NEVER_VISIBLE", str(self.hub.report(n)))
+        self.assertIn("private input unavailable", self.hub.prose(n))
+
+    def test_useful_check_and_verification_run_in_product_view(self):
+        command = """cat > src/check.py <<'PY'
+from pathlib import Path
+import subprocess
+assert Path('src/input.txt').read_text() == 'allowed work'
+assert not Path('policy').exists()
+assert subprocess.check_output(['git', 'show', 'HEAD:src/input.txt']).decode() == 'allowed work'
+Path('src/check-output.txt').write_text('temporary')
+print('useful check passed')
+PY
+"""
+        self.configure(command)
+        with open(Path(self.w.loop, "engine.yml"), "a") as stream:
+            stream.write("check: python3 src/check.py\n")
+        fakes.sh(self.w.loop, "git", "add", "engine.yml")
+        fakes.sh(self.w.loop, "git", "commit", "-qm", "accepted product check")
+        fakes.sh(self.w.loop, "git", "push", "-q", "origin", "HEAD:main")
+        n = self.issue()
+        work, _, _ = self.run_script(n)
+        self.assertTrue(loop.fetch_candidate(work, n)[0])
+        with loop.Tree("task/%s" % n) as candidate:
+            ok, detail = loop.run_verification(candidate, "## Verification\n`python3 src/check.py`", role="worker")
+            self.assertTrue(ok, detail)
+            self.assertFalse(Path(candidate, "src/check-output.txt").exists())
+        with patch.object(loop.it, "run_gate", return_value={"verdict": "accepted"}):
+            result = loop.merge_branch(n, "worker", self.hub.issue(n))
+        self.assertEqual(result["result"], "merged", result)
+        self.assertIsNone(self.w.origin_file("src/check-output.txt"))
+
+    def test_verification_cannot_read_full_candidate_or_host(self):
+        host = Path(self.w.tmp, "verification-host-private")
+        host.write_text("POLICY_SECRET_NEVER_VISIBLE")
+        command = """cat > src/verify.py <<'PY'
+from pathlib import Path
+for path in ['policy/private.txt', HOST]:
+    try:
+        print(Path(path).read_text())
+    except OSError:
+        pass
+print('private input unavailable')
+raise SystemExit(1)
+PY
+""".replace('HOST', repr(str(host)))
+        self.configure(command)
+        n = self.issue()
+        work, _, _ = self.run_script(n)
+        self.assertTrue(loop.fetch_candidate(work, n)[0])
+        with loop.Tree("task/%s" % n) as candidate:
+            ok, detail = loop.run_verification(candidate, "## Verification\n`python3 src/verify.py`", role="worker")
+        self.assertFalse(ok)
+        self.assertNotIn("POLICY_SECRET_NEVER_VISIBLE", detail)
+        self.assertIn("private input unavailable", detail)
+
     def test_redirected_output_is_refused_without_reading_host(self):
         self.configure("ln -s /etc/passwd src/escape")
         n = self.issue()
@@ -216,6 +292,15 @@ echo '{"verdict":"rejected","detail":"accepted gate ran with correct candidate a
 
 
 class MissingIsolationTest(unittest.TestCase):
+    def test_restricted_verification_fails_closed_without_running_host_command(self):
+        with patch.object(loop.session_inputs, "restricted", return_value=True), \
+                patch.object(boundary, "run_candidate", return_value=subprocess.CompletedProcess('cmd', 1, '', 'Required candidate check isolation unavailable')), \
+                patch.object(c, "run_command") as host:
+            ok, detail = loop.run_verification('/unused', '## Verification\n`echo check`', role='worker')
+        self.assertFalse(ok)
+        self.assertIn('isolation unavailable', detail)
+        host.assert_not_called()
+
     def test_missing_namespace_tool_fails_closed(self):
         with patch.object(boundary.shutil, "which", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "isolation unavailable"):

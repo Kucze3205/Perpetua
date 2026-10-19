@@ -132,6 +132,13 @@ metadata fails closed. Runtime directory names confer no access: policy copies
 under `/usr`, executable/library parents and Python's library directory stay
 private too.
 
+Candidate-owned product checks and task verification for layered execution roles
+use the same offline namespace and narrow runtime after admission. Each command
+gets a disposable product-only snapshot with a new Git root; check writes do not
+alter the candidate. Missing isolation fails the check, without a host fallback.
+The accepted change gate still runs through its trusted measurement path with
+the full candidate and baseline required by ADR-0003.
+
 The supported runtime is Bash, Git, Python 3 and the basic file/text commands
 listed in `executor_boundary.runtime_files`. Python supports the standard modules
 explicitly imported by its trusted `-I -S` probe and their imported dependencies;

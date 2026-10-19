@@ -58,6 +58,34 @@ class SetupRolesTest(unittest.TestCase):
             result = subprocess.check_output([sys.executable, '.github/loop/setup_roles.py', 'validate', '--baseline', 'setup-baseline'], cwd=repo, text=True)
             self.assertTrue(result.startswith('layered-v1:'))
             self.assertEqual(git('status', '--porcelain'), '')
+            accepted = git('rev-parse', 'HEAD')
+            for ignored in ('execution/roles/orchestrator/SKILL.md', 'execution/roles/orchestrator/references/required.md'):
+                with self.subTest(ignored=ignored):
+                    path = Path(repo, ignored)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    if not path.exists():
+                        path.write_text('required local reference', encoding='utf-8')
+                    else:
+                        git('rm', '--cached', ignored)
+                    Path(repo, '.gitignore').write_text('/' + ignored + '\n/ignored-work-product.txt\n', encoding='utf-8')
+                    Path(repo, 'ignored-work-product.txt').write_text('legitimate work', encoding='utf-8')
+                    git('add', '.gitignore')
+                    git('commit', '-qm', 'ignored selected definition')
+                    git('tag', '-f', 'setup-baseline')
+                    self.assertEqual(git('status', '--porcelain'), '')
+                    with self.assertRaisesRegex(ValueError, 'baseline.*definition'):
+                        setup_roles.validate(repo, 'setup-baseline')
+                    git('reset', '--hard', accepted)
+                    if ignored.endswith('required.md'):
+                        path.unlink()
+                    Path(repo, 'ignored-work-product.txt').unlink()
+                    git('tag', '-f', 'setup-baseline')
+            Path(repo, '.gitignore').write_text('/ignored-work-product.txt\n', encoding='utf-8')
+            git('add', '.gitignore')
+            git('commit', '-qm', 'ignore legitimate work product')
+            git('tag', '-f', 'setup-baseline')
+            Path(repo, 'ignored-work-product.txt').write_text('legitimate work', encoding='utf-8')
+            self.assertTrue(setup_roles.validate(repo, 'setup-baseline').startswith('layered-v1:'))
             with open(os.path.join(repo,'execution/roles/orchestrator/SKILL.md'),'a') as f: f.write('\nchanged')
             with self.assertRaisesRegex(ValueError,'clean'):
                 setup_roles.validate(repo, 'setup-baseline')

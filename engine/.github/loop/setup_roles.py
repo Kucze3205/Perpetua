@@ -156,6 +156,32 @@ def validate(repo, baseline=None):
                 raise ValueError('setup baseline requires clean committed configuration')
             if git('rev-parse', baseline + '^{commit}') != git('rev-parse', 'HEAD'):
                 raise ValueError('setup baseline does not match accepted setup commit')
+            # Status omits ignored files and can hide skip-worktree changes. Compare
+            # every local managed file (including skill references) with the commit.
+            roots = list(dict.fromkeys(resources.restore_paths() + ['engine.yml']))
+            entries = git('ls-tree', '-r', '-z', baseline, '--', *roots)
+            committed = {}
+            for entry in entries.split('\0'):
+                if entry:
+                    header, path = entry.split('\t', 1)
+                    mode, kind, digest = header.split()
+                    committed[path] = (mode, kind, digest)
+            local = {}
+            for name in roots:
+                path = Path(name)
+                files = [path] if path.is_file() else path.rglob('*')
+                for file in files:
+                    if file.is_file():
+                        local[file.as_posix()] = file
+            if set(local) != set(committed):
+                mismatch = sorted(set(local) ^ set(committed))
+                raise ValueError('setup baseline does not contain matching managed definitions: ' + ', '.join(mismatch))
+            for name, file in local.items():
+                mode, kind, digest = committed[name]
+                # Apply Git clean filters just as committing does (e.g. CRLF).
+                actual = git('hash-object', '--path=' + name, '--', name)
+                if kind != 'blob' or mode not in ('100644', '100755') or digest != actual:
+                    raise ValueError('setup baseline differs from managed definition: ' + name)
             return resources.revision(baseline)
     finally:
         os.chdir(previous)

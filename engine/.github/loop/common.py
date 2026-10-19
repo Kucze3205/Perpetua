@@ -515,8 +515,8 @@ LAUNCHED = set()     # dispatches from this process: `gh run list` shows a new r
 
 
 def run_issue(title):
-    """'session #12 Â· implementer' -> 'session #12' (do not confuse #12 with #123)."""
-    return title.split(" Â· ")[0]
+    """'session #12 · implementer' -> 'session #12' (do not confuse #12 with #123)."""
+    return title.split(" · ")[0]
 
 
 def session_runs():

@@ -193,6 +193,13 @@ class ActivationTest(LayeredSessionTest):
         self.assertIsNone(self.w.origin_file('src/product.txt'))
         self.assertEqual(self.hub.report(n)['status'], 'blocked')
 
+    def test_launch_deduplicates_workflow_title_with_role_suffix(self):
+        n = self.issue('policymaker')
+        self.hub.runs.append({'databaseId': 9900, 'displayTitle': 'session #%s \u00b7 policymaker' % n,
+                              'status': 'queued', 'workflowName': 'session'})
+        self.assertFalse(c.launch(n))
+        self.assertEqual(len(self.hub.runs), 1)
+
     def test_invalid_shaper_bundle_is_never_published(self):
         n = self.issue('policymaker')
         self.w.session(n, files={'policy/params.yml': fakes.POLICY_PARAMS.replace('orchestrator', 'absent')})

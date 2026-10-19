@@ -166,37 +166,27 @@ class ConfigTest(unittest.TestCase):
         doc = self.load("engine.yml")
         self.assertEqual(set(doc["params"].values()) | set(doc["cadence"].values()), {None})
 
-    def test_every_profile_has_a_skill_unless_it_is_a_script(self):
-        for role, p in self.load("policy", "profiles.yml").items():
-            if p.get("agent") is False:
-                self.assertTrue(p.get("command"), role)
-            else:
-                self.assertTrue(os.path.exists(os.path.join(ENGINE, "policy", "roles", role, "SKILL.md")), role)
+    def test_template_is_layered_and_all_roles_are_inactive(self):
+        self.assertEqual(self.load('engine.yml')['resources'], {'format': 'layered'})
+        self.assertIsNone(self.load('policy', 'params.yml')['shaper'])
+        for layer in ('execution', 'policy'):
+            self.assertEqual(self.load(layer, 'profiles.yml'), {})
+            self.assertFalse(os.path.exists(os.path.join(ENGINE, layer, 'roles')))
+        self.assertIn('templates/', self.load('engine.yml')['protected'])
 
-    def test_every_skill_has_a_profile_and_matching_front_matter(self):
-        profs = self.load("policy", "profiles.yml")
-        d = os.path.join(ENGINE, "policy", "roles")
-        for role in os.listdir(d):
-            if os.path.isdir(os.path.join(d, role)):
-                self.assertIn(role, profs, role)
-                with open(os.path.join(d, role, "SKILL.md"), encoding="utf-8") as fh:
-                    fm = it.frontmatter(fh.read())[0]
-                self.assertEqual(fm.get("name"), role)
-                self.assertTrue(fm.get("description"), role)
-
-    def test_the_roles_the_engine_names_have_profiles(self):
-        profs = self.load("policy", "profiles.yml")
-        names = c.DEFAULTS["policymaker_only_roles"] + [c.DEFAULTS["verifier_role"], self.load("policy", "params.yml")["shaper"]]
-        for r in names:
-            self.assertIn(r, profs, r)
-
-    def test_the_shipped_roles_need_nothing_beyond_the_default_limits(self):
-        # the verifier is started by the engine with no consent request: beyond the limits it could never run
-        profs = self.load("policy", "profiles.yml")
+    def test_template_candidates_are_complete_and_within_limits(self):
         w = fakes.World()
         try:
-            for role, p in profs.items():
-                self.assertEqual(it.limits_exceeded(p), [], role)
+            for layer in ('execution', 'policy'):
+                profs = self.load('templates', layer, 'profiles.yml')
+                for role, profile in profs.items():
+                    self.assertEqual(it.limits_exceeded(profile), [], role)
+                    path = os.path.join(ENGINE, 'templates', layer, 'roles', role, 'SKILL.md')
+                    with open(path, encoding='utf-8') as fh:
+                        fm = it.frontmatter(fh.read())[0]
+                    self.assertEqual(fm.get('name'), role)
+                    self.assertTrue(fm.get('description'), role)
+            self.assertTrue(os.path.isfile(os.path.join(ENGINE, 'templates/policy/roles/policymaker/SKILL.md')))
         finally:
             w.close()
 
@@ -219,7 +209,7 @@ class ProtectionTest(unittest.TestCase):
 
     @TEMPLATE_ONLY
     def test_no_shipped_profile_can_write_the_engine(self):
-        with open(os.path.join(ENGINE, "policy", "profiles.yml"), encoding="utf-8") as fh:
+        with open(os.path.join(ENGINE, "templates", "policy", "profiles.yml"), encoding="utf-8") as fh:
             profs = yaml.safe_load(fh)
         for role, p in profs.items():
             for g in p.get("write") or []:

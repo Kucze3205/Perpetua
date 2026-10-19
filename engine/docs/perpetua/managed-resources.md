@@ -1,44 +1,14 @@
 # Managed definitions
 
-The engine-owned `.github/loop/managed_resources.py` describes both supported
-managed resource formats. Configuration loading, role resolution and staging,
-change classification, accepted-change receipts, iteration revisions and
-rollback use that boundary rather than choosing their own managed locations.
+The engine-owned `.github/loop/managed_resources.py` defines the supported
+layered format. Configuration loading, role resolution, staging, admission,
+receipts, iteration revisions and rollback use this boundary.
 
-The default legacy format has one managed tree, `policy/`. It contains `params.yml`,
-`profiles.yml`, `protocol.md`, `prompts/role.md`, `prompts/policymaker.md` and
-`roles/<role>/` with the complete skill and its references. The Policymaker's
-session profile and protected contract still belong to the engine. Session
-write permission is independent of a resource's location: the engine's existing
-`protected` rules take precedence, followed by the role's `write` patterns.
-Evaluator writes additionally require `owns_evaluator` and independent
-verification. `direct_paths` continues to determine which changes bypass the
-change gate; changing resource handling does not widen those paths or any role.
+New templates declare `resources: {format: layered}`. Omission uses that same
+format; explicit legacy formats are rejected. Existing loops keep their own
+versioned engine (ADR-0001); this release supplies no migration or update.
 
-Compatibility is deliberate:
-
-- The policy revision is the Git tree hash of `policy`, or an empty string if
-  absent. Receipt schema version 1 and existing records keep their meaning.
-- Evaluator receipts map configured `evaluator_paths` to Git object hashes.
-  Iteration records retain their comma-separated evaluator hash string in
-  configured order. Custom evaluator paths remain supported, including those
-  outside `policy/`; accepted changes there still produce receipts.
-- Rollback compares and restores `policy/` from the last closed iteration's
-  `policy.commit_end`, or the `setup-baseline` tag before any closed iteration.
-  It removes added definitions and restores removed ones. Products, journal,
-  reports and change receipts remain. A custom evaluator outside `policy/`
-  retains its previous behavior and is outside this legacy rollback tree.
-- The existing trigger rules, accepted limits, trusted change gate command and
-  credential boundary remain in force.
-
-## Additive layered format (ADR-0004)
-
-The owner selects `resources: {format: layered}` in protected `engine.yml`.
-Omitting it (or setting `format: legacy`) preserves the shipped legacy layout.
-No existing installation is migrated. This is an additive format, pending the
-final template switch. It establishes role selection and write admission;
-read isolation is separate work. Until it lands, this option is for controlled
-preparation and tests.
+## Active definitions and inactive sources
 
 The execution layer uses `execution/profiles.yml`, `execution/roles/<role>/`,
 `execution/protocol.md`, and `execution/prompts/role.md`. The policy layer uses
@@ -76,7 +46,7 @@ The Policymaker is always a policy role. Its permission profile remains owned
 by `engine.yml` with existing owner ceilings and tuning constraints; it cannot
 be supplied in either profile file. Its mutable local skill lives at
 `policy/roles/policymaker/SKILL.md`. The default engine profile permits writes
-to both managed roots in layered mode. Explicit owner `policymaker.write`
+to both managed roots. Explicit owner `policymaker.write`
 restrictions override this default. It may create and edit local definitions
 in either layer, including its own skill. Protected engine paths and evaluator
 ownership/independent verification still take precedence.
@@ -100,7 +70,7 @@ continue through protected/write checks and the accepted-tree change gate.
 
 A layered revision has a `layered-v1:` identity over both managed roots and the
 accepted evaluator paths. Receipts record this same before/after identity;
-legacy revision hashes keep their original meaning.
+historical iteration records remain readable.
 
 A finished Policymaker session queues its entire candidate for the next
 iteration boundary. Only `apply_policy` activates that candidate. Independent
@@ -121,7 +91,7 @@ Policymaker sessions and owner-wait accounting retain their existing rules.
 
 ## New-loop setup
 
-`setup_roles.py prepare` converts copied engine defaults into inactive `templates/`, creates empty layered catalogs and clears the shaper before the setup branch is committed. It does not change the plugin installation. The shipped legacy template is retained during the ADR-0004 transition; setup preparation selects the additive layered format explicitly.
+The shipped template has empty `execution/profiles.yml` and `policy/profiles.yml`, no active skills and no selected shaper. Candidate skills and profiles live under protected `templates/`. `setup_roles.py prepare` checks this fresh state before the setup branch is committed; it does not convert definitions or change the plugin installation.
 
 The setup map chooses sources from project/global/plugin skills (including optional Matt Pocock skills), inactive templates, or a newly authored skill when no source fits. `setup_roles.py install` copies a complete skill directory and installs the explicitly supplied profile in one layer. Adaptations modify local copies only; separate names allow independent adaptations of one source in both layers. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
 

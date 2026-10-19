@@ -3,6 +3,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import setup_roles
 
 class SetupRolesTest(unittest.TestCase):
+    def test_old_format_is_rejected_without_conversion(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, 'engine.yml').write_text('resources: {format: legacy}\n')
+            with self.assertRaisesRegex(ValueError, 'unknown managed resources format'):
+                setup_roles.prepare(tmp)
+            self.assertFalse(Path(tmp, 'templates').exists())
+
     def test_copy_is_inactive_then_explicit_source_is_local_and_complete(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = os.path.join(tmp, 'loop')

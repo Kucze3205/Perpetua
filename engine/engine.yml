@@ -3,6 +3,8 @@
 # Values set to null have no default on purpose: the setup map decides them per loop, and the engine does nothing
 # for a null parameter.
 
+resources: {format: layered}     # both catalogs are empty until setup explicitly selects roles
+
 cli_version: "2.1.284"          # pinned Claude Code CLI; a new model may need a newer pin
 author:                          # git author of the loop's commits (the bot stays the committer); empty = the bot
   name: ""
@@ -21,8 +23,8 @@ gate:
   env_passthrough: []            # names of secrets the gate command may see (e.g. a judge that calls a model)
 
 # --- zones ------------------------------------------------------------------------------------------------------
-protected: [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"]   # no session writes these
-direct_paths: ["policy/", "audit/", "journal/"]   # not work: merged without the change gate (role `write` paths still apply)
+protected: [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED", "templates/"]   # no session writes these
+direct_paths: ["execution/", "policy/", "audit/", "journal/"]   # not work: merged without the change gate (role `write` paths still apply)
 notes_paths: ["journal/"]        # merged even when the session did not finish
 evaluator_paths: ["policy/evaluator/"]            # only a role whose profile has `owns_evaluator`; merged only after the verifier
 policymaker_only_roles: [evaluator, audit]             # tasks of these roles come only from the Policymaker's `orders`
@@ -38,7 +40,7 @@ limits:
 # --- the Policymaker's fixed permissions and owner ceilings -------------------------------------------------------
 policymaker:
   tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)"]
-  write: ["policy/"]
+  write: ["execution/", "policy/"]
 policymaker_session_ceilings:          # policy/params.yml can tune sessions only within these owner-approved bounds
   models: [claude-opus-5-5, claude-sonnet-5-5]
   efforts: [low, medium, high]
@@ -48,7 +50,7 @@ policymaker_session_ceilings:          # policy/params.yml can tune sessions onl
 # --- parameters of the setup (null = off) ------------------------------------------------------------------------
 params:
   no_progress_iterations: null   # open a notice after this many iterations without an improving accepted change
-  quiet_minutes: null            # no iteration closed this long: roll back policy/ and start over
+  quiet_minutes: null            # no iteration closed this long: roll back both managed roots and start over
   owner_wait_counts: null        # does time spent waiting for the owner count toward quiet_minutes
   stream_retention_iterations: null   # keep raw session streams for this many iterations (null: GitHub's default)
 cadence:

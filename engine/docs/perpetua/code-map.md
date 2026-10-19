@@ -14,9 +14,9 @@ or preparing an engine-change proposal. The engine remains owner-controlled.
 | What do the domain terms mean? | `CONTEXT.md` |
 | What must every session read and produce? | `.github/loop/session-protocol.md`, staged in `.session/protocol.md` |
 | What may the Policymaker change or order? | `.github/loop/policymaker.md` |
-| How should roles do their work? | `policy/protocol.md`, `policy/roles/<role>/SKILL.md` |
+| How should roles do their work? | `<layer>/protocol.md`, `<layer>/roles/<role>/SKILL.md` (`execution` or `policy`) |
 | Which settings are owner-controlled? | `engine.yml`; omitted values fall back to `common.DEFAULTS` |
-| Which settings may the Policymaker tune? | `policy/params.yml`, `policy/profiles.yml` |
+| Which settings may the Policymaker tune? | `policy/params.yml`, both layers' `profiles.yml` |
 | Why did a session or change get this outcome? | Its staged report; `session-reports.md` and `policy-changes.md` explain provenance |
 | How are instructions staged and network access enforced? | `session-contract.md` |
 | Which historical data can a role request? | `session-exports.md` |
@@ -38,6 +38,8 @@ The engine uses the accepted checkout; agent commits enter through `fetch_candid
 | Policymaker tuning and applying finished sessions | `policymaker_session.profile`; `loop.apply_policy` | `test_exports.py`, `test_flow.py` |
 | Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
+| Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
+| Setup selection, local copying and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
 | Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
@@ -46,7 +48,7 @@ The engine uses the accepted checkout; agent commits enter through `fetch_candid
 
 `managed_resources.py` describes the managed definition tree and its role, prompt,
 configuration, admission, revision and restore boundaries. See
-[managed definitions](managed-resources.md) for the compatibility contract.
+[managed definitions](managed-resources.md) for the supported layout and activation contract.
 `common.py` owns shared configuration, GitHub and git operations. Tests replace
 GitHub operations with `tests/fakes.py` and use real temporary git repositories.
 Run the suite from the loop repository root:

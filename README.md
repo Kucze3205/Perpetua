@@ -48,8 +48,10 @@ expands the map as it learns, and splits work that outgrows one session.
 - **Investigate or change the engine:** [code map](engine/docs/perpetua/code-map.md)
   locates behavior, contracts and tests;
   [engine lifecycle](engine/docs/perpetua/engine.md) explains how they fit together.
-- **Change role behavior:** start with `engine/policy/`. Use the code map to
-  distinguish editable policy from the engine-owned session contract.
+- **Change role behavior:** `engine/execution/` holds implementation definitions,
+  `engine/policy/` holds policy definitions, and protected `engine/templates/`
+  holds inactive candidates. Setup explicitly installs selected local roles.
+  Use the code map to distinguish definitions from engine-owned contracts.
 
 Setup copies the contents of `engine/` to the target repository root. Paths in its
 documentation therefore omit the `engine/` prefix. Changes here do not update an
@@ -63,6 +65,8 @@ From this repository root, run:
 python -m unittest discover -s engine/.github/loop/tests
 ```
 
-Prerequisites and limits of the checks are in the engine documentation's
+The [layered validation guide](engine/docs/perpetua/validation.md) maps controlled
+end-to-end coverage and required platform/provider evidence. Prerequisites and
+limits of the checks are in the engine documentation's
 [Tests](engine/docs/perpetua/engine.md#tests) and
 [Not exercised here](engine/docs/perpetua/engine.md#not-exercised-here) sections.

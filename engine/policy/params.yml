@@ -1,21 +1,21 @@
-# Parameters the Policymaker owns. Defaults of the engine are in the code; this file overrides them.
-shaper: orchestrator             # the role that decides what an iteration does and writes its task graph: an LLM role,
-                                 # or a script role (a deterministic rule: a profile with `agent: false` and a `command`)
-criterion: "shortest wall-clock time to the goal"
-policymaker_session:                 # model id (not an alias); bounded by engine.yml policymaker_session_ceilings
+shaper: null
+criterion: shortest wall-clock time to the goal
+policymaker_session:
   model: claude-opus-5-5
   effort: high
   max_turns: 150
   timeout_minutes: 90
-models:                          # label `model:<alias>` on a task -> model id; `default` when there is no label
+models:
   default: claude-sonnet-5-5
   opus: claude-opus-5-5
-efforts: [low, medium, high]
-ceilings:                        # a task's limits never exceed these; the engine enforces time and turns hard
+efforts:
+- low
+- medium
+- high
+ceilings:
   job_minutes: 240
   iteration_minutes: null
   max_turns: 150
-policymaker_triggers:                 # the Policymaker runs after an iteration closes when one fires; it never blocks an iteration.
-                                 # A new audit report always calls it. null: off
-  every_iterations: 5            # after every K-th iteration
-  no_progress: 3                 # each time this many more iterations in a row went without an improving change
+policymaker_triggers:
+  every_iterations: 5
+  no_progress: 3

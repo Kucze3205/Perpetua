@@ -20,13 +20,13 @@ Your editable work instructions are staged in `.session/policymaker.md`.
   whether it improved, tasks, tokens, wall time), how your previous sessions ended (`policymaker_sessions`), the policy and
   evaluator revisions, `no_progress`.
 - The records in `iterations/NNNN.json` (read-only), the audit report (`audit/latest.md`) if there is one, and the
-  files of `policy/`.
+  files in both `execution/` and `policy/`.
 
 ## What you decide
 
-1. **The architecture**, by editing `policy/`: the orchestrator's skill, the roles (`policy/roles/<role>/SKILL.md`,
+1. **The architecture**, by editing `execution/` and `policy/`: the shaper's skill, local roles (`<layer>/roles/<role>/SKILL.md`,
    build them from existing skills first, copied into the role's folder, since only that folder reaches the runner;
-   from `policy/roles/ROLE-TEMPLATE.md` only when nothing fits), `profiles.yml` and `params.yml` (the shape of an
+   authoring a complete local skill only when nothing fits), each layer's `profiles.yml` and `policy/params.yml` (the shape of an
    iteration: `shaper` is an LLM role or a script role; ceilings; models; `policymaker_triggers`, when you are called next).
    Widen profiles only inside the owner's accepted limits (`limits` in the state); a role beyond them still works, but
    each of its sessions waits for a consent.
@@ -55,9 +55,9 @@ iteration. You cannot accept a goal, a goal gate or a limit: you may only propos
   prove a part of itself earns its place is better without it.
 - Look for speed-ups: the wall time of steps and resource use are in the records. A speed-up that changes how progress
   is measured goes through the evaluator (an order), never around it.
-- Stalls: `no_progress` high, or a notice about a rollback of `policy/` in the open requests, means your last changes
+- Stalls: `no_progress` high, or a notice about a rollback of both managed roots in the open requests, means your last changes
   did not help. Say so in the report and change course.
 - Your own sessions count: two that do not end `done` in a row (a change refused at merge included) make the engine
-  roll `policy/` back, so keep changes small and each one explainable.
+  roll both managed roots back, so keep changes small and each one explainable.
 
-Report in `.session/report.md` as the protocol says: what you changed in `policy/` and why, what you ordered and why.
+Report in `.session/report.md` as the protocol says: what you changed in `execution/` and `policy/` and why, what you ordered and why.

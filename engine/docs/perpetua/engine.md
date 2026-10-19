@@ -1,11 +1,10 @@
 # The Perpetua engine
 
-The goal-independent machinery of this loop: workflows, scripts, configuration, the Policymaker's prompt, a generic
-orchestrator. It was copied into this repository by `/perpetua:setup` and belongs to this loop; the setup map may
+The goal-independent machinery of this loop: workflows, scripts, protected configuration and session contracts. It was copied into this repository by `/perpetua:setup` and belongs to this loop; the setup map may
 change it. Terms (loop, owner, iteration, policy, policymaker, evaluator...) are in `CONTEXT.md`.
 
-**Policy** is the collection of rules and artifacts in `policy/` governing the implementation layer: work rules,
-role skills, profiles, parameters and the evaluator. The **Policymaker** is the agent in the policy layer that creates
+**Managed definitions** span `execution/` (shaper and work roles) and `policy/` (Policymaker, audit,
+evaluator maintenance, verifier, parameters and measurement). Inactive candidates live under protected `templates/`. The **Policymaker** is the agent in the policy layer that creates
 and maintains that policy and manages the loop's architecture. The implementation layer applies it to shape,
 execute and evaluate work toward the goal. The engine enforces their contracts and the owner's authority.
 
@@ -25,13 +24,14 @@ The agent uses `role:policymaker`, the owner-controlled `policymaker` profile in
 `policymaker_session_ceilings`, and the editable `policymaker_session` and `policymaker_triggers` parameters.
 Its contract is `.github/loop/policymaker.md`; its editable starting prompt is `policy/prompts/policymaker.md`,
 staged as `.session/policymaker.md`. `policymaker_only_roles` identifies roles only this agent may order.
-Policy artifacts remain in `policy/`; `policy_rev`, `policy_params` and iteration records' `policy` section
-refer to those artifacts, while `policymaker_sessions` refers to the agent's session history.
+Managed definitions span both roots; `policy_rev` and iteration records' `policy` section
+refer to their shared revision. `policy_params` holds the common parameters, and
+`policymaker_sessions` refers to the agent's session history.
 
-This naming applies to the engine template. A manual upgrade of an older copied engine must migrate its agent
-configuration, prompt paths and issue labels together, including closed session labels used for history and
-failure counting. Pending orders use the `policymaker-orders` marker. New suggestion resolutions attribute
-`policymaker_issue`; historical records and frozen state snapshots are not rewritten. Old agent names are not aliases.
+A fresh template has no active roles or shaper. Setup selects complete local skills and
+profiles from inactive candidates or project/global/plugin sources, validates the
+accepted setup baseline and leaves arming to the owner. This release does not migrate,
+update or arm an existing loop. Repeating setup as a review is separate work.
 
 ## One iteration
 
@@ -52,11 +52,11 @@ Policymaker session (on triggers, beside iterations)
    state (`.session/loop-state.json`: goal, parameters, limits, open owner requests, an index line per past iteration,
    `no_progress`) into a comment of the iteration issue.
 2. **Policymaker.** A `role:policymaker` session runs on configured triggers, independently of the iteration. It may change
-   `policy/` and write `.session/orders.json`; its changes wait for the next iteration start. A running or failed
-   Policymaker session does not block work; two failed Policymaker sessions in a row roll `policy/` back.
+   `execution/` and `policy/` and write `.session/orders.json`; its changes wait for the next iteration start. A running or failed
+   Policymaker session does not block work; two failed Policymaker sessions in a row roll both managed roots back.
 3. **Shaper.** The role named by `shaper` in `policy/params.yml` turns the goal and state into `.session/tasks.json`: an LLM
    orchestrator, or a script role (a deterministic rule: a profile with `agent: false` and a `command`). It has no
-   GitHub token; the shipped orchestrator has no shell, while a script shaper executes its configured command.
+   GitHub token; the inactive orchestrator candidate has no shell, while a script shaper executes its configured command.
    The engine validates the graph and creates the issues, blocking edges and consent requests.
    The Policymaker's accepted orders start beside it (the only way to the roles in `policymaker_only_roles`).
    The width of the iteration is the widest layer of the graph, computed, not configured.
@@ -76,7 +76,7 @@ documented during setup; otherwise they remain in force.
 |---|---|---|
 | Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
 | Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
-| Policy artifacts | `policy/` | the Policymaker, with evaluator changes delegated as below; merged without the change gate, still within the role's `write` paths |
+| Managed definitions | `execution/`, `policy/` | the Policymaker, with evaluator changes delegated as below; merged without the change gate, still within the role's `write` paths |
 | Audit and journal | `audit/`, `journal/` | the audit role (`audit/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
 | Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policymaker, and only after the evaluator verifier passes |
 | Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except goal files the setup map writes before arming; the owner accepts what goes into `goal/` |
@@ -128,7 +128,7 @@ rules and starting prompts, and enforcement of `internet: false` for tools and s
 
 Work enters the default branch after a verdict "not worse than what is accepted". After a task ends `done` the
 epilogue, in a throwaway worktree: checks the paths (protected, role `write`, file size), rebases on the default branch,
-runs `## Verification` and `check`, then asks the gate. Paths in `direct_paths` (`policy/`, `audit/`, `journal/`) are not
+runs `## Verification` and `check`, then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
 work and skip the check and the gate. A rejected push is retried from the new tip, up to three times.
 
 `gate.kind` in `engine.yml`:
@@ -198,7 +198,7 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
   iterations in a row too;
 - resumes parked sessions that are due; relaunches ready sessions nobody started (kicking before calling);
 - `ceilings.iteration_minutes` (the Policymaker's own): fails an iteration that runs past it;
-- `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, `policy/` is rolled back to the
+- `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, both managed roots are rolled back to the
   state in which the last iteration closed (at the start: the `setup-baseline` tag), and a `notice` is opened for the owner.
   Time spent waiting for the owner counts only when `params.owner_wait_counts` is true.
 
@@ -230,7 +230,7 @@ types and dependencies; arming is a separate final ticket after coverage is veri
 | Initial approach | `docs/perpetua/approach.md`: steps, dependencies, unknowns, verification needs and the sources, information, tools and access each step requires |
 | Environment (derived from the approach) | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings; requirement coverage in `docs/perpetua/approach.md` |
 | Evaluator, change gate and goal gate | `engine.yml`: `check`, `gate`, `protected`, `evaluator_paths`; `policy/evaluator/`; owner-accepted `goal/gate.yml` (`command`, `owner_confirms`) |
-| Starting roles | `policy/roles/<role>/SKILL.md`, `policy/profiles.yml` (from `policy/roles/ROLE-TEMPLATE.md`) |
+| Starting roles | selected `execution/roles/<role>/SKILL.md` or `policy/roles/<role>/SKILL.md`, with profiles in that layer; inactive sources under `templates/` |
 | Accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
 | Parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
 | Arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |

@@ -1,7 +1,7 @@
 """Managed definitions: storage, execution layer and admission permissions.
 
-Legacy remains the default. The owner selects the additive layered format in
-engine.yml; profiles then assign each role to exactly one execution layer.
+Only the layered format is supported. Profiles assign each role to exactly
+one execution layer; existing installations keep their own versioned engine.
 """
 import os
 import re
@@ -20,11 +20,11 @@ def layered(cwd="."):
     import common as c
     value = c.load_yaml(os.path.join(cwd, "engine.yml")).get("resources", {})
     if not isinstance(value, dict) or set(value) - {"format"}:
-        raise ValueError("resources supports only format: legacy or layered")
-    fmt = value.get("format", "legacy")
-    if fmt not in ("legacy", "layered"):
+        raise ValueError("resources supports only format: layered")
+    fmt = value.get("format", "layered")
+    if fmt != "layered":
         raise ValueError("unknown managed resources format: %s" % fmt)
-    return fmt == "layered"
+    return True
 
 
 def _load_profiles(path):
@@ -73,8 +73,7 @@ def _check_local_tree(cwd, root):
 def role_profiles(cwd="."):
     """Validate the whole active catalog before selecting any role."""
     import common as c
-    if not layered(cwd):
-        return c.load_yaml(os.path.join(cwd, PROFILES))
+    layered(cwd)
     for layer in LAYERS:
         _check_local_tree(cwd, layer)
     shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
@@ -112,8 +111,7 @@ def role_profiles(cwd="."):
 
 
 def role_layer(role):
-    if not layered():
-        return ROOT
+    layered()
     profiles = role_profiles()
     if role == "policymaker":
         return ROOT
@@ -127,7 +125,7 @@ def role_directory(role):
 
 
 def rules(role):
-    return role_layer(role) + "/protocol.md" if layered() else RULES
+    return role_layer(role) + "/protocol.md"
 
 
 def prompt(role):
@@ -136,13 +134,12 @@ def prompt(role):
 
 def restore_paths():
     import common as c
-    return list(dict.fromkeys([EXECUTION, ROOT] + c.cfg()["evaluator_paths"])) if layered() else [ROOT]
+    return list(dict.fromkeys([EXECUTION, ROOT] + c.cfg()["evaluator_paths"]))
 
 
 def revision(rev="HEAD", cwd="."):
     import common as c
-    if not layered(cwd):
-        return c.tree_hash(rev, ROOT, cwd)
+    layered(cwd)
     import hashlib
     import json
     trees = {path: c.tree_hash(rev, path, cwd) for path in restore_paths()}
@@ -156,7 +153,7 @@ def evaluator_revision(rev="HEAD", cwd="."):
 
 def is_managed(path):
     import common as c
-    return c.path_match(path, [ROOT + "/"] + ([EXECUTION + "/"] if layered() else [])) or is_evaluator(path)
+    return c.path_match(path, [ROOT + "/", EXECUTION + "/"]) or is_evaluator(path)
 
 
 def is_protected(path):
@@ -166,7 +163,7 @@ def is_protected(path):
 
 def is_direct(path):
     import common as c
-    return (layered() and is_managed(path)) or c.path_match(path, c.cfg()["direct_paths"])
+    return is_managed(path) or c.path_match(path, c.cfg()["direct_paths"])
 
 
 def is_evaluator(path):

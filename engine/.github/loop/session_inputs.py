@@ -38,8 +38,6 @@ def origins(issue):
 
 def capture_origin(issue, role):
     """Pin the engine-selected layer before any agent output; retries cannot reclassify it."""
-    if not resources.layered():
-        return
     value = {'schema_version': 1, 'issue': issue, 'role': role,
              'layer': resources.role_layer(role)}
     found = origins(issue)

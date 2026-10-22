@@ -358,6 +358,7 @@ class EpilogueTest(SessionCase):
         n = self.issue()
         rounds = []
         for k in (1, 2, 3):
+            c.sync_main()                  # the staged baseline must be in the engine checkout
             self.w.before_finalize = lambda k=k: self.w.push_main({"src/a.txt": "theirs %s\n" % k}, "theirs")
             self.w.session(n, files={"src/a.txt": "mine %s\n" % k})
             rounds.append((self.hub.issues[n]["state"], self.hub.report(n)["conflicts"], self.hub.report(n)["status"]))

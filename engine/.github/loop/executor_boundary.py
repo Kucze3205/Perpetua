@@ -123,7 +123,9 @@ def import_candidate(work, metadata, trusted, ref):
             git(trusted, "update-index", "--add", "--cacheinfo", mode, oid, rel, env=env)
         tree = git(trusted, "write-tree", env=env).decode().strip()
         commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"],
-                     data=b"Executor output admitted as data\n").decode().strip()
+                     data=b"Executor output admitted as data\n",
+                     # fixed dates: the same output is the same commit, so "the head did not move" is observable
+                     env={"GIT_AUTHOR_DATE": "@0 +0000", "GIT_COMMITTER_DATE": "@0 +0000"}).decode().strip()
     git(trusted, "update-ref", ref, commit)
     return commit
 

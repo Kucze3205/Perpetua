@@ -101,6 +101,20 @@ class SetupRolesTest(unittest.TestCase):
             git('commit','-qm','later setup')
             with self.assertRaisesRegex(ValueError,'does not match'):
                 setup_roles.validate(repo, 'setup-baseline')
+            # Engine fix under .github/loop/ keeps the baseline; definition changes do not.
+            git('reset','-q','--hard','setup-baseline')
+            Path(repo,'.github/loop/common.py').open('a').write('# engine fix' + chr(10))
+            git('commit','-qam','engine fix')
+            self.assertTrue(setup_roles.validate(repo, 'setup-baseline').startswith('layered-v1:'))
+            for changed in ('execution/protocol.md', 'policy/protocol.md', 'engine.yml', 'goal/goal.md', 'templates/ROLE-TEMPLATE.md'):
+                with self.subTest(changed=changed):
+                    Path(repo,changed).parent.mkdir(parents=True, exist_ok=True)
+                    Path(repo,changed).open('a').write('# changed' + chr(10))
+                    git('add','-A')
+                    git('commit','-qm','definition change')
+                    with self.assertRaisesRegex(ValueError,'baseline'):
+                        setup_roles.validate(repo, 'setup-baseline')
+                    git('reset','-q','--hard','HEAD~1')
 
     def test_same_source_has_independent_layers_and_incomplete_setup_is_rejected(self):
         from pathlib import Path

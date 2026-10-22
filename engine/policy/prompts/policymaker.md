@@ -35,6 +35,9 @@ Tune your model, effort, turns and timeout in `policy/params.yml` `policymaker_s
 within the owner's `engine.yml` `policymaker_session_ceilings`. Engine permissions,
 tools and safeguards remain owner configuration.
 
+A run of `inconclusive` verdicts points to the evaluator role. If the cause lies outside `policy/evaluator/`
+(a secret, `gate.command`, the judge's API), submit `capability` or `engine-change` instead of editing the evaluator.
+
 Question requirements, delete unnecessary machinery, simplify, then improve speed.
 When progress needs a missing tool, access, secret or configuration, submit a `capability`
 request with the owner's steps and an explicit readiness check. Never include secret values.
@@ -42,7 +45,8 @@ Propose wider accepted limits through `limits-change`, containing the entire pro
 limits mapping. Propose engine or workflow changes through `engine-change`, with a concrete
 diff and application instructions. Say what each request unblocks and why it is needed.
 The engine freezes the proposal and base version; only the owner decides. Closing a
-capability request does not create a secret, and the owner applies engine changes manually.
+capability request does not create a secret. An accepted engine change becomes a PR the owner merges, unless it touches
+`.github/workflows/**` or no longer applies to `main`; then the owner applies it manually.
 Follow `.session/protocol.md` for the JSON fields and readiness confirmations. You may
 propose these changes but cannot accept them or edit the engine yourself.
 Report the changes you made and the evidence behind them in `.session/report.md`.

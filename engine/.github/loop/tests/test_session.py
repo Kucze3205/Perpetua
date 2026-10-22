@@ -1,14 +1,17 @@
 """One session: how it starts (resolve, stage) and how it ends (the epilogue), including the ways it goes wrong."""
 import json
 import os
+import subprocess
 import types
 import unittest
 from datetime import timedelta
+from unittest.mock import patch
 
 import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 from test_merge import GATE_SH, SCRIPT_GATE
 import managed_resources as resources
+import session_reports as reports
 
 def read(path):
     with open(path, encoding="utf-8") as fh:
@@ -260,13 +263,52 @@ class EpilogueTest(SessionCase):
         self.w.session(n, files={"src/a.txt": "A"})
         self.assertGreater(int(self.hub.report(n)["parked_s"]), 10**8)
 
-    def test_resumes_run_out(self):
+    def park_again(self, n, **fields):
+        c.update_report(n, fields)
+        self.w.session(n, report=False, exit_code="1", result=self.limit_result())
+        return self.hub.report(n)
+
+    def outages(self):
+        return [x for x in self.hub.issues.values() if x.get("title", "").startswith("OUTAGE:")]
+
+    def test_k_resumes_that_use_the_agent_without_progress_open_an_outage(self):
         n = self.issue()
         loop.resolve(n)
-        c.update_report(n, {"attempts": 3})
-        self.w.session(n, report=False, exit_code="1", result=self.limit_result())
-        self.assertEqual(self.hub.report(n)["status"], "crashed")
+        for _ in range(2):
+            self.assertEqual(self.park_again(n)["status"], "paused")
+        self.assertEqual(self.outages(), [])
+        self.assertEqual(self.park_again(n)["status"], "crashed")
         self.assertEqual(self.hub.issues[n]["state"], "closed")
+        self.assertEqual(len(self.outages()), 1)
+
+    def test_waiting_for_a_reset_without_using_the_agent_does_not_trip_the_breaker(self):
+        n = self.issue()
+        loop.resolve(n)
+        with patch.object(loop, "read_int", lambda path: None):
+            for _ in range(5):
+                f = self.park_again(n, resume_after="2020-01-01T00:00:00Z")
+        self.assertEqual((f["status"], f["attempts"], f["idle_resumes"]), ("paused", "5", "0"))
+        self.assertEqual(self.outages(), [])
+
+    def test_progress_between_resumes_resets_the_breaker(self):
+        n = self.issue()
+        loop.resolve(n)
+        self.park_again(n)
+        f = self.park_again(n, idle_resumes=2, head="0" * 40)      # the branch head moved since the last park
+        self.assertEqual((f["status"], f["idle_resumes"]), ("paused", "0"))
+
+    def test_parking_commits_nothing_and_the_final_state_is_frozen_once(self):
+        n = self.issue()
+        loop.resolve(n)
+        count = lambda: subprocess.run(["git", "rev-list", "--count", "main"], cwd=self.w.origin,
+                                       capture_output=True, text=True).stdout
+        before = count()
+        self.park_again(n)
+        self.park_again(n)
+        self.assertEqual(count(), before)
+        self.assertEqual(reports.source_records(n), [])
+        self.w.session(n, files={"src/a.txt": "A"})
+        self.assertEqual(len(reports.source_records(n)), 1)
 
     def test_a_death_without_a_report_is_a_crash_with_its_cause(self):
         n = self.issue()

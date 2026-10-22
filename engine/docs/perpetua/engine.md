@@ -175,7 +175,10 @@ protocol defines their fields and the kinds each role may propose.
 `capability` asks the owner to supply access, a tool or a named secret and confirm readiness; closing it alone does
 not create or verify a secret. `limits-change` automatically replaces only the frozen `limits` block after the owner
 accepts it, provided the proposal and its base configuration still match. `engine-change` records a concrete proposal
-and base; the owner applies and checks it manually. It neither applies engine files nor opens a PR. These requests
+and base; when the owner closes it as completed, trusted engine code applies the frozen diff to the current `main` and opens
+a PR from `engine-change/<proposal_sha12>` (needs "Allow GitHub Actions to create pull requests"). Merging the PR approves,
+closing it unmerged declines (the watchdog notices). A diff touching `.github/workflows/**`, or one that does not apply
+cleanly, gets no PR: the owner applies it manually and posts `engine-applied`. These requests
 keep trusted snapshots and durable decisions so repeated events cannot reapply a proposal.
 
 Closing a request wakes the loop (`owner-request.yml`); the watchdog sweeps requests whose event was lost.
@@ -194,6 +197,10 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 - guards: `AUTOPILOT`, `GOAL_REACHED`, an open `outage` issue (the only quiet state without runs);
 - probes the Claude credential: dead or revoked is an outage and a red run (the e-mail to the author of the workflow file is
   the free push channel);
+- `params.idle_resumes` (`engine.yml`, default 3) is the progress breaker: that many consecutive resumes of one parked session
+  that used the agent (`agent_s` or tokens) and made no progress (no turns, no new commit) open an outage and the session is not
+  resumed again. Waiting for a limit reset without using the agent does not count; parking does not use up resumes, only the
+  breaker and the 30-day age limit end a wait. A parked session commits nothing: reports freeze only in a final state.
 - three consecutive `crashed` sessions without a commit is an outage; three fruitless kicks of one issue too; three failed
   iterations in a row too;
 - resumes parked sessions that are due; relaunches ready sessions nobody started (kicking before calling);
@@ -233,7 +240,14 @@ types and dependencies; arming is a separate final ticket after coverage is veri
 | Starting roles | selected `execution/roles/<role>/SKILL.md` or `policy/roles/<role>/SKILL.md`, with profiles in that layer; inactive sources under `templates/` |
 | Accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
 | Parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
-| Arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on` (the watchdog starts iteration 0; `gh workflow run watchdog.yml` starts it now) |
+| Arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on`, then run `gh workflow run watchdog.yml` — GitHub's schedule can take 3–6 h to start it. Done by the agent or by the owner, depending on the preflight check of arming permissions |
+
+## Changing the engine after arming
+
+`validate --baseline <tag>` compares the revision of the managed definitions (`execution/`, `policy/`, evaluator paths) at `HEAD` with the one in the tag's commit, and `engine.yml`, `goal/` and `templates/` file by file; it does not compare commit SHAs. Two operations follow:
+
+- **Engine fix after arming**: a commit changing only `.github/loop/` (scripts, tests). The tag stays; validation passes.
+- **Definition change**: a change to `execution/`, `policy/`, `engine.yml`, `goal/` or `templates/`. Validation fails until a new `setup-baseline` tag is agreed with the owner.
 
 ## Not exercised here
 

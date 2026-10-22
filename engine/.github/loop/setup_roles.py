@@ -86,8 +86,8 @@ def validate(repo, baseline=None):
         if not resources.layered():
             raise ValueError('setup requires layered resources')
         params = c.load_yaml('policy/params.yml')
-        if not isinstance(params.get('shaper'), str) or not params['shaper']:
-            raise ValueError('select a shaper before arming')
+        if params.get('shaper') is not None and not isinstance(params['shaper'], str):
+            raise ValueError('shaper must be a role name or null')
         resources.validate_activation('.')
         profiles = resources.role_profiles()
         required = ['audit', 'evaluator', c.cfg()['verifier_role']]
@@ -127,7 +127,9 @@ def validate(repo, baseline=None):
                 return subprocess.check_output(['git', *args], text=True).strip()
             if git('status', '--porcelain'):
                 raise ValueError('setup baseline requires clean committed configuration')
-            if git('rev-parse', baseline + '^{commit}') != git('rev-parse', 'HEAD'):
+            # Engine fixes under .github/loop/ move HEAD but not the managed definitions.
+            if resources.revision('HEAD') != resources.revision(baseline) or git(
+                    'diff', '--name-only', baseline, 'HEAD', '--', 'engine.yml', 'goal', 'templates'):
                 raise ValueError('setup baseline does not match accepted setup commit')
             # Status omits ignored files and can hide skip-worktree changes. Compare
             # every local managed file (including skill references) with the commit.

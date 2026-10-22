@@ -27,7 +27,7 @@ ITER = "loop:iteration "                 # label `loop:iteration N`: the loop's 
 ROLE = "role:"
 AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 # Report fields written only by the engine. An agent's value for them is dropped when its report is published.
-OWNED = ("attempts", "resume_after", "kicks", "kicked", "conflicts", "cause", "verification", "verdict", "improved",
+OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "cause", "verification", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
          "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit")
@@ -52,7 +52,7 @@ DEFAULTS = {
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
-    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
+    "params": {"idle_resumes": 3, "no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
                "stream_retention_iterations": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
 }

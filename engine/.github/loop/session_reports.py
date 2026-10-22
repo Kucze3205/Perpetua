@@ -10,6 +10,7 @@ import session_inputs
 
 ROOT = ".github/loop/data/session-reports"
 STATE = ".github/loop/data/suggestions-state.json"
+FINAL = ("done", "partial", "crashed", "rejected")      # a parked (`paused`) session freezes nothing
 DECISIONS_MARK = "<!-- suggestion-decisions -->"
 
 
@@ -62,7 +63,7 @@ def source_records(n=None):
 def capture(n, work=None):
     """Freeze a trusted report and validated proposals. Replaying identical output is a no-op."""
     report = report_snapshot(n)
-    if not report:
+    if not report or c.fields(report["body"]).get("status") not in FINAL:
         return
     items, errors = [], []
     if work:

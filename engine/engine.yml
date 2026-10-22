@@ -49,6 +49,7 @@ policymaker_session_ceilings:          # policy/params.yml can tune sessions onl
 
 # --- parameters of the setup (null = off) ------------------------------------------------------------------------
 params:
+  idle_resumes: 3             # consecutive resumes that used the agent and made no progress: outage, the session is not resumed again
   no_progress_iterations: null   # open a notice after this many iterations without an improving accepted change
   quiet_minutes: null            # no iteration closed this long: roll back both managed roots and start over
   owner_wait_counts: null        # does time spent waiting for the owner count toward quiet_minutes

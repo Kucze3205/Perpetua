@@ -29,7 +29,6 @@ import policy_changes
 import executor_boundary
 
 BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
-MAX_ATTEMPTS = 3                # resume attempts
 MAX_AGE_DAYS = 30
 MAX_KICKS = 3
 CRASH_STREAK = 3                # consecutive `crashed` without a commit
@@ -690,14 +689,15 @@ def finalize(n, work):
     elif status not in ("done", "paused") and sha and role != "policymaker":
         merge_notes(n, role)
     if status == "paused":
-        if park(n, i, f, upd, prose, reset):
-            session_reports.capture(n, work)
+        ended = park(n, i, f, upd, prose, reset, sha)
+        if ended is None:
             return
-        status, prose = "crashed", "Resumes exhausted or the issue is too old."
+        status, prose = "crashed", ended
     if not pending:
         tag_unmerged(n, k, upd)
     proposals(work, k, source=n)
-    session_reports.capture(n, work)
+    if pending:
+        session_reports.capture(n, work)
     after_session(n, i, labels, role, k, work, status, upd, prose, pending)
 
 
@@ -778,16 +778,27 @@ def tag_unmerged(n, k, upd):
         c.git(".", "push", "-q", "-f", "origin", "refs/heads/task/%s:refs/tags/iter/%04d/%s" % (n, k, n), check=False, remote=True)
 
 
-def park(n, i, f, upd, prose, reset):
+def park(n, i, f, upd, prose, reset, head):
+    """Park for the provider; the clock is the limit reset. Returns None when parked, else why the session ends.
+    Waiting costs nothing, so it is bounded by the age limit and by the progress breaker: K resumes in a row that used
+    the agent and moved nothing (no turns, the branch head unmoved) open an outage."""
     kk = int(f.get("attempts", 0)) + 1
-    age = (c.now() - c.parse_time(i["created_at"])).days
-    if kk > MAX_ATTEMPTS or age >= MAX_AGE_DAYS:
-        return False
+    if (c.now() - c.parse_time(i["created_at"])).days >= MAX_AGE_DAYS:
+        return "The issue is too old."
+    spent = bool(upd.get("agent_s") or (upd.get("tokens_in") or 0) + (upd.get("tokens_out") or 0))
+    moved = bool(upd.get("turns")) or bool(f.get("head") and head != f.get("head"))
+    idle = 0 if moved else int(f.get("idle_resumes", 0)) + spent
+    limit = c.cfg()["params"]["idle_resumes"]
+    if limit and idle >= limit:
+        c.open_outage("Session #%s resumed %s times in a row without progress" % (n, idle),
+                      "Each resume used the agent and produced no turn and no commit.",
+                      "Look at the session's stream and report, fix the cause, then close this issue.")
+        return "%s resumes in a row used the agent without progress." % idle
     when = reset or c.now() + timedelta(hours=BACKOFF_H[min(kk - 1, len(BACKOFF_H) - 1)])
-    c.update_report(n, dict(upd, status="paused", attempts=kk, resume_after=c.iso(when), paused_at=c.iso()), prose)
+    c.update_report(n, dict(upd, status="paused", attempts=kk, idle_resumes=idle, head=head, resume_after=c.iso(when), paused_at=c.iso()), prose)
     c.edit_labels(n, add=["blocked:rate-limit"])
     c.workflow_run("resume.yml", issue=n)      # the clock lives in a workflow: GitHub's cron lags by hours
-    return True
+    return None
 
 
 def after_session(n, i, labels, role, k, work, status, upd, prose, merged_pending):

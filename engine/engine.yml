@@ -9,6 +9,7 @@ cli_version: "2.1.284"          # pinned Claude Code CLI; a new model may need a
 author:                          # git author of the loop's commits (the bot stays the committer); empty = the bot
   name: ""
   email: ""
+idle_resumes: 3                 # consecutive resumes of a parked session that used the agent without progress: outage, no more resumes
 owner: ""                        # GitHub login owner requests are assigned to; empty = the repository owner
 
 # --- the change gate -------------------------------------------------------------------------------------------
@@ -49,7 +50,6 @@ policymaker_session_ceilings:          # policy/params.yml can tune sessions onl
 
 # --- parameters of the setup (null = off) ------------------------------------------------------------------------
 params:
-  idle_resumes: 3             # consecutive resumes that used the agent and made no progress: outage, the session is not resumed again
   no_progress_iterations: null   # open a notice after this many iterations without an improving accepted change
   quiet_minutes: null            # no iteration closed this long: roll back both managed roots and start over
   owner_wait_counts: null        # does time spent waiting for the owner count toward quiet_minutes

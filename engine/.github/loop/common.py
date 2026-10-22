@@ -39,6 +39,7 @@ DEFAULTS = {
     "cli_version": "2.1.284",
     "author": {"name": "", "email": ""},
     "owner": "",
+    "idle_resumes": 3,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED", "templates/"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],
@@ -52,7 +53,7 @@ DEFAULTS = {
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
-    "params": {"idle_resumes": 3, "no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
+    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
                "stream_retention_iterations": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
 }

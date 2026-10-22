@@ -804,7 +804,7 @@ def park(n, i, f, upd, prose, reset, head):
     spent = bool(upd.get("agent_s") or (upd.get("tokens_in") or 0) + (upd.get("tokens_out") or 0))
     moved = bool(upd.get("turns")) or bool(f.get("head") and head != f.get("head"))
     idle = 0 if moved else int(f.get("idle_resumes", 0)) + spent
-    limit = c.cfg()["params"]["idle_resumes"]
+    limit = c.cfg()["idle_resumes"]
     if limit and idle >= limit:
         c.open_outage("Session #%s resumed %s times in a row without progress" % (n, idle),
                       "Each resume used the agent and produced no turn and no commit.",

@@ -133,8 +133,10 @@ Three additional kinds cover capabilities and changes outside a role's authority
   mapping to `engine.yml`, after checking the proposal and base configuration. Not planned changes nothing.
   A changed proposal or newer engine configuration requires a fresh request.
 - `engine-change`: `frozen` is a concrete diff and application instructions. The engine records its base commit and
-  hash. The owner applies, checks and merges it manually; closing the issue never edits engine files or creates a PR.
-  The proposal-specific `engine-applied` confirmation releases dependencies after the owner has done the work.
+  hash. When the owner closes the request as completed, the engine applies the diff to the current `main` and opens a PR from
+  `engine-change/<first 12 hex of the proposal hash>`; merging it approves, closing it unmerged declines. A diff that touches
+  `.github/workflows/**` or does not apply cleanly gets no PR and a comment instead: the owner applies it manually and posts
+  the proposal-specific `engine-applied` confirmation. Write the diff against current `main`; there is no rebase.
 
 The engine prints the exact effects, hashes, base version and confirmation instructions on each request. It freezes
 the original proposal in the trusted engine tree, so editing the issue or its displayed hash cannot change what is

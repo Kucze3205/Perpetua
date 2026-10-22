@@ -1,7 +1,9 @@
 """Frozen owner proposals and restart-safe decisions. No agent code or secret values are read."""
 import hashlib
 import json
+import os
 import re
+import tempfile
 
 import common as c
 
@@ -101,9 +103,10 @@ def instructions(proposal):
         action = ("Completed automatically replaces only `limits` in engine.yml with the frozen block, "
                   "if both the proposal and configuration still match. Not planned changes nothing.")
     elif proposal["kind"] == "engine-change":
-        action = ("The owner applies the frozen diff manually against the base commit, reviews it and decides whether to merge. "
-                  "Closing this issue never applies engine files or opens a PR. After applying and checking it, "
-                  "post `<!-- engine-applied: %s -->` and close as completed to release dependencies." % sha)
+        action = ("Completed makes the engine apply the frozen diff to the current `main` and open a PR from "
+                  "`engine-change/%s`; merging the PR applies it, closing the PR unmerged declines it. A diff that touches "
+                  "`.github/workflows/**` or does not apply cleanly gets no PR: apply it manually, then post "
+                  "`<!-- engine-applied: %s -->` and close as completed. Not planned changes nothing." % (sha[:12], sha))
     else:
         action = ("The owner must provide the tool, access or secret manually, then check: %s\n\n"
                   "Never paste a secret value here. Closing this issue does not create or verify a secret. "
@@ -125,6 +128,66 @@ def owner_confirmed(n, name, sha):
                for x in c.comments(n))
 
 
+def section(body, title):
+    m = re.search(r"^## %s\n\n(.*?)(?=\n## |\n<!--|\Z)" % re.escape(title), body, re.S | re.M)
+    return m.group(1).strip() if m else ""
+
+
+def prepare_pr(n, state, body, branch):
+    """Apply the frozen diff to the current main on `branch` and push it. Returns (PR title/body, None) or (None, reason)."""
+    title = "Engine change: %s" % (section(body, "What").splitlines() or ["request #%s" % n])[0][:60]
+    diff = state["frozen"].rstrip("\n") + "\n"
+    if any(".github/workflows/" in line for line in diff.splitlines()
+           if line.startswith(("diff --git ", "--- ", "+++ ", "rename ", "copy "))):
+        return None, "the diff touches `.github/workflows/**`, which the loop's token cannot write"
+    c.sync_main()
+    try:
+        c.git(".", "checkout", "-q", "-B", branch)
+        with tempfile.TemporaryDirectory() as tmp:
+            patch = os.path.join(tmp, "engine-change.diff")
+            with open(patch, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(diff)
+            applied = c.git(".", "apply", "--index", patch, check=False)
+        if applied.returncode:
+            return None, "the diff does not apply cleanly to the current `main`: %s" % applied.stderr.strip()
+        files = c.git(".", "diff", "--cached", "--name-only").stdout.split()
+        c.git(".", "commit", "-q", "-m", title)
+        c.git(".", "push", "-f", "origin", "HEAD:refs/heads/%s" % branch, remote=True)
+    finally:
+        c.sync_main()
+    text = ("%s\n\n**Why:** %s\n\n**Unblocks:** %s\n\nFiles:\n%s\n\nOwner request: #%s\n\n---\n"
+            "Proposal SHA-256: `%s`; base commit: `%s`; engine.yml SHA-256: `%s`.\n" % (
+                section(body, "What"), section(body, "Why"), section(body, "What it unblocks"),
+                "\n".join("- `%s`" % f for f in files), n, state["proposal_sha"], state["base_commit"], state["base_engine_sha"]))
+    return (title, text), None
+
+
+def engine_pr(n, state, body):
+    """The PR is the application: merged = approved, closed unmerged = declined, otherwise the owner keeps waiting."""
+    branch = "engine-change/" + state["proposal_sha"][:12]
+    pr = c.pr_for_branch(branch)
+    if pr is None and not state.get("prep_failed"):
+        made, why = None, None
+        try:
+            made, why = prepare_pr(n, state, body, branch)
+            if made:
+                c.open_pr(branch, *made)
+                pr = c.pr_for_branch(branch)
+        except SystemExit as e:
+            why = str(e)
+        if pr is None:
+            return "waiting", ("No PR was opened: %s. Apply the diff manually, then post `<!-- engine-applied: %s -->`; "
+                               "dependencies remain blocked." % (why or "the PR could not be created", state["proposal_sha"])), {"prep_failed": True}
+    if pr is None:
+        return "waiting", state["detail"], {}
+    extra = {"pr": pr["url"]}
+    if pr["merged"]:
+        return "approved", "Merged %s; dependencies may resume." % pr["url"], extra
+    if pr["state"] == "closed":
+        return "declined", "Closed without merging %s; the engine was not changed." % pr["url"], extra
+    return "waiting", "Waiting for the owner to merge %s; dependencies remain blocked." % pr["url"], extra
+
+
 def settle(n, issue):
     """Persist decision together with the accepted limits. Replay only repairs labels/dependencies."""
     state = read(n)
@@ -140,7 +203,7 @@ def settle(n, issue):
         # GitHub write access alone is not authority to widen the owner's accepted limits.
         return "waiting"
     accepted = issue.get("state_reason") == "completed"
-    files = {}
+    files, extra = {}, {}
     expected = {path(n): before}
     if not accepted:
         status, detail = "declined", "The owner declined; configuration was not changed."
@@ -157,11 +220,13 @@ def settle(n, issue):
         marker = "capability-ready" if state["kind"] == "capability" else "engine-applied"
         if owner_confirmed(n, marker, state["proposal_sha"]):
             status, detail = "approved", "The owner explicitly confirmed %s; dependencies may resume." % marker
+        elif state["kind"] == "engine-change":
+            status, detail, extra = engine_pr(n, state, issue.get("body") or "")
         else:
             status, detail = "waiting", "Waiting for the owner's explicit `%s` confirmation; dependencies remain blocked." % marker
-    if state["status"] == status:
+    if state["status"] == status and all(state.get(k) == v for k, v in extra.items()):
         return status
-    state.update(status=status, detail=detail, decided_at=c.iso())
+    state.update(extra, status=status, detail=detail, decided_at=c.iso())
     files[path(n)] = json.dumps(state, indent=2) + "\n"
     try:
         c.commit_main(files, "owner request #%s: %s" % (n, status), expected=expected)

@@ -40,8 +40,8 @@ class ReportsTest(SessionCase):
         immutable = {path: self.w.origin_file(path) for path, _ in reports.source_records(n)}
         reports.capture(n, work)
         self.assertEqual([s["id"] for s in reports.pending()], [proposal["id"]])
-        self.assertEqual(it.policymaker_due(1), "new session suggestions")
-        pol = it.start_policymaker(1, "new session suggestions")
+        pol = self.hub.role_issues("policymaker")[0]["number"]        # the worker's end started iteration 0, which it opens
+        self.assertEqual(it.read_state(pol)["trigger"], "new session suggestions")
         sess = self.stage(pol)
         state = self.read(os.path.join(sess, "loop-state.json"))
         self.assertEqual(state["suggestions"][0]["id"], proposal["id"])
@@ -52,9 +52,7 @@ class ReportsTest(SessionCase):
         decision = [{"id": proposal["id"], "status": "handled", "reason": "Updated the worker's context budget"}]
         self.w.session(pol, files={"policy/context.md": "Read only the selected files."},
                        session_files={"suggestion-decisions.json": json.dumps(decision)})
-        self.assertEqual(len(reports.pending()), 1)  # completed is not yet accepted
-        loop.apply_policy()
-        self.assertEqual(reports.pending(), [])
+        self.assertEqual(reports.pending(), [])      # the iteration waited for the session: its decisions hold at once
         final = self.w.origin_file(reports.STATE)
         reports.apply_decisions(pol)
         self.assertEqual(self.w.origin_file(reports.STATE), final)
@@ -85,8 +83,8 @@ class ReportsTest(SessionCase):
         self.assertEqual(len(reports.pending()), 1)
 
     def test_pending_trigger_consumed_once_but_new_suggestion_still_triggers(self):
-        self.producer()
-        pol = it.start_policymaker(1, "new session suggestions")
+        self.producer()                                           # its end started iteration 0, opened by the Policymaker
+        pol = self.hub.role_issues("policymaker")[0]["number"]
         self.assertIsNone(it.policymaker_due(1))  # Policymaker is open
         self.producer()
         self.hub.close_issue(pol)

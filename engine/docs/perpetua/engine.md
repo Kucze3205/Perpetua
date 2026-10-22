@@ -39,22 +39,28 @@ Iterations run one after another. An iteration is an issue labelled `loop:map` +
 does is an issue labelled `loop:iteration N` + `role:<name>`.
 
 ```
-shaper session ──► task graph ──► task sessions (parallel) ──► record
- (orchestrator      issues and        rebase, check, gate,      iterations/NNNN.json
-  or a script)      blocking edges    merge
+Policymaker session ──► shaper session ──► task graph ──► task sessions (parallel) ──► record
+ (when a trigger is due;    (optional: an      issues and       rebase, check, gate,      iterations/NNNN.json
+  always in the first)       orchestrator      blocking edges   merge
+                             or a script)
 
-Policymaker session (on triggers, beside iterations)
- └─► accepted policy changes and orders take effect at the next iteration start
+Policymaker orders ──► tasks of the same iteration (the only tasks when `shaper: null`)
 ```
 
 1. **Start.** The watchdog (or the end of the previous iteration) starts iteration N when none is open, if the
-   cadence allows. Finished Policymaker sessions are applied at this boundary, oldest first. The engine snapshots the
-   state (`.session/loop-state.json`: goal, parameters, limits, open owner requests, an index line per past iteration,
-   `no_progress`) into a comment of the iteration issue.
-2. **Policymaker.** A `role:policymaker` session runs on configured triggers, independently of the iteration. It may change
-   `execution/` and `policy/` and write `.session/orders.json`; its changes wait for the next iteration start. A running or failed
-   Policymaker session does not block work; two failed Policymaker sessions in a row roll both managed roots back.
-3. **Shaper.** The role named by `shaper` in `policy/params.yml` turns the goal and state into `.session/tasks.json`: an LLM
+   cadence allows. The triggers of the policy layer are checked now, at the start, never after the previous close.
+2. **Policymaker.** When a trigger is due the iteration begins with a `role:policymaker` session and waits for it: the first
+   iteration of the loop always (it sets up the execution layer's organization, so it is the larger piece of work), later
+   ones on `every_iterations`, `no_progress`, a new audit report or new suggestions. It may change `execution/` and
+   `policy/` and write `.session/orders.json`. When it ends, its changes merge and its orders become tasks of this same
+   iteration; the iteration record keeps the policy revision before and after, the session and its trigger. A failed
+   Policymaker session fails open: the iteration runs on the last organization (`policy/` as it stood); two failed sessions
+   in a row roll both managed roots back. With no trigger due the iteration starts at once on the last organization. The
+   engine then snapshots the state (`.session/loop-state.json`: goal, parameters, limits, open owner requests, an index line
+   per past iteration, `no_progress`) into a comment of the iteration issue.
+3. **Shaper (optional).** The role named by `shaper` in `policy/params.yml` (`null`: none; the tasks are then only the
+   Policymaker's orders, of any role, and an iteration without a shaper and without valid orders ends `failed` with that reason)
+   turns the goal and state into `.session/tasks.json`: an LLM
    orchestrator, or a script role (a deterministic rule: a profile with `agent: false` and a `command`). It has no
    GitHub token; the inactive orchestrator candidate has no shell, while a script shaper executes its configured command.
    The engine validates the graph and creates the issues, blocking edges and consent requests.
@@ -197,7 +203,7 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 - guards: `AUTOPILOT`, `GOAL_REACHED`, an open `outage` issue (the only quiet state without runs);
 - probes the Claude credential: dead or revoked is an outage and a red run (the e-mail to the author of the workflow file is
   the free push channel);
-- `params.idle_resumes` (`engine.yml`, default 3) is the progress breaker: that many consecutive resumes of one parked session
+- `idle_resumes` (`engine.yml`, default 3) is the progress breaker: that many consecutive resumes of one parked session
   that used the agent (`agent_s` or tokens) and made no progress (no turns, no new commit) open an outage and the session is not
   resumed again. Waiting for a limit reset without using the agent does not count; parking does not use up resumes, only the
   breaker and the 30-day age limit end a wait. A parked session commits nothing: reports freeze only in a final state.

@@ -141,7 +141,6 @@ def resolve(n):
                  secrets="|%s|" % "|".join(names) if names else "")
 
 
-
 def stage(n, work, trusted):
     """Everything the agent needs, put in place by trusted code before the engine checkout is removed from the disk."""
     i = c.issue(n)
@@ -621,7 +620,6 @@ def finalize(n, work):
     text = c.safe_read(work, ".session/report.md")
     if text:
         c.publish(n, text)
-    session_reports.capture(n, work)
     f = c.report_fields(n)
     status = f.get("status", "")
     exit_code = ""
@@ -682,7 +680,6 @@ def finalize(n, work):
             upd["conflicts"] = kk
             if kk < MAX_CONFLICTS:
                 c.update_report(n, dict(upd, status="partial"), "Rebase on the default branch: conflict (attempt %s)." % kk)
-                session_reports.capture(n, work)
                 c.edit_labels(n, add=["conflict"])
                 c.launch(n)
                 return
@@ -807,7 +804,7 @@ def park(n, i, f, upd, prose, reset, head):
     spent = bool(upd.get("agent_s") or (upd.get("tokens_in") or 0) + (upd.get("tokens_out") or 0))
     moved = bool(upd.get("turns")) or bool(f.get("head") and head != f.get("head"))
     idle = 0 if moved else int(f.get("idle_resumes", 0)) + spent
-    limit = c.cfg()["params"]["idle_resumes"]
+    limit = c.cfg()["idle_resumes"]
     if limit and idle >= limit:
         c.open_outage("Session #%s resumed %s times in a row without progress" % (n, idle),
                       "Each resume used the agent and produced no turn and no commit.",

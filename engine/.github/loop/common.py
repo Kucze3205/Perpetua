@@ -39,6 +39,7 @@ DEFAULTS = {
     "cli_version": "2.1.284",
     "author": {"name": "", "email": ""},
     "owner": "",
+    "idle_resumes": 3,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED", "templates/"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],
@@ -52,7 +53,7 @@ DEFAULTS = {
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
-    "params": {"idle_resumes": 3, "no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
+    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
                "stream_retention_iterations": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
 }
@@ -236,6 +237,17 @@ def ensure_label(name, color="C5DEF5", desc=""):
 
 def comments(n):
     return api_list("repos/%s/issues/%s/comments" % (REPO, n))
+
+
+def pr_for_branch(branch):
+    """The pull request opened from `branch` (any state), or None: {number, url, state, merged}."""
+    prs = api_list("repos/%s/pulls?state=all&head=%s:%s" % (REPO, REPO.split("/")[0], urllib.parse.quote(branch, safe="")))
+    return ({"number": prs[0]["number"], "url": prs[0]["html_url"], "state": prs[0]["state"],
+             "merged": bool(prs[0].get("merged_at"))} if prs else None)
+
+
+def open_pr(branch, title, body):
+    gh("pr", "create", "--head", branch, "--base", default_branch(), "--title", title, "--body-file", "-", inp=body)
 
 
 def post_comment(n, body):

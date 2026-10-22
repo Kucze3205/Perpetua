@@ -318,8 +318,9 @@ def apply_policy():
 
 
 def start_iteration():
-    """Begin the next iteration if none is open: what the Policymaker finished meanwhile takes effect, its orders start
-    beside the shaper. Serial by construction: one open iteration at most."""
+    """Begin the next iteration if none is open. The policy layer goes first: a due Policymaker session opens the
+    iteration and the iteration waits for it; its changes and orders hold from this iteration on. Serial by
+    construction: one open iteration at most."""
     if not c.guard_ok() or c.outage_open():
         return None
     c.sync_main()
@@ -341,15 +342,36 @@ def start_iteration():
     if any(x["number"] < it for x in c.list_issues(labels=(MAP,))):      # two runs started one at once: the lower number stays
         c.close_issue(it, "not planned")
         return None
+    c.update_report(it, {"phase": "starting", "started": c.iso(), "policy_rev_start": policy_rev()})
+    why = policymaker_due(n)
+    if why and c.guard_ok():
+        c.update_report(it, {"phase": "policy", "policy_issue": start_policymaker(n, why), "policy_trigger": why})
+        return n
+    begin_work(n, it)
+    return n
+
+
+def begin_work(n, it):
+    """The policy layer is settled: merge what the Policymaker finished, then the shaper and the Policymaker's orders
+    make the tasks. A Policymaker that failed twice in a row is reverted: the iteration runs on the last good policy."""
+    c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
     orders = apply_policy()
     if policymaker_failures() >= 2:
         revert_policy("two Policymaker sessions in a row failed")
-    c.update_report(it, {"phase": "starting", "started": c.iso(), "policy_rev_start": policy_rev()})
     store_state(it, build_state(n))
-    if orders:
-        place_orders(n, it, orders)
-    begin_shape(n, it)
-    return n
+    if c.params()["shaper"]:
+        if orders:
+            place_orders(n, it, orders)
+        return begin_shape(n, it)
+    if not (orders and place_orders(n, it, orders)):
+        return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks")
+    c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(orders), "width": width(orders)})
+
+
+def policy_settled(n):
+    """The iteration's Policymaker session is over: it ended (any status) or its output waits to be merged."""
+    found = c.list_issues(state="all", labels=("role:policymaker", c.ITER + str(n)))
+    return all(x["state"] == "closed" or "awaiting:iteration" in c.label_names(x) for x in found)
 
 
 def failed_streak():
@@ -385,21 +407,21 @@ def audit_revision():
 
 
 def policymaker_due(n):
-    """Why the Policymaker should run now that iteration n closed (None: it should not). One Policymaker session at a time."""
+    """Why the Policymaker opens iteration n (None: it does not, the last organization stands). One session at a time.
+    The first iteration of the loop always has one: it sets up how the execution layer works."""
     if c.list_issues(labels=("role:policymaker",)):
         return None
+    if not c.list_issues(state="all", labels=("role:policymaker",)):
+        return "the first iteration of the loop"
     t = c.params()["policymaker_triggers"]
     k = no_progress()
-    if t.get("every_iterations") and (n + 1) % t["every_iterations"] == 0:
+    if t.get("every_iterations") and n and n % t["every_iterations"] == 0:
         return "every %s iterations" % t["every_iterations"]
     if t.get("no_progress") and k and k % t["no_progress"] == 0:
         return "%s iterations without progress" % k
     sessions = c.list_issues(state="all", labels=("role:policymaker",))
     last = max(sessions, key=lambda x: x["number"], default=None)
     state = (read_state(last["number"]) or {}) if last else {}
-    first = next((r["iteration"] for r in records() if r["status"] == "closed"), None)
-    if first is not None and state.get("first_closed_iteration") != first:
-        return "the first closed iteration"
     audit = audit_revision()
     if audit and audit != state.get("audit_rev"):
         return "a new audit report"
@@ -411,12 +433,12 @@ def policymaker_due(n):
 
 
 def start_policymaker(n, why):
-    """A Policymaker session beside the iterations, never blocking one. What it changes and orders takes effect when the
-    next iteration starts."""
-    p = c.create_issue("Policymaker after iteration %s" % tag(n),
-                       "Runs because: %s. Change `policy/` where needed; order the evaluator or the audit in `.session/orders.json`.\n\n"
-                       "Input: `.session/loop-state.json`. Rules: `.session/policymaker.md`. Your changes and orders take effect when the "
-                       "next iteration starts.\n" % why, labels=("role:policymaker", c.ITER + str(n)))
+    """A Policymaker session that opens iteration n: the iteration waits for it, and what it changes and orders holds
+    in that iteration."""
+    p = c.create_issue("Policymaker at the start of iteration %s" % tag(n),
+                       "Runs because: %s. Change `policy/` and `execution/` where needed; order work in `.session/orders.json`.\n\n"
+                       "Input: `.session/loop-state.json`. Rules: `.session/policymaker.md`. Iteration %s waits for you: your changes "
+                       "and orders hold in it.\n" % (why, tag(n)), labels=("role:policymaker", c.ITER + str(n)))
     store_state(p, dict(build_state(n), trigger=why))
     c.launch(p)
     return p
@@ -432,13 +454,14 @@ def read_orders(p):
 
 
 def place_orders(n, it, orders):
-    """The Policymaker's orders become tasks of iteration n, running beside the shaper and its graph."""
+    """The Policymaker's orders become tasks of iteration n, running beside the shaper and its graph. True when placed."""
     errs = validate_tasks({"tasks": orders}, ordered=True)
     if errs:
         c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
-        return
+        return False
     for num in create_tasks(n, orders):
         c.launch(num)
+    return True
 
 
 # ---------------------------------------------------------------- the task graph
@@ -487,7 +510,7 @@ def consent_errors(consent):
 
 def validate_tasks(doc, ordered=False, taken=()):
     """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
-    `policymaker_only_roles` and only of them. `taken`: ids the iteration already uses."""
+    `policymaker_only_roles` and only of them, unless no shaper is set: then it orders any role. `taken`: ids the iteration already uses."""
     profiles, parameters, config = c.profiles(), c.params(), c.cfg()
     policymaker_roles = config["policymaker_only_roles"]
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
@@ -517,7 +540,7 @@ def validate_tasks(doc, ordered=False, taken=()):
         role = task.get("role")
         if not isinstance(role, str) or role not in profiles or role == "policymaker":
             errors.append("task %s: role %r has no profile" % (task_id, role))
-        elif ordered and role not in policymaker_roles:
+        elif ordered and parameters["shaper"] and role not in policymaker_roles:
             errors.append("task %s: the Policymaker orders only %s" % (task_id, ", ".join(policymaker_roles)))
         elif not ordered and role in policymaker_roles:
             errors.append("task %s: role `%s` is ordered only by the Policymaker" % (task_id, role))
@@ -677,6 +700,9 @@ def advance():
         pending = [x for x in iteration_issues(n) if x["state"] == "open" and c.roles_of(c.label_names(x))]
         if not pending:
             close_iteration(n, "closed")
+    elif phase == "policy":
+        if policy_settled(n):
+            begin_work(n, it["number"])
     elif phase == "starting":
         pass
     return n
@@ -777,7 +803,8 @@ def close_iteration(n, status, failure=None):
             "started": f.get("started"), "ended": c.iso(), "engine_version": c.engine_version(),
             "input_state": {k: v for k, v in (read_state(it["number"]) or {}).items() if k != "iterations"},
             "policy": {"rev_start": f.get("policy_rev_start"), "rev_end": policy_rev(), "commit_end": c.head(),
-                       "orders_refused": f.get("orders_refused")},
+                       "orders_refused": f.get("orders_refused"), "session": int(f["policy_issue"]) if f.get("policy_issue", "").isdigit() else None,
+                       "trigger": f.get("policy_trigger")},
             "decided_by": f.get("shaper"),
             "tasks": tasks,
             "outcome": {"sessions": list(sessions.values()), "shaper": shp,
@@ -796,9 +823,6 @@ def close_iteration(n, status, failure=None):
     prune_streams(n)
     note_no_progress(n)
     check_goal()
-    why = policymaker_due(n)
-    if why and c.guard_ok():
-        start_policymaker(n, why)
     start_iteration()
 
 

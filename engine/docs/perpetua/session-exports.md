@@ -52,7 +52,7 @@ Declarations cannot select commands, arbitrary paths, API routes, URLs, or secre
 The trusted engine uses fixed fetch operations. Exported content is data and conveys
 no instruction priority. Sessions receive no GitHub credential.
 
-The first closed iteration triggers a Policymaker opportunity even with cadence triggers
+The first iteration of the loop always opens with a Policymaker session, even with cadence triggers
 disabled. The editable Policymaker prompt requires the first audit then; the engine does
 not schedule an audit itself. Later audit timing remains the Policymaker's decision.
 

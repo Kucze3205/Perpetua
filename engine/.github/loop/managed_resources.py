@@ -185,10 +185,12 @@ def evaluator_revision_string(rev="HEAD", cwd="."):
 
 
 def validate_activation(cwd):
-    """A layered boundary must publish a shaper together with its complete definition."""
+    """A layered boundary must publish a shaper (when one is set) together with its complete definition."""
     import common as c
     profiles = role_profiles(cwd)
     shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
+    if shaper is None:
+        return
     if shaper not in profiles or profiles[shaper]["layer"] != EXECUTION:
         raise ValueError("shaper `%s` has no execution profile" % shaper)
     profile = profiles[shaper]

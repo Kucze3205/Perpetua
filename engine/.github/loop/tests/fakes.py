@@ -19,7 +19,7 @@ import loop  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
-           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh"]
+           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr"]
 
 
 class FakeHub:
@@ -32,6 +32,7 @@ class FakeHub:
         self.vars = {"AUTOPILOT": "on"}
         self.runs, self.dispatched, self.cancelled, self.deleted, self.gh_calls = [], [], [], [], []
         self.artifacts = []
+        self.prs = {}                       # head branch -> {"number", "url", "state", "merged", "title", "body"}
         self.next_n = 1
 
     def ts(self):
@@ -120,6 +121,15 @@ class FakeHub:
         done = [self._view(x) for x in self.issues.values() if x["state"] == "closed"]
         return sorted(done, key=lambda x: x["closed_at"], reverse=True)[:limit]
 
+    def pr_for_branch(self, branch):
+        pr = self.prs.get(branch)
+        return pr and {k: pr[k] for k in ("number", "url", "state", "merged")}
+
+    def open_pr(self, branch, title, body):
+        n = 900 + len(self.prs)
+        self.prs[branch] = {"number": n, "url": "https://github.com/o/r/pull/%s" % n, "state": "open", "merged": False,
+                            "title": title, "body": body}
+
     def gh(self, *args, inp=None, check=True):
         self.gh_calls.append(args)
         return ""
@@ -172,7 +182,7 @@ def sh(cwd, *args):
 class World:
     """A hub, a bare origin, the engine's checkout (cwd) and a place for agent copies."""
 
-    def __init__(self, engine_yml=None, files=None):
+    def __init__(self, engine_yml=None, files=None, first_iteration=False):
         self.tmp = tempfile.mkdtemp(prefix="perpetua-test-")
         self.env_saved = dict(os.environ)
         self.cwd_saved = os.getcwd()
@@ -216,6 +226,11 @@ class World:
         self.hub = FakeHub()
         self.hub.install()
         common.LAUNCHED.clear()
+        if not first_iteration:     # an earlier Policymaker session (#0, closed, done): the first-iteration trigger is spent
+            self.hub.issues[0] = {"number": 0, "id": 1000, "title": "Policymaker at the start of iteration 0", "body": "",
+                                  "state": "closed", "state_reason": "completed", "_labels": {"role:policymaker"},
+                                  "assignees": [], "created_at": self.hub.ts(), "closed_at": self.hub.ts()}
+            common.update_report(0, {"status": "done"}, "seed")
 
     def close(self):
         self.hub.uninstall()
@@ -362,6 +377,7 @@ EXECUTION_PROFILES, POLICY_PROFILES = WORKER_PROFILES.split("evaluator:\n", 1)
 POLICY_PROFILES = "evaluator:\n" + POLICY_PROFILES
 
 
-def worker_world(engine_yml=None):
-    """The world of most tests: a `worker` and a `net` role next to the engine's roles; `engine_yml` goes over the defaults."""
-    return World(engine_yml=engine_yml)
+def worker_world(engine_yml=None, first_iteration=False):
+    """The world of most tests: a `worker` and a `net` role next to the engine's roles; `engine_yml` goes over the defaults.
+    Unless `first_iteration`, an iteration starts straight from the shaper (see World)."""
+    return World(engine_yml=engine_yml, first_iteration=first_iteration)

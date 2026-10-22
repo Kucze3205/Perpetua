@@ -1,5 +1,5 @@
 """The iteration lifecycle on a fake GitHub and real git: start, shaper, tasks, record, next iteration; the Policymaker on
-triggers, beside the iterations."""
+triggers, at the start of an iteration."""
 import json
 import os
 import unittest
@@ -13,9 +13,10 @@ from test_merge import GATE_SH, SCRIPT_GATE
 class Flow(unittest.TestCase):
     YML = SCRIPT_GATE
     PARAMS = None
+    FIRST = False       # True: no Policymaker session has run yet, so the first iteration starts with one
 
     def setUp(self):
-        self.w = fakes.worker_world(self.YML)
+        self.w = fakes.worker_world(self.YML, first_iteration=self.FIRST)
         self.hub = self.w.hub
         files = {"policy/evaluator/gate.sh": GATE_SH}
         if self.PARAMS:
@@ -55,7 +56,7 @@ class Flow(unittest.TestCase):
         self.w.session(self.task_issue(tid), files={"src/%s.txt" % tid: tid})
 
     def policymaker_session(self, n=0):
-        """A Policymaker session as the trigger opens it after iteration n."""
+        """A Policymaker session opening iteration n, started by hand (the iteration is open without waiting for it)."""
         return it.start_policymaker(n, "a test")
 
 
@@ -106,12 +107,11 @@ class FirstIterationTest(Flow):
         self.assertNotIn("iterations", rec["input_state"])
         self.assertEqual(self.hub.issues[cur["number"]]["state"], "closed")
 
-        # The next iteration starts at once; the first close also gives Policymaker an audit opportunity.
+        # The next iteration starts at once, on the last organization: no trigger is due, so no Policymaker session.
         nxt = self.open_iteration()
         self.assertEqual(it.iteration_number(nxt), 1)
         self.assertEqual(c.report_fields(nxt["number"])["phase"], "shape")
-        self.assertEqual(len(self.hub.role_issues("policymaker")), 1)
-        self.assertEqual(it.read_state(self.session_issue("policymaker"))["trigger"], "the first closed iteration")
+        self.assertEqual(self.hub.role_issues("policymaker"), [])
         state = it.read_state(nxt["number"])
         self.assertEqual(state["iterations"][0]["n"], 0)
         self.assertEqual(state["iterations"][0]["improved"], True)
@@ -126,7 +126,7 @@ class FirstIterationTest(Flow):
     def test_the_switch_stops_everything(self):
         self.hub.vars["AUTOPILOT"] = "off"
         self.assertIsNone(it.start_iteration())
-        self.assertEqual(self.hub.issues, {})
+        self.assertEqual(set(self.hub.issues), {0})                 # only the fixture's earlier Policymaker session
 
 
 class RaceTest(Flow):
@@ -169,29 +169,37 @@ class RaceTest(Flow):
 class PolicymakerTriggerTest(Flow):
     PARAMS = "policymaker_triggers:\n  every_iterations: 2\n  no_progress: 3\n"
 
-    def test_the_policymaker_runs_on_its_count_beside_the_next_iteration(self):
+    def test_the_policymaker_opens_the_iteration_on_its_count(self):
         it.start_iteration()
+        self.assertEqual(self.hub.role_issues("policymaker"), [])                # iteration 0: no trigger due
         self.finish(0)
-        first = self.session_issue("policymaker")
-        self.assertEqual(it.read_state(first)["trigger"], "the first closed iteration")
-        self.hub.close_issue(first)
         self.finish(1)
         pol = self.session_issue("policymaker")
-        self.assertEqual(c.iteration_of(c.label_names(self.hub.issue(pol))), 1)  # labelled with the iteration that started it
+        self.assertEqual(c.iteration_of(c.label_names(self.hub.issue(pol))), 2)  # labelled with the iteration it opens
         self.assertIn(pol, {int(i["issue"]) for _, i in self.hub.dispatched})
         nxt = self.open_iteration()
-        self.assertEqual(it.iteration_number(nxt), 2)                           # it does not wait for the Policymaker
-        self.assertEqual(c.report_fields(nxt["number"])["phase"], "shape")
+        self.assertEqual(it.iteration_number(nxt), 2)
+        self.assertEqual(c.report_fields(nxt["number"])["phase"], "policy")      # the iteration waits for it
+        self.assertIsNone(self.session_issue("orchestrator", n=2))
         state = it.read_state(pol)
         self.assertEqual((state["trigger"], state["iterations"][-1]["n"]), ("every 2 iterations", 1))
+        self.w.session(pol)
+        self.assertEqual(c.report_fields(nxt["number"])["phase"], "shape")
+        self.assertIsNotNone(self.session_issue("orchestrator", n=2))
+
+    def test_without_a_due_trigger_the_iteration_starts_on_the_last_organization(self):
+        it.start_iteration()
+        self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
+        self.finish(0)                                                           # iteration 1: no trigger due either
+        self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
+        self.assertEqual(self.hub.role_issues("policymaker", "all")[-1]["number"], 0)      # only the fixture's old session
 
     def test_one_policymaker_session_at_a_time(self):
         it.start_iteration()
         self.finish(0)
         self.finish(1)
-        self.finish(2)
-        self.finish(3)
-        self.assertEqual(len(self.hub.role_issues("policymaker", "all")), 1)
+        self.assertEqual(len(self.hub.role_issues("policymaker")), 1)
+        self.assertIsNone(it.policymaker_due(3))
 
     def test_no_progress_calls_the_policymaker(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "policymaker_triggers:\n  no_progress: 1\n"}, "params")
@@ -204,23 +212,12 @@ class PolicymakerTriggerTest(Flow):
     def test_a_new_audit_report_calls_the_policymaker(self):
         it.start_iteration()
         self.policymaker_session(0)
-        self.assertIsNone(it.policymaker_due(0))                                      # one is open
+        self.assertIsNone(it.policymaker_due(1))                                      # one is open
         self.hub.close_issue(self.session_issue("policymaker"))
-        self.assertIsNone(it.policymaker_due(0))
+        self.assertIsNone(it.policymaker_due(1))
         self.w.push_main({"audit/latest.md": "numbers\n"}, "the audit merged")
         c.sync_main()
-        self.assertEqual(it.policymaker_due(0), "a new audit report")
-
-    def test_first_closed_iteration_is_a_one_time_policymaker_opportunity(self):
-        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS}, "disable cadence triggers")
-        c.sync_main()
-        it.start_iteration()
-        self.finish(0)
-        first = self.session_issue("policymaker")
-        self.assertEqual(it.read_state(first)["trigger"], "the first closed iteration")
-        self.hub.close_issue(first)
-        self.finish(1)
-        self.assertEqual(len(self.hub.role_issues("policymaker", "all")), 1)
+        self.assertEqual(it.policymaker_due(1), "a new audit report")
 
     def test_audit_revision_is_acknowledged_once_even_when_commit_clock_is_older(self):
         it.start_iteration()
@@ -228,87 +225,125 @@ class PolicymakerTriggerTest(Flow):
         self.hub.close_issue(first)
         self.w.push_main({"audit/latest.md": "numbers\n"}, "audit revision")
         c.sync_main()
-        self.assertEqual(it.policymaker_due(0), "a new audit report")
+        self.assertEqual(it.policymaker_due(1), "a new audit report")
         second = self.policymaker_session(0)
         self.hub.close_issue(second)
-        self.assertIsNone(it.policymaker_due(0))
+        self.assertIsNone(it.policymaker_due(1))
+
+
+class FirstPolicymakerTest(Flow):
+    """No Policymaker session has run yet: the first iteration of the loop starts with one."""
+    FIRST = True
+    ORDER = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
+
+    def test_the_first_iteration_starts_with_the_policymaker_and_its_orders_become_its_tasks(self):
+        self.assertEqual(it.start_iteration(), 0)
+        cur = self.open_iteration()
+        pol = self.session_issue("policymaker")
+        self.assertEqual(c.report_fields(cur["number"])["phase"], "policy")
+        self.assertEqual(it.read_state(pol)["trigger"], "the first iteration of the loop")
+        self.assertIsNone(self.session_issue("orchestrator"))                    # the iteration waits for the Policymaker
+        self.assertEqual(c.iteration_of(c.label_names(self.hub.issue(pol))), 0)
+        self.w.session(pol, session_files={"orders.json": self.ORDER})
+        self.assertEqual(c.report_fields(cur["number"])["phase"], "shape")
+        e = self.task_issue("order-%s-e" % pol)
+        self.assertEqual(c.iteration_of(c.label_names(self.hub.issue(e))), 0)    # the same iteration
+        self.assertIn(e, {int(i["issue"]) for _, i in self.hub.dispatched})
+
+    def test_a_policy_change_of_the_opening_session_holds_in_the_same_iteration(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        rev = it.policy_rev()
+        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: faster" + chr(10)})
+        self.assertIn("faster", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.hub.issues[pol]["state"], "closed")
+        cur = self.open_iteration()
+        self.assertEqual(it.read_state(cur["number"])["policy_params"]["criterion"], "faster")
+        self.finish(0)
+        policy = self.record(0)["policy"]
+        self.assertEqual(policy["rev_start"], rev)
+        self.assertNotEqual(policy["rev_end"], rev)
+        self.assertEqual((policy["session"], policy["trigger"]), (pol, "the first iteration of the loop"))
+
+    def test_the_orders_alone_make_an_iteration_when_no_shaper_is_set(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
+        c.sync_main()
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, session_files={"orders.json": tasks_json(task("w", title="Build"))})   # a worker: any role is orderable
+        w = self.task_issue("order-%s-w" % pol)
+        cur = self.open_iteration()
+        self.assertEqual(c.report_fields(cur["number"])["phase"], "run")
+        self.assertIsNone(self.session_issue("orchestrator"))
+        self.w.session(w, files={"src/w.txt": "w"})
+        rec = self.record(0)
+        self.assertEqual((rec["status"], rec["decided_by"]), ("closed", None))
+        self.assertEqual([t["id"] for t in rec["tasks"]], ["order-%s-w" % pol])
+
+    def test_no_shaper_and_no_orders_fail_the_iteration_with_the_reason(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
+        c.sync_main()
+        it.start_iteration()
+        self.w.session(self.session_issue("policymaker"))
+        rec = self.record(0)
+        self.assertEqual(rec["status"], "failed")
+        self.assertIn("no shaper", rec["failure"])
+
+    def test_a_crashed_policymaker_fails_open_with_the_last_organization(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, files={"policy/params.yml": "criterion: x" + chr(10)}, report=False, exit_code="1")
+        self.assertEqual(self.hub.report(pol)["status"], "crashed")
+        self.assertNotIn("criterion: x", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
+        self.finish(0)
+        self.assertEqual(it.iteration_number(self.open_iteration()), 1)
 
 
 class PolicymakerTest(Flow):
+    FIRST = True
     ORDER = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
-
-    def test_its_changes_and_orders_wait_for_the_next_iteration(self):
-        it.start_iteration()
-        pol = self.policymaker_session(0)
-        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: faster\n"},
-                       session_files={"orders.json": self.ORDER})
-        self.assertNotIn("faster", self.w.origin_file("policy/params.yml"))      # iteration 0 keeps the policy it began with
-        self.assertEqual(self.hub.issues[pol]["state"], "open")
-        self.assertIn("awaiting:iteration", self.hub.issues[pol]["_labels"])
-        self.assertEqual(self.hub.report(pol)["merged"], "pending-iteration")
-        self.finish(0)
-        self.assertIn("faster", self.w.origin_file("policy/params.yml"))
-        self.assertEqual(self.hub.issues[pol]["state"], "closed")
-        self.assertEqual(self.hub.report(pol)["status"], "done")
-        e = self.task_issue("order-%s-e" % pol)
-        self.assertEqual(c.iteration_of(c.label_names(self.hub.issue(e))), 1)
-        self.assertEqual(c.roles_of(c.label_names(self.hub.issue(e))), ["evaluator"])
-        self.assertIn(e, {int(i["issue"]) for _, i in self.hub.dispatched})      # beside the shaper, not after it
-        self.assertEqual([t["id"] for t in json.loads(self.w.origin_file(it.tasks_path(1)))], ["order-%s-e" % pol])
 
     def test_the_iteration_waits_for_the_orders_and_records_them(self):
         it.start_iteration()
-        pol = self.policymaker_session(0)
+        pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.ORDER})
         self.finish(0)
-        self.finish(1)
-        self.assertIsNone(self.record(1))                                        # the order is still open
+        self.assertIsNone(self.record(0))                                        # the order is still open
         self.w.session(self.task_issue("order-%s-e" % pol))
-        rec = self.record(1)
-        self.assertEqual(sorted(t["id"] for t in rec["tasks"]), ["order-%s-e" % pol, "t1"])
+        rec = self.record(0)
+        self.assertEqual(sorted(t["id"] for t in rec["tasks"]), ["order-%s-e" % pol, "t0"])
         self.assertEqual(rec["outcome"]["width"], 2)
-
-    def test_with_no_iteration_open_it_takes_effect_at_the_next_start(self):
-        pol = self.policymaker_session(0)
-        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: faster\n"})
-        self.assertIn("faster", self.w.origin_file("policy/params.yml"))         # the watchdog's kick started iteration 0
-        self.assertEqual(it.iteration_number(self.open_iteration()), 0)
 
     def test_an_order_of_a_role_outside_policymaker_only_roles_is_refused(self):
         it.start_iteration()
-        pol = self.policymaker_session(0)
+        pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": tasks_json(task("w"))})
-        self.finish(0)
         self.assertIsNone(self.task_issue("order-%s-w" % pol))
         self.assertIn("orders only", c.report_fields(self.open_iteration()["number"])["orders_refused"])
-        self.finish(1)
-        self.assertIn("orders only", self.record(1)["policy"]["orders_refused"])
-
-    def test_a_crashed_policymaker_changes_nothing_and_the_iteration_goes_on(self):
-        it.start_iteration()
-        pol = self.policymaker_session(0)
-        self.w.session(pol, files={"policy/params.yml": "criterion: x\n"}, report=False, exit_code="1")
-        self.assertEqual(self.hub.issues[pol]["state"], "closed")
-        self.assertEqual(self.hub.report(pol)["status"], "crashed")
         self.finish(0)
-        self.assertNotIn("criterion: x", self.w.origin_file("policy/params.yml"))
-        self.assertEqual(it.iteration_number(self.open_iteration()), 1)
+        self.assertIn("orders only", self.record(0)["policy"]["orders_refused"])
 
     def test_a_policymaker_change_outside_its_zone_is_refused(self):
         it.start_iteration()
-        pol = self.policymaker_session(0)
-        self.w.session(pol, files={"engine.yml": "# hacked\n"})
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, files={"engine.yml": "# hacked" + chr(10)})
         self.assertEqual(self.hub.report(pol)["status"], "blocked")
         self.finish(0)
         self.assertNotIn("hacked", self.w.origin_file("engine.yml"))
 
     def test_the_policymaker_cannot_touch_the_evaluator(self):
         it.start_iteration()
-        pol = self.policymaker_session(0)
+        pol = self.session_issue("policymaker")
         self.w.session(pol, files={"policy/evaluator/gate.sh": "echo hacked"})
         self.finish(0)
         self.assertEqual(self.hub.report(pol)["status"], "blocked")
         self.assertNotIn("hacked", self.w.origin_file("policy/evaluator/gate.sh"))
+
+
+class PolicymakerFailureTest(Flow):
+    FIRST = True
+    PARAMS = "policymaker_triggers:\n  every_iterations: 1\n"
 
     def test_two_failed_policymaker_sessions_in_a_row_roll_policy_back(self):
         calls = []
@@ -316,12 +351,12 @@ class PolicymakerTest(Flow):
         it.revert_policy = lambda why: calls.append(why) or True
         try:
             it.start_iteration()
-            self.w.session(self.policymaker_session(0), report=False, exit_code="1")
-            self.finish(0)
+            self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
             self.assertEqual(calls, [])
-            self.w.session(self.policymaker_session(1), report=False, exit_code="1")
+            self.finish(0)
+            self.assertEqual(it.iteration_number(self.open_iteration()), 1)
+            self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
             self.assertEqual([s["status"] for s in it.policymaker_sessions()], ["crashed", "crashed"])
-            self.finish(1)
             self.assertEqual(len(calls), 1)
             self.assertIn("two Policymaker sessions", calls[0])
         finally:
@@ -468,6 +503,64 @@ class ConsentTest(Flow):
         loop.on_request_closed(req["number"])
         self.assertEqual(self.hub.issues[n]["state"], "closed")
         self.assertEqual(self.hub.report(n)["status"], "blocked")
+
+
+class ConsentSecretsTest(Flow):
+    def setUp(self):
+        super().setUp()
+        self.w.push_main({"src/.keep": ""}, "x")
+        it.start_iteration()
+        self.play_shaper(task("a", consent={"secrets": ["STRIPE_KEY"]}), task("b", consent={"secrets": ["SMTP_PASS"]}), task("c"))
+
+    def request_of(self, tid):
+        label = next(l for l in self.hub.issues[self.task_issue(tid)]["_labels"] if l.startswith("consent:"))
+        return int(label.split(":")[1])
+
+    def resolved(self, tid):
+        out = os.path.join(self.w.tmp, "out-" + tid)
+        os.environ["GITHUB_OUTPUT"] = out
+        loop.resolve(self.task_issue(tid))
+        with open(out) as fh:
+            return dict(l.rstrip("\n").split("=", 1) for l in fh)
+
+    def grant(self, tid):
+        self.hub.answer(self.request_of(tid), True)
+        loop.on_request_closed(self.request_of(tid))
+
+    def test_names_enter_the_frozen_text_and_a_later_edit_is_not_applied(self):
+        n = self.request_of("a")
+        body = self.hub.issues[n]["body"]
+        self.assertEqual(it.frozen_text(body), "secrets: STRIPE_KEY")
+        self.hub.issues[n]["body"] = body.replace("STRIPE_KEY", "OTHER_KEY")
+        self.assertIsNone(it.frozen_text(self.hub.issues[n]["body"]))
+        self.assertEqual(loop.secrets_of_consent(self.hub.issues[self.task_issue("a")]["_labels"]), [])
+
+    def test_two_sessions_get_their_own_names(self):
+        self.grant("a")
+        self.grant("b")
+        self.assertEqual(self.resolved("a")["secrets"], "|STRIPE_KEY|")
+        self.assertEqual(self.resolved("b")["secrets"], "|SMTP_PASS|")
+
+    def test_a_task_within_the_limits_has_the_consent_it_was_granted(self):
+        self.grant("a")
+        o = self.resolved("a")
+        self.assertEqual(o["consented"], "true")
+        self.assertEqual(self.resolved("c")["consented"], "false")
+        self.assertEqual(self.resolved("c")["secrets"], "")
+
+    def test_declined_consent_gives_no_secrets(self):
+        self.hub.answer(self.request_of("a"), False)
+        loop.on_request_closed(self.request_of("a"))
+        labels = self.hub.issues[self.task_issue("a")]["_labels"]
+        self.assertEqual(loop.consent_status(c.profiles()["worker"], labels), (False, None))
+        self.assertEqual(loop.secrets_of_consent(labels), [])
+
+    def test_invalid_names_are_refused_without_echoing_them(self):
+        for bad in (["lower"], ["A=hunter2"], ["A", "A"], "A", [1]):
+            errors = it.consent_errors({"secrets": bad})
+            self.assertTrue(errors, bad)
+            self.assertNotIn("hunter2", " ".join(errors))
+        self.assertEqual(it.consent_errors({"what": "w", "secrets": ["A_1", "B"]}), [])
 
 
 class EvaluatorChangeTest(Flow):

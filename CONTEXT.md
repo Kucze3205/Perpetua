@@ -49,6 +49,9 @@ _Avoid_: success metric, stop condition
 **Iteration**:
 One unit of the loop's work: a plan executed as one or more parallel jobs,
 ending in a verdict on what it produced. Exploring a wrong solution counts.
+It starts with the policy layer: a due Policymaker session opens it and its
+changes and orders hold in it; with no trigger due it runs on the last
+organization. The first iteration of the loop always has the session.
 _Avoid_: cycle
 
 **Session**:
@@ -78,6 +81,8 @@ _Avoid_: agent, policymaker
 The agent in the policy layer that manages the loop's architecture by creating
 and revising policy, including skills in both layers and its own skill. It does
 not perform the implementation layer's work or change protected engine contracts.
+It opens an iteration when a trigger is due (always in the first), and decides how
+the implementation layer is organized, including the orders that become tasks.
 _Avoid_: policy, politician, strategy, scheduler
 
 **Policy layer**:
@@ -96,8 +101,11 @@ receive their work instructions and may submit suggestions for policy changes.
 **Orchestrator**:
 A role that turns the goal and the loop's state into concrete work: what to
 analyse, build, search, whom to bring in. Decides what the loop does today;
-may propose changes to its own prompt, which the policymaker judges. The
-policymaker may replace it with a deterministic rule or remove it.
+may propose changes to its own prompt, which the policymaker judges. It is one
+of the organizations of the implementation layer that the policymaker chooses,
+not a fixed first step: the policymaker may replace it with a deterministic rule
+or remove it (`shaper: null`), and the first Policymaker session decides whether
+it exists. The owner is not asked about it.
 _Avoid_: manager
 
 **Shaper**:

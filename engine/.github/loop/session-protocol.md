@@ -133,8 +133,10 @@ Three additional kinds cover capabilities and changes outside a role's authority
   mapping to `engine.yml`, after checking the proposal and base configuration. Not planned changes nothing.
   A changed proposal or newer engine configuration requires a fresh request.
 - `engine-change`: `frozen` is a concrete diff and application instructions. The engine records its base commit and
-  hash. The owner applies, checks and merges it manually; closing the issue never edits engine files or creates a PR.
-  The proposal-specific `engine-applied` confirmation releases dependencies after the owner has done the work.
+  hash. When the owner closes the request as completed, the engine applies the diff to the current `main` and opens a PR from
+  `engine-change/<first 12 hex of the proposal hash>`; merging it approves, closing it unmerged declines. A diff that touches
+  `.github/workflows/**` or does not apply cleanly gets no PR and a comment instead: the owner applies it manually and posts
+  the proposal-specific `engine-applied` confirmation. Write the diff against current `main`; there is no rebase.
 
 The engine prints the exact effects, hashes, base version and confirmation instructions on each request. It freezes
 the original proposal in the trusted engine tree, so editing the issue or its displayed hash cannot change what is
@@ -153,13 +155,15 @@ The shaper writes `.session/tasks.json`; the engine creates the issues and the b
    "blocked_by": [], "start_branch": null, "limits": {"timeout_minutes": 60, "max_turns": 80},
    "inputs": [],
    "exports": [{"source": "streams", "iterations": [0], "sessions": [42]}],
-   "consent": {"what": "...", "why": "..."}}
+   "consent": {"what": "...", "why": "...", "secrets": ["STRIPE_KEY"]}}
 ]}
 ```
 
 `id` is yours (letters, digits, dashes) and names a task in `blocked_by` and `inputs`. `role` must have a profile.
 `model` is an alias from `policy/params.yml`; `limits` never exceed the ceilings there. `consent` is optional: the
-engine asks the owner by itself when a role's profile is beyond the accepted limits. The width of the iteration is the
+engine asks the owner by itself when a role's profile is beyond the accepted limits. `consent.secrets` lists the names
+(`^[A-Z][A-Z0-9_]*$`, no duplicates, never values) of the repository secrets this one session needs; the owner accepts
+or declines the whole list, and a changed list is a new request. The width of the iteration is the
 widest layer of the graph; it is computed, not a field. Tasks of the roles in `policymaker_only_roles` come only from the
 Policymaker's orders, and the orders only of those roles: the engine refuses either the other way. Every task fits **one
 session**.

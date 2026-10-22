@@ -132,16 +132,90 @@ class OwnerRequestsTest(unittest.TestCase):
         self.assertIn(worker, c.LAUNCHED)
         self.assertEqual(self.w.origin_file("engine.yml"), self.CONFIG)
 
-    def test_engine_change_remains_manual(self):
-        n = self.proposal("engine-change", frozen="diff --git a/engine.yml b/engine.yml\nApply and check manually.")
-        self.answer(n)
+    SCRIPT = ".github/loop/tune.py"
+    PATCH = ("diff --git a/.github/loop/tune.py b/.github/loop/tune.py\n--- a/.github/loop/tune.py\n"
+             "+++ b/.github/loop/tune.py\n@@ -1 +1 @@\n-a = 1\n+a = 2\n")
+    WORKFLOW = PATCH.replace(".github/loop/tune.py", ".github/workflows/loop.yml")
+
+    def engine_change(self, frozen=None, **kwargs):
+        self.w.push_main({self.SCRIPT: "a = 1\n"})
+        c.sync_main()
+        return it.open_request("engine-change", "fix", "Tune the script.", "It is slow.", "The worker.",
+                               frozen=frozen or self.PATCH, **kwargs)
+
+    def branch(self, n):
+        return "engine-change/" + req.read(n)["proposal_sha"][:12]
+
+    def no_pr(self, n, why):
+        self.assertEqual(self.h.prs, {})
         self.assertEqual(req.read(n)["status"], "waiting")
-        self.assertEqual(self.w.origin_file("engine.yml"), self.CONFIG)
+        self.assertIn(why, self.h.comments(n)[-1]["body"])
+        self.assertFalse(self.w.origin_has_ref(self.branch(n)))
+
+    def test_engine_change_opens_a_pr_and_merge_approves(self):
+        worker = self.h.create_issue("worker", "", labels=(c.ITER + "0", "role:worker"))
+        n = self.engine_change(blocks=[worker])
+        self.answer(n)
+        pr = self.h.prs[self.branch(n)]
+        self.assertTrue(pr["body"].startswith("Tune the script."))
+        self.assertIn("- `.github/loop/tune.py`", pr["body"])
+        self.assertIn("#%s" % n, pr["body"])
+        self.assertTrue(pr["body"].rsplit("---\n", 1)[1].startswith("Proposal SHA-256"))
+        self.assertEqual(self.w.origin_file(self.SCRIPT), "a = 1\n")
+        self.assertEqual(self.w.origin_file(self.SCRIPT, self.branch(n)), "a = 2\n")
+        self.assertEqual(req.read(n)["status"], "waiting")
+        self.assertEqual(req.read(n)["pr"], pr["url"])
+        self.assertFalse(c.is_unblocked(worker))
+        self.w.push_main({self.SCRIPT: "a = 2\n"})
+        pr["state"], pr["merged"] = "closed", True
+        loop.sweep_requests()
+        self.assertEqual(req.read(n)["status"], "approved")
+        self.assertTrue(c.is_unblocked(worker))
+        self.assertIn(req.APPROVED, c.label_names(c.issue(n)))
+
+    def test_engine_change_on_a_workflow_opens_no_pr(self):
+        n = self.engine_change(self.WORKFLOW)
+        self.answer(n)
+        self.no_pr(n, ".github/workflows/**")
+
+    def test_engine_change_that_no_longer_applies_opens_no_pr(self):
+        n = self.engine_change()
+        self.w.push_main({self.SCRIPT: "a = 3\n"})
+        self.answer(n)
+        self.no_pr(n, "does not apply")
+
+    def test_unrelated_change_on_main_still_gives_a_pr(self):
+        n = self.engine_change()
+        self.w.push_main({"README.md": "other\n"})
+        self.answer(n)
+        self.assertEqual(len(self.h.prs), 1)
+
+    def test_same_proposal_has_one_pr(self):
+        n = self.engine_change()
+        self.answer(n)
+        loop.sweep_requests()
+        loop.on_request_closed(n)
+        self.assertEqual(len(self.h.prs), 1)
+        m = it.open_request("engine-change", "fix again", "x", "y", "z", frozen=self.PATCH)
+        self.answer(m)
+        self.assertEqual(len(self.h.prs), 1)
+        self.assertIn(self.h.prs[self.branch(n)]["url"], self.h.comments(m)[-1]["body"])
+
+    def test_closing_the_pr_unmerged_declines(self):
+        worker = self.h.create_issue("worker", "", labels=(c.ITER + "0", "role:worker"))
+        n = self.engine_change(blocks=[worker])
+        self.answer(n)
+        self.h.prs[self.branch(n)]["state"] = "closed"
+        loop.sweep_requests()
+        self.assertEqual(req.read(n)["status"], "declined")
+        self.assertFalse(c.is_unblocked(worker))
+
+    def test_engine_applied_marker_is_a_fallback(self):
+        n = self.engine_change(self.WORKFLOW)
+        self.answer(n)
         self.confirm(n, "engine-applied")
         loop.sweep_requests()
         self.assertEqual(req.read(n)["status"], "approved")
-        self.assertEqual(self.w.origin_file("engine.yml"), self.CONFIG)
-        self.assertEqual(self.h.gh_calls, [])
 
     def test_retrying_a_denied_proposal_does_not_open_it_again(self):
         text = json.dumps([{"kind": "limits-change", "title": "limits", "frozen": self.LIMITS}])

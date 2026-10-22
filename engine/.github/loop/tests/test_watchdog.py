@@ -70,7 +70,7 @@ class ArmingTest(WatchCase):
     def test_the_switch_off_stops_the_watchdog(self):
         self.hub.vars["AUTOPILOT"] = "off"
         self.assertEqual(loop.watch(), 0)
-        self.assertEqual(self.hub.issues, {})
+        self.assertEqual(set(self.hub.issues), {0})        # only the fixture's earlier Policymaker session
 
 
 class JamTest(WatchCase):

@@ -238,6 +238,17 @@ def comments(n):
     return api_list("repos/%s/issues/%s/comments" % (REPO, n))
 
 
+def pr_for_branch(branch):
+    """The pull request opened from `branch` (any state), or None: {number, url, state, merged}."""
+    prs = api_list("repos/%s/pulls?state=all&head=%s:%s" % (REPO, REPO.split("/")[0], urllib.parse.quote(branch, safe="")))
+    return ({"number": prs[0]["number"], "url": prs[0]["html_url"], "state": prs[0]["state"],
+             "merged": bool(prs[0].get("merged_at"))} if prs else None)
+
+
+def open_pr(branch, title, body):
+    gh("pr", "create", "--head", branch, "--base", default_branch(), "--title", title, "--body-file", "-", inp=body)
+
+
 def post_comment(n, body):
     return api("repos/%s/issues/%s/comments" % (REPO, n), "body=@-", method="POST", inp=body)
 

@@ -11,11 +11,12 @@ leave a suggestion pending when its decision needs more evidence.
 Create and maintain managed definitions in `execution/` and `policy/`: role skills,
 profiles, common parameters, layer work rules and starting prompts, including your
 own local skill. Keep changes small and explain the evidence for them.
-The shaper decides the work of each iteration from the goal and current state.
+When a shaper exists it decides the work of each iteration from the goal and current state; with `shaper: null`
+your orders are the iteration's work.
 
 Order audit and evaluator work through `.session/orders.json`, in the task graph
-format of the engine contract. Orders and policy changes take effect at the next
-iteration boundary after successful application. A finished Policymaker session and an
+format of the engine contract. Orders and policy changes take effect in the
+iteration your session opens, after successful application. A finished Policymaker session and an
 applied change are distinct outcomes.
 
 Use the evaluator role for evaluator changes; an independent verifier must pass them
@@ -24,8 +25,11 @@ environment. The evaluator judges progress toward the goal; audit judges how the
 uses its environment. Interpret failed sessions and stalled progress as evidence to
 reconsider the architecture.
 
-After the first closed iteration, order the first audit unless an audit is already
-ordered, running or complete. The first-close trigger gives you this opportunity;
+In the first iteration, which opens with your session, you set up how the execution layer
+works: whether a shaper exists (`shaper: null` or a role), which roles do the work, and the orders
+that become the iteration's tasks. This is a larger piece of work than later sessions. Order the
+first audit unless an audit is already ordered, running or complete; the first iteration gives you
+this opportunity;
 choose later audit timing from evidence rather than a fixed engine schedule.
 Choose each order's data using `exports` in the engine contract: explicit sources
 and iteration/session identifiers. Read `.session/exports/manifest.json` and account

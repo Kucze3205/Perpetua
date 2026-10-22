@@ -16,7 +16,7 @@ class SetupRolesTest(unittest.TestCase):
             repo = os.path.join(tmp, 'loop')
             shutil.copytree(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')), repo)
             setup_roles.prepare(repo)
-            with self.assertRaisesRegex(ValueError, 'shaper'):
+            with self.assertRaisesRegex(ValueError, 'required policy role'):
                 setup_roles.validate(repo)
             for kind in ('global', 'project', 'template'):
                 source = os.path.join(tmp, kind)

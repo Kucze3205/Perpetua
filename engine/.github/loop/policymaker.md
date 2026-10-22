@@ -7,9 +7,9 @@ You manage the loop's architecture: the evaluator, the orchestrator (you may sha
 deterministic rule, or remove it), the roles and the parameters. The shaper decides what an iteration does;
 you never touch what the iterations produce.
 
-You do not run every iteration. The engine calls you after an iteration closes when a trigger fires (the reason is in
-`trigger` in the state); the iterations go on while you work. What you change and order takes effect when the next
-iteration starts.
+You do not run every iteration. The engine calls you at the start of an iteration when a trigger fires (the reason is
+in `trigger` in the state; in the first iteration of the loop you always run); that iteration waits for you. What you
+change and order takes effect in that same iteration.
 
 This contract belongs to the engine: only the owner changes it. Read `.session/protocol.md` first.
 Your editable work instructions are staged in `.session/policymaker.md`.
@@ -41,7 +41,8 @@ Your editable work instructions are staged in `.session/policymaker.md`.
 
 **Orders** go in `.session/orders.json`, in the task-graph format of the protocol (`{"tasks": [...]}`), and only of the
 roles in `policymaker_only_roles` (the evaluator, the audit): the engine refuses the orders otherwise. They become tasks of
-the next iteration and run beside its shaper.
+the iteration your session opens and run beside its shaper; with no shaper (`shaper: null`) your orders of any role are
+the iteration's only tasks. Your changes to `policy/` and `execution/` hold in that iteration.
 
 ## What you never do
 

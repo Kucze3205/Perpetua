@@ -250,6 +250,17 @@ class FirstPolicymakerTest(Flow):
         self.assertEqual(c.iteration_of(c.label_names(self.hub.issue(e))), 0)    # the same iteration
         self.assertIn(e, {int(i["issue"]) for _, i in self.hub.dispatched})
 
+    def test_the_first_trigger_returns_until_a_policymaker_session_ends_done(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        c.update_report(pol, {"status": "crashed"})
+        self.hub.close_issue(pol)
+        self.assertEqual(it.policymaker_due(1), "the first iteration of the loop")
+        retry = self.policymaker_session(1)
+        c.update_report(retry, {"status": "done"})
+        self.hub.close_issue(retry)
+        self.assertIsNone(it.policymaker_due(2))
+
     def test_a_policy_change_of_the_opening_session_holds_in_the_same_iteration(self):
         it.start_iteration()
         pol = self.session_issue("policymaker")

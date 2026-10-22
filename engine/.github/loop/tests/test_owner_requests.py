@@ -178,6 +178,13 @@ class OwnerRequestsTest(unittest.TestCase):
         self.answer(n)
         self.no_pr(n, ".github/workflows/**")
 
+    def test_engine_change_on_a_workflow_behind_a_normalized_path_opens_no_pr(self):
+        n = self.engine_change(self.WORKFLOW.replace(".github/workflows/", ".github//workflows/"))
+        self.w.push_main({".github/workflows/loop.yml": "a = 1\n"})
+        c.sync_main()
+        self.answer(n)
+        self.no_pr(n, ".github/workflows/**")
+
     def test_engine_change_that_no_longer_applies_opens_no_pr(self):
         n = self.engine_change()
         self.w.push_main({self.SCRIPT: "a = 3\n"})

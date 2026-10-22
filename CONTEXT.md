@@ -94,7 +94,7 @@ Policymaker, audit, evaluator maintenance and evaluator verification.
 **Implementation layer**:
 The part of the loop that applies policy to plan, execute and evaluate work
 toward the goal. Its skills belong to this layer even when the Policymaker
-creates or revises them. It includes the orchestrator and roles performing
+creates or revises them. It includes the shaper (when one is set) and roles performing
 goal-directed tasks. Its sessions cannot read policy-layer internals; they
 receive their work instructions and may submit suggestions for policy changes.
 

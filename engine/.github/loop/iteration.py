@@ -240,7 +240,6 @@ def build_state(n):
         "suggestions": session_reports.pending(),
         "audit_report": "audit/latest.md" if os.path.exists("audit/latest.md") else None,
         "audit_rev": audit_revision(),
-        "first_closed_iteration": next((r["n"] for r in idx if r["status"] == "closed"), None),
         "iterations": idx,
     }
 
@@ -408,10 +407,12 @@ def audit_revision():
 
 def policymaker_due(n):
     """Why the Policymaker opens iteration n (None: it does not, the last organization stands). One session at a time.
-    The first iteration of the loop always has one: it sets up how the execution layer works."""
+    The loop starts with one, and until a session ended `done` it starts every iteration with one: it sets up how
+    the execution layer works."""
     if c.list_issues(labels=("role:policymaker",)):
         return None
-    if not c.list_issues(state="all", labels=("role:policymaker",)):
+    if not any(c.report_fields(x["number"]).get("status") == "done"
+               for x in c.list_issues(state="closed", labels=("role:policymaker",))):
         return "the first iteration of the loop"
     t = c.params()["policymaker_triggers"]
     k = no_progress()

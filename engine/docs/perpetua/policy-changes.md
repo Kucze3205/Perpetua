@@ -19,7 +19,7 @@ returns its existing receipt without rewriting it.
 
 `source_iteration` identifies the triggering session's label. `applied_iteration` names the
 iteration open at publication, or is null when between iterations. `effective_from_iteration`
-then names the next iteration. New iteration records add `policy.change_ids` and
+is that iteration, or the next one when it is null. New iteration records add `policy.change_ids` and
 `evaluator_verifications` referring to events associated with that iteration. Receipts keep
 the exact application history even if a later publication occurs after its source iteration
 has closed. An evaluator ordered by Policymaker is attributed to its evaluator role.

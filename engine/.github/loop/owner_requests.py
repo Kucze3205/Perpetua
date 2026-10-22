@@ -150,7 +150,9 @@ def prepare_pr(n, state, body, branch):
             applied = c.git(".", "apply", "--index", patch, check=False)
         if applied.returncode:
             return None, "the diff does not apply cleanly to the current `main`: %s" % applied.stderr.strip()
-        files = c.git(".", "diff", "--cached", "--name-only").stdout.split()
+        files = [f for f in c.git(".", "diff", "--cached", "--name-only", "-z").stdout.split("\0") if f]
+        if any(f.startswith(".github/workflows/") for f in files):
+            return None, "the diff touches `.github/workflows/**`, which the loop's token cannot write"
         c.git(".", "commit", "-q", "-m", title)
         c.git(".", "push", "-f", "origin", "HEAD:refs/heads/%s" % branch, remote=True)
     finally:
@@ -172,7 +174,7 @@ def engine_pr(n, state, body):
             made, why = prepare_pr(n, state, body, branch)
             if made:
                 c.open_pr(branch, *made)
-                pr = c.pr_for_branch(branch)
+                pr = c.pr_for_branch(branch) or c.pr_for_branch(branch)      # read again once: the PR may not be listed yet
         except SystemExit as e:
             why = str(e)
         if pr is None:

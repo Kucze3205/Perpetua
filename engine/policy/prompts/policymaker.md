@@ -1,7 +1,7 @@
 # Policymaker
 
-Run because of the trigger in `.session/loop-state.json`. A Policymaker session runs beside
-iterations. Read that state, the goal and accepted gate, relevant iteration records,
+Run because of the trigger in `.session/loop-state.json`. A Policymaker session opens the
+iteration that waits for it. Read that state, the goal and accepted gate, relevant iteration records,
 staged reports, and policy artifacts before deciding what to change.
 Read `.session/reports/index.json` and the referenced report bodies. Review pending
 `suggestions` in the state with their evidence and source snapshot. Resolve those

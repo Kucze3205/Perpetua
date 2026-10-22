@@ -668,7 +668,7 @@ def finalize(n, work):
             upd["verification"] = "fail"
     pending = None
     if status == "done" and sha and role == "policymaker":
-        pending = "pending-iteration"            # its changes and orders take effect when the next iteration starts
+        pending = "pending-iteration"            # its changes and orders take effect when the iteration it opened continues
         prose = hold_policymaker_output(n, work)
         c.edit_labels(n, add=["awaiting:iteration"])
         c.update_report(n, dict(upd, status="done", merged=pending), prose)
@@ -718,17 +718,17 @@ def finalize(n, work):
 
 
 def hold_policymaker_output(n, work):
-    """Keep a finished Policymaker session's orders on its issue until the next iteration starts. Returns the report prose."""
+    """Keep a finished Policymaker session's orders on its issue until the iteration it opened continues. Returns the report prose."""
     session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
     text = c.safe_read(work, ".session/orders.json")
     if not text:
-        return "Waiting for the next iteration to start: then `policy/` merges."
+        return "Waiting for the iteration to continue: then `policy/` merges."
     try:
         doc = json.loads(text)
     except ValueError:
-        return "`.session/orders.json` is not JSON: no orders. Waiting for the next iteration to start: then `policy/` merges."
+        return "`.session/orders.json` is not JSON: no orders. Waiting for the iteration to continue: then `policy/` merges."
     it.store_state(n, doc, it.ORDERS_MARK)
-    return "Waiting for the next iteration to start: then `policy/` merges and the orders start."
+    return "Waiting for the iteration to continue: then `policy/` merges and the orders start."
 
 
 def apply_policy():
@@ -803,7 +803,7 @@ def park(n, i, f, upd, prose, reset, head):
         return "The issue is too old."
     spent = bool(upd.get("agent_s") or (upd.get("tokens_in") or 0) + (upd.get("tokens_out") or 0))
     moved = bool(upd.get("turns")) or bool(f.get("head") and head != f.get("head"))
-    idle = 0 if moved else int(f.get("idle_resumes", 0)) + spent
+    idle = 0 if moved else int(f.get("idle_resumes", 0)) + (spent and bool(f.get("paused_at")))   # only a resume counts
     limit = c.cfg()["idle_resumes"]
     if limit and idle >= limit:
         c.open_outage("Session #%s resumed %s times in a row without progress" % (n, idle),

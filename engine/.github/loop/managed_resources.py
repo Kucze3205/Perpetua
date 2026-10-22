@@ -74,7 +74,7 @@ def role_profiles(cwd="."):
     layered(cwd)
     for layer in LAYERS:
         _check_local_tree(cwd, layer)
-    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
+    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper")
     out = {}
     for layer in LAYERS:
         profiles = _load_profiles(os.path.join(cwd, layer, "profiles.yml"))
@@ -188,7 +188,7 @@ def validate_activation(cwd):
     """A layered boundary must publish a shaper (when one is set) together with its complete definition."""
     import common as c
     profiles = role_profiles(cwd)
-    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper", "orchestrator")
+    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper")
     if shaper is None:
         return
     if shaper not in profiles or profiles[shaper]["layer"] != EXECUTION:

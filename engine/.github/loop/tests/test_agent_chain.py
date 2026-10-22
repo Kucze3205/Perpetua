@@ -66,7 +66,7 @@ class AgentChainCase(sessions.SessionCase):
         self.w.push_main({self.layer + "/prompts/role.md": filler, "tools/fake_agent.py": AGENT.replace("MARK", repr(c.MARK))}, "big prompt")
         c.sync_main()
 
-    def run_agent(self, n, role, path, patch_trusted=None):
+    def run_agent(self, n, role, path, patch_trusted=None, extra_env=None):
         work = self.work()
         output = os.path.join(self.w.tmp, "run")
         trusted = os.path.join(output, "trusted")
@@ -75,7 +75,7 @@ class AgentChainCase(sessions.SessionCase):
         if patch_trusted:
             patch_trusted(trusted)
         env = dict(os.environ, WORK=work, KIND="agent", ISSUE=str(n), AGENT_TIMEOUT="1", MODEL="m1", EFFORT="high",
-                   MAX_TURNS="5", TOOLS="Read,Write", PATH=path)
+                   MAX_TURNS="5", TOOLS="Read,Write", PATH=path, **(extra_env or {}))
         result = subprocess.run(["bash", os.path.join(trusted, "agent.sh")], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return work, output, trusted
@@ -97,6 +97,38 @@ class PlainPromptTest(AgentChainCase):
         self.assertIn("-p", args)
         self.assertLess(max(len(a) for a in args), 4096)
         self.assertEqual(Path(output, "agent-exit").read_text().strip(), "0")
+
+
+    def stand_in(self, body):
+        fakebin = os.path.join(self.w.tmp, "bin")
+        os.makedirs(fakebin)
+        Path(fakebin, "claude").write_text(body, newline="\n")
+        os.chmod(os.path.join(fakebin, "claude"), 0o755)
+        return fakebin + os.pathsep + os.environ["PATH"]
+
+    def stage_secrets(self, approved, unapproved):
+        def put(trusted):
+            Path(trusted, "secrets").write_text("".join(x + "\n" for x in approved))
+            Path(trusted, "unapproved").write_text("".join(x + "\n" for x in unapproved))
+        return put
+
+    def test_only_the_approved_secret_reaches_the_agent(self):
+        n = self.issue("audit")
+        path = self.stand_in(RECORDER + 'env > "$RUNNER_TEMP/agent-env"\n')
+        env = {"A": "va", "B": "vb", "GH_TOKEN": "gh", "GITHUB_TOKEN": "gh"}
+        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"], ["B"]), env)
+        seen = Path(output, "agent-env").read_text()
+        self.assertIn("A=va", seen.splitlines())
+        names = {line.split("=", 1)[0] for line in seen.splitlines()}
+        self.assertFalse(names & {"B", "GH_TOKEN", "GITHUB_TOKEN"})
+
+    def test_an_empty_approved_secret_stops_the_start(self):
+        n = self.issue("audit")
+        path = self.stand_in(RECORDER)
+        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"], []), {"A": ""})
+        self.assertEqual(Path(output, "secret-missing").read_text().strip(), "A")
+        self.assertEqual(Path(output, "agent-exit").read_text().strip(), "1")
+        self.assertFalse(Path(output, "received-prompt").exists())
 
 
 @unittest.skipUnless(sys.platform == "linux" and shutil.which("bwrap"), "requires Linux bubblewrap namespaces")

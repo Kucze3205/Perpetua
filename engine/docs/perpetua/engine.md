@@ -192,8 +192,10 @@ Closing a request wakes the loop (`owner-request.yml`); the watchdog sweeps requ
 **Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list,
 internet with writes outside `internet_write`) gets a `consent` request that blocks it with a native edge. `resolve`
 starts the session only when that request is closed as completed, and then only that one session runs with the profile.
-Secrets for such a session are added by the owner to the `Session` step of `session.yml`, gated on `consented`
-(an example is in the file); there is no other path for a secret to reach an agent.
+The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
+secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with
+`secret-missing:NAME` (see [session secrets](session-contract.md#session-secrets)). There is no other path for a secret
+to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command.
 
 ## The watchdog
 

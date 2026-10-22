@@ -65,3 +65,22 @@ and credential, its provider matrix requires actual Read, Glob, Grep and Bash
 tool calls in online and offline sessions, denied policy reads and a useful work
 product. A surrogate CLI, successful startup, authenticated API error or skipped
 provider test does not prove that matrix. See [validation](validation.md).
+
+## Session secrets
+
+A session sees a secret only when the owner approved its name for that task. Three parts, each with one owner:
+
+- **Pool** (the owner, `session.yml`): one line per secret the loop may ever hand out, in the `env` of the `Session`
+  step, gated on the name: `NAME: ${{ contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || '' }}`.
+  Without an approved name the line is empty.
+- **Approval** (the owner, per task): the shaper lists `consent.secrets: [NAME…]` (names only); the list is frozen in
+  the `consent` request and closing it as completed approves it. `resolve` outputs `secrets` (`|A|B|`) from that frozen
+  text, so two sessions with different consents get different names. A new session of the same task uses the same
+  consent; a changed list is a new request.
+- **Start** (trusted code): `resolve` blocks the task with `secret-missing:NAME` when an approved name has no line in
+  the `Session` step. `agent.sh` unsets the pool names that are not approved and, before any agent code runs, checks
+  that every approved secret is non-empty; if one is not, the agent does not start, the task is `blocked:
+  secret-missing:NAME` and a `capability` request (no value) goes to the owner. Closing it creates nothing.
+
+The GitHub token never reaches the agent. `gate.env_passthrough` in `engine.yml` is a separate owner list for the gate
+command only, never for an agent.

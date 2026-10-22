@@ -71,6 +71,32 @@ def secrets_of_consent(labels):
     return [s.strip() for s in m.group(1).split(",")] if m else []
 
 
+def secret_pool():
+    """Secret names the owner wired into the `Session` step of session.yml (default branch); the token of the
+    Claude credential is not a session secret. Empty when the file or the step is not there."""
+    import yaml
+    text = c.safe_read(".", ".github/workflows/session.yml")
+    try:
+        steps = (((yaml.safe_load(text or "") or {}).get("jobs") or {}).get("session") or {}).get("steps") or []
+    except (yaml.YAMLError, AttributeError):
+        return []
+    step = next((x for x in steps if isinstance(x, dict) and x.get("name") == "Session"), {})
+    return sorted(k for k in (step.get("env") or {}) if k != "CLAUDE_CODE_OAUTH_TOKEN")
+
+
+def block_secret_missing(n, i, name, work=None):
+    """The task is blocked and the owner is asked (capability, no value) to provide the secret `name`."""
+    title = "Secret `%s` for task #%s" % (name, n)
+    if not it.request_open("capability", title=title):
+        it.open_request("capability", title,
+                        "Task #%s has your consent to use the secret `%s`, but the session cannot get it." % (n, name),
+                        "The secret is not in the secret pool of the `Session` step of session.yml, or the repository secret is empty.",
+                        "Nothing by itself: closing this request creates no secret. Add the name to the `Session` step and set the repository secret, then restart the task.",
+                        ref="secret-%s-%s" % (n, name), iteration=c.iteration_of(c.label_names(i)),
+                        readiness="Check that `%s` is a repository secret and a line of the `Session` step. Disclose no value." % name)
+    close_out(n, i, "blocked", {"cause": "secret-missing:" + name}, "The session did not start: secret `%s` is missing." % name, work)
+
+
 def profile_of(role):
     if role == "policymaker":
         return policymaker_session.profile()
@@ -130,13 +156,19 @@ def resolve(n):
         close_out(n, i, "blocked", {"cause": "start:" + why.split()[0]}, "The session did not start: " + why + ".")
         reconcile()
         raise SystemExit(why)
+    names = secrets_of_consent(labels) if granted else []
+    pool = secret_pool()
+    for name in names:
+        if name not in pool:
+            block_secret_missing(n, i, name)
+            reconcile()
+            raise SystemExit("secret-missing:" + name)
     options = session_options(i, role, p)
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
     session_inputs.capture_origin(n, role)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
-    names = secrets_of_consent(labels) if granted else []
     c.set_output(**options, start=start, consented="true" if granted else "false",
                  secrets="|%s|" % "|".join(names) if names else "")
 
@@ -626,6 +658,10 @@ def finalize(n, work):
     if os.path.exists(os.path.join(tmp, "agent-exit")):
         with open(os.path.join(tmp, "agent-exit")) as fh:
             exit_code = fh.read().strip()
+    missing = (c.safe_read(tmp, "secret-missing") or "").strip()
+    if missing and re.fullmatch(r"[A-Z][A-Z0-9_]*", missing) and missing in secrets_of_consent(labels):
+        block_secret_missing(n, i, missing, work)
+        return
     exec_path = os.path.join(tmp, "claude-execution-output.json")
     limited, reset, prose = False, None, ""
     upd = {"branch": "task/%s" % n, "iteration": k, "runner": os.environ.get("RUNNER_OS") or None}

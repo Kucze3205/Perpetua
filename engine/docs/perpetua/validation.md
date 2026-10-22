@@ -24,6 +24,14 @@ does not establish the real provider guarantee: the pinned CLI must successfully
 call its model while subprocess probes demonstrate denied policy/history/host
 reads and the appropriate network restrictions.
 
+`test_agent_chain.py` runs the real `agent.sh` with a stand-in CLI. `PlainPromptTest` needs a
+POSIX shell and checks that a prompt over 128 KiB reaches the CLI whole, through stdin. `ExecutorChainTest`
+needs Linux, bubblewrap and a C compiler (the boundary runs only a native CLI, so the stand-in is built
+from C). It walks stage, executor admission, the isolated CLI, checkpoint and epilogue for an
+execution-layer role and requires a completed session (`turns` of at least 1), an admitted work product and
+no `origin` remote in the executor repository. Without its requirements it is skipped with the reason
+printed; a skip is an outstanding check, never a pass.
+
 Record the commit, command, platform, test count and skips for each validation run.
 Report provider quota/authentication or missing kernel support separately from
 test failures. Require both the full Linux regressions and the opted-in live

@@ -49,7 +49,6 @@ if [ "$KIND" = script ]; then
   exit 0
 fi
 
-PROMPT="$(cat "$TRUSTED/prompt.md")"
 AVAILABLE_TOOLS="$(cat "$TRUSTED/tools")"
 SKILL_FLAGS=()
 [ "$NETWORK_MODE" != offline ] || SKILL_FLAGS=(--disable-slash-commands)
@@ -73,7 +72,8 @@ if [ -f "$TRUSTED/executor-mode" ]; then
   MODEL_LAUNCH=(python3 "$TRUSTED/executor_boundary.py" model "$WORK" "$TRUSTED")
   MODEL_TRUSTED=/engine
 fi
-CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" "${MODEL_LAUNCH[@]}" -p "$PROMPT" \
+# the prompt goes through stdin: an argument over 128 KiB fails with E2BIG
+CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" "${MODEL_LAUNCH[@]}" -p \
   --model "$MODEL" --effort "$EFFORT" \
   --permission-mode acceptEdits --allowedTools "$TOOLS" --disallowedTools Monitor \
   --tools "$AVAILABLE_TOOLS" --strict-mcp-config --mcp-config "$MODEL_TRUSTED/mcp.json" \
@@ -81,7 +81,7 @@ CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" "${MODEL_LAUNCH[@]}
   --setting-sources '' --append-system-prompt-file "$MODEL_TRUSTED/contract.md" \
   --settings "$MODEL_TRUSTED/settings.json" \
   --max-turns "$MAX_TURNS" --output-format stream-json --verbose \
-  2> "$OUT/claude-stderr.txt" \
+  < "$TRUSTED/prompt.md" 2> "$OUT/claude-stderr.txt" \
   | python3 "$TRUSTED/stream_filter.py" "$OUT"
 echo "${PIPESTATUS[0]}" > "$OUT/agent-exit"
 date +%s > "$OUT/agent-end"

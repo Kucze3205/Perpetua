@@ -44,16 +44,32 @@ JOB_MAX_MIN = 355               # GitHub kills a job at 360 min; the epilogue mu
 # ---------------------------------------------------------------- start of a session
 
 def consent_status(profile, labels):
-    """(granted, why-not). A profile beyond the accepted limits runs only for the one session its consent request allows."""
+    """(granted, why-not). Granted by the closed (completed) consent request of the task, also within the limits.
+    A profile beyond the accepted limits runs only with that consent."""
+    if _consent_request(labels):
+        return True, None
     exceeded = it.limits_exceeded(profile)
     if not exceeded:
         return False, None
+    return False, "beyond the accepted limits (%s) and no granted consent" % ", ".join(exceeded)
+
+
+def _consent_request(labels):
+    """The closed-as-completed consent request assigned to the task, else None."""
     req = c.label_value(labels, "consent:")
     if req and req.isdigit():
         r = c.issue(int(req))
         if r["state"] == "closed" and r.get("state_reason") == "completed":
-            return True, None
-    return False, "beyond the accepted limits (%s) and no granted consent" % ", ".join(exceeded)
+            return r
+    return None
+
+
+def secrets_of_consent(labels):
+    """Secret names of the frozen text of the task's granted consent; empty without one."""
+    r = _consent_request(labels)
+    text = it.frozen_text(r["body"]) if r else None
+    m = re.match(r"secrets: (.+)$", text or "")
+    return [s.strip() for s in m.group(1).split(",")] if m else []
 
 
 def profile_of(role):
@@ -121,7 +137,10 @@ def resolve(n):
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
     session_inputs.capture_origin(n, role)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
-    c.set_output(**options, start=start, consented="true" if granted else "false")
+    names = secrets_of_consent(labels) if granted else []
+    c.set_output(**options, start=start, consented="true" if granted else "false",
+                 secrets="|%s|" % "|".join(names) if names else "")
+
 
 
 def stage(n, work, trusted):

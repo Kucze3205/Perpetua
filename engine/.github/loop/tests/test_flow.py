@@ -470,6 +470,64 @@ class ConsentTest(Flow):
         self.assertEqual(self.hub.report(n)["status"], "blocked")
 
 
+class ConsentSecretsTest(Flow):
+    def setUp(self):
+        super().setUp()
+        self.w.push_main({"src/.keep": ""}, "x")
+        it.start_iteration()
+        self.play_shaper(task("a", consent={"secrets": ["STRIPE_KEY"]}), task("b", consent={"secrets": ["SMTP_PASS"]}), task("c"))
+
+    def request_of(self, tid):
+        label = next(l for l in self.hub.issues[self.task_issue(tid)]["_labels"] if l.startswith("consent:"))
+        return int(label.split(":")[1])
+
+    def resolved(self, tid):
+        out = os.path.join(self.w.tmp, "out-" + tid)
+        os.environ["GITHUB_OUTPUT"] = out
+        loop.resolve(self.task_issue(tid))
+        with open(out) as fh:
+            return dict(l.rstrip("\n").split("=", 1) for l in fh)
+
+    def grant(self, tid):
+        self.hub.answer(self.request_of(tid), True)
+        loop.on_request_closed(self.request_of(tid))
+
+    def test_names_enter_the_frozen_text_and_a_later_edit_is_not_applied(self):
+        n = self.request_of("a")
+        body = self.hub.issues[n]["body"]
+        self.assertEqual(it.frozen_text(body), "secrets: STRIPE_KEY")
+        self.hub.issues[n]["body"] = body.replace("STRIPE_KEY", "OTHER_KEY")
+        self.assertIsNone(it.frozen_text(self.hub.issues[n]["body"]))
+        self.assertEqual(loop.secrets_of_consent(self.hub.issues[self.task_issue("a")]["_labels"]), [])
+
+    def test_two_sessions_get_their_own_names(self):
+        self.grant("a")
+        self.grant("b")
+        self.assertEqual(self.resolved("a")["secrets"], "|STRIPE_KEY|")
+        self.assertEqual(self.resolved("b")["secrets"], "|SMTP_PASS|")
+
+    def test_a_task_within_the_limits_has_the_consent_it_was_granted(self):
+        self.grant("a")
+        o = self.resolved("a")
+        self.assertEqual(o["consented"], "true")
+        self.assertEqual(self.resolved("c")["consented"], "false")
+        self.assertEqual(self.resolved("c")["secrets"], "")
+
+    def test_declined_consent_gives_no_secrets(self):
+        self.hub.answer(self.request_of("a"), False)
+        loop.on_request_closed(self.request_of("a"))
+        labels = self.hub.issues[self.task_issue("a")]["_labels"]
+        self.assertEqual(loop.consent_status(c.profiles()["worker"], labels), (False, None))
+        self.assertEqual(loop.secrets_of_consent(labels), [])
+
+    def test_invalid_names_are_refused_without_echoing_them(self):
+        for bad in (["lower"], ["A=hunter2"], ["A", "A"], "A", [1]):
+            errors = it.consent_errors({"secrets": bad})
+            self.assertTrue(errors, bad)
+            self.assertNotIn("hunter2", " ".join(errors))
+        self.assertEqual(it.consent_errors({"what": "w", "secrets": ["A_1", "B"]}), [])
+
+
 class EvaluatorChangeTest(Flow):
     def start(self):
         """The Policymaker orders the evaluator role while no iteration is open: iteration 0 starts with the order."""

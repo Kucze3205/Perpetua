@@ -153,13 +153,15 @@ The shaper writes `.session/tasks.json`; the engine creates the issues and the b
    "blocked_by": [], "start_branch": null, "limits": {"timeout_minutes": 60, "max_turns": 80},
    "inputs": [],
    "exports": [{"source": "streams", "iterations": [0], "sessions": [42]}],
-   "consent": {"what": "...", "why": "..."}}
+   "consent": {"what": "...", "why": "...", "secrets": ["STRIPE_KEY"]}}
 ]}
 ```
 
 `id` is yours (letters, digits, dashes) and names a task in `blocked_by` and `inputs`. `role` must have a profile.
 `model` is an alias from `policy/params.yml`; `limits` never exceed the ceilings there. `consent` is optional: the
-engine asks the owner by itself when a role's profile is beyond the accepted limits. The width of the iteration is the
+engine asks the owner by itself when a role's profile is beyond the accepted limits. `consent.secrets` lists the names
+(`^[A-Z][A-Z0-9_]*$`, no duplicates, never values) of the repository secrets this one session needs; the owner accepts
+or declines the whole list, and a changed list is a new request. The width of the iteration is the
 widest layer of the graph; it is computed, not a field. Tasks of the roles in `policymaker_only_roles` come only from the
 Policymaker's orders, and the orders only of those roles: the engine refuses either the other way. Every task fits **one
 session**.

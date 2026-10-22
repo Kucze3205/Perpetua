@@ -463,6 +463,28 @@ def limits_exceeded(profile):
     return why
 
 
+SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+
+
+def consent_errors(consent):
+    """Errors of a task's `consent` object. `secrets` are names only, never values."""
+    if not isinstance(consent, dict):
+        return ["`consent` must be an object"]
+    errors = ["consent: unknown field %r" % k for k in sorted(set(consent) - {"what", "why", "secrets"})]
+    for key in ("what", "why"):
+        if key in consent and not isinstance(consent[key], str):
+            errors.append("consent.%s must be a string" % key)
+    secrets = consent.get("secrets", [])
+    if not isinstance(secrets, list):
+        return errors + ["consent.secrets must be a list of secret names"]
+    for k, name in enumerate(secrets):     # the entry is not echoed: it may be a value
+        if not isinstance(name, str) or not SECRET_NAME.fullmatch(name):
+            errors.append("consent.secrets[%d] is not a secret name (^[A-Z][A-Z0-9_]*$; names only, never values)" % k)
+    if len({s for s in secrets if isinstance(s, str)}) != len([s for s in secrets if isinstance(s, str)]):
+        errors.append("consent.secrets has duplicate names")
+    return errors
+
+
 def validate_tasks(doc, ordered=False, taken=()):
     """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
     `policymaker_only_roles` and only of them. `taken`: ids the iteration already uses."""
@@ -490,6 +512,8 @@ def validate_tasks(doc, ordered=False, taken=()):
             errors.append("task %s: unknown fields %s" % (task_id, sorted(extra)))
         if "exports" in task:
             errors.extend("task %s: %s" % (task_id, error) for error in session_exports.validate(task["exports"]))
+        if "consent" in task:
+            errors.extend("task %s: %s" % (task_id, error) for error in consent_errors(task["consent"]))
         role = task.get("role")
         if not isinstance(role, str) or role not in profiles or role == "policymaker":
             errors.append("task %s: role %r has no profile" % (task_id, role))
@@ -605,11 +629,13 @@ def create_tasks(n, tasks):
         why = limits_exceeded(prof[t["role"]])
         if why or t.get("consent"):
             ask = t.get("consent") or {}
+            secrets = ask.get("secrets") or []
             req = open_request("consent", "Consent: `%s` session for task \"%s\"" % (t["role"], t["title"]),
-                               ask.get("what") or "Run one `%s` session beyond the accepted limits: %s." % (t["role"], ", ".join(why) or "see below"),
+                               ask.get("what") or "Run one `%s` session %s." % (t["role"], "beyond the accepted limits: " + ", ".join(why) if why else "with the secrets listed below"),
                                ask.get("why") or t["title"],
-                               "The session starts only when you close this as completed; the wider profile applies to that one session.",
-                               ref="task-%s" % number[t["id"]], blocks=(number[t["id"]],), iteration=n)
+                               "The session starts only when you close this as completed; the wider profile and the secrets listed apply to that one session.",
+                               ref="task-%s" % number[t["id"]], blocks=(number[t["id"]],), iteration=n,
+                               frozen="secrets: %s" % ", ".join(secrets) if secrets else None)
             c.edit_labels(number[t["id"]], add=["consent:%s" % req])
     frozen = (read_json(tasks_path(n)) or []) + [dict(t, issue=number[t["id"]]) for t in tasks]
     c.commit_main({tasks_path(n): json.dumps(frozen, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: task graph" % tag(n))

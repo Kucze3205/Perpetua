@@ -1,0 +1,5 @@
+interface:
+  display_name: "Perpetua Update"
+  short_description: "Update a running loop's engine to this plugin version"
+policy:
+  allow_implicit_invocation: false

@@ -54,8 +54,24 @@ expands the map as it learns, and splits work that outgrows one session.
   Use the code map to distinguish definitions from engine-owned contracts.
 
 Setup copies the contents of `engine/` to the target repository root. Paths in its
-documentation therefore omit the `engine/` prefix. Changes here do not update an
-already running loop; see [ADR-0001](docs/adr/0001-engine-copied-into-loop-repo.md).
+documentation therefore omit the `engine/` prefix. Changes here reach an already
+running loop only through an update; see [ADR-0001](docs/adr/0001-engine-copied-into-loop-repo.md).
+
+## Update a running loop
+
+Update the plugin, restart the client, then run in the loop repository:
+
+```text
+/plugin marketplace update perpetua
+/perpetua:update
+```
+
+[The update skill](skills/update/SKILL.md) pauses the loop and merges the plugin's engine into the loop's
+copy with git's three-way merge. The loop's `perpetua/engine` branch keeps the untouched engine
+as the base, so the loop's own changes survive. The skill resolves conflicts, runs the tests,
+publishes the result and restarts the loop. You only confirm a moved `setup-baseline` when managed
+definitions changed. A loop set up before `perpetua/engine` existed gets its base found in
+Perpetua's history on the first update.
 
 ## Verify a change
 
@@ -63,6 +79,7 @@ From this repository root, run:
 
 ```sh
 python -m unittest discover -s engine/.github/loop/tests
+python -m unittest discover -s skills/update
 ```
 
 The [layered validation guide](engine/docs/perpetua/validation.md) maps controlled

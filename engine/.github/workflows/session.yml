@@ -44,6 +44,7 @@ jobs:
       agent_timeout: ${{ steps.resolve.outputs.agent_timeout }}
       job_timeout: ${{ steps.resolve.outputs.job_timeout }}
       consented: ${{ steps.resolve.outputs.consented }}
+      secrets: ${{ steps.resolve.outputs.secrets }}
       iteration: ${{ steps.resolve.outputs.iteration }}
       profile_digest: ${{ steps.resolve.outputs.profile_digest }}
     env:
@@ -137,9 +138,10 @@ jobs:
         if: steps.guard.outputs.go == 'true'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ needs.prep.outputs.kind == 'agent' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
-          # Secrets a role may use only with the owner's consent go here, one line each, gated on the consent that
-          # `resolve` verified (the setup map adds them; the owner owns this file):
-          #   EXTRA_SECRET: ${{ needs.prep.outputs.consented == 'true' && secrets.EXTRA_SECRET || '' }}
+          # The pool: every secret the loop may ever hand to a session, one line each, gated on the name in the
+          # owner's consent for this task (`resolve` outputs `|NAME|…`). The owner owns this file; `resolve` refuses
+          # a consented name that has no line here (`secret-missing`).
+          #   NAME: ${{ contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || '' }}
         run: bash "$RUNNER_TEMP/trusted/agent.sh"
       - uses: actions/checkout@v4
         if: always() && steps.guard.outputs.go == 'true'

@@ -16,6 +16,18 @@ date +%s > "$OUT/agent-start"
 NETWORK_MODE="$(cat "$TRUSTED/network-mode")"
 case "$NETWORK_MODE" in online|offline) ;; *) echo "Invalid staged network mode" >&2; exit 1 ;; esac
 
+# Secrets: only the names of the owner's consent reach the session (staged from its frozen text). An empty one stops
+# the start before any agent code runs; the epilogue turns the marker into `blocked: secret-missing:NAME`.
+while read -r name; do [ -z "$name" ] || unset "$name"; done < "$TRUSTED/unapproved"
+while read -r name; do
+  if [ -n "$name" ] && [ -z "${!name:-}" ]; then
+    echo "$name" > "$OUT/secret-missing"
+    echo 1 > "$OUT/agent-exit"
+    date +%s > "$OUT/agent-end"
+    exit 0
+  fi
+done < "$TRUSTED/secrets"
+
 if [ "$KIND" = script ]; then
   # a deterministic role: no model, no credential
   unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN

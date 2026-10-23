@@ -505,10 +505,24 @@ class ConsentTest(Flow):
         self.assertEqual(self.hub.report(n)["status"], "blocked")
 
 
+POOL_YML = """jobs:
+  session:
+    steps:
+      - name: Other
+        env:
+          NOT_A_SECRET: x
+      - name: Session
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: t
+          %s
+"""
+
+
 class ConsentSecretsTest(Flow):
     def setUp(self):
         super().setUp()
-        self.w.push_main({"src/.keep": ""}, "x")
+        self.w.push_main({"src/.keep": "", ".github/workflows/session.yml": POOL_YML % "STRIPE_KEY: x\n          SMTP_PASS: y"}, "x")
+        c.sync_main()
         it.start_iteration()
         self.play_shaper(task("a", consent={"secrets": ["STRIPE_KEY"]}), task("b", consent={"secrets": ["SMTP_PASS"]}), task("c"))
 
@@ -547,6 +561,58 @@ class ConsentSecretsTest(Flow):
         self.assertEqual(o["consented"], "true")
         self.assertEqual(self.resolved("c")["consented"], "false")
         self.assertEqual(self.resolved("c")["secrets"], "")
+
+    def test_the_pool_is_the_env_of_the_session_step(self):
+        self.assertEqual(loop.secret_pool(), ["SMTP_PASS", "STRIPE_KEY"])
+
+    def test_a_name_outside_the_pool_blocks_the_task_and_asks_for_the_capability(self):
+        self.w.push_main({".github/workflows/session.yml": POOL_YML % "SMTP_PASS: y"}, "drop STRIPE_KEY from the pool")
+        c.sync_main()
+        self.grant("a")
+        n = self.task_issue("a")
+        with self.assertRaises(SystemExit) as e:
+            self.resolved("a")
+        self.assertEqual(str(e.exception), "secret-missing:STRIPE_KEY")
+        self.assertEqual(self.hub.issues[n]["state"], "closed")
+        self.assertEqual(self.hub.report(n)["status"], "blocked")
+        self.assertEqual(self.hub.report(n)["cause"], "secret-missing:STRIPE_KEY")
+        (cap,) = self.hub.by_label("owner-request:capability")
+        self.assertNotIn("hunter2", self.hub.issues[cap["number"]]["body"])
+
+    def test_a_refusal_stops_the_start_and_a_new_session_keeps_the_same_consent(self):
+        self.grant("a")
+        self.assertEqual(self.resolved("a")["secrets"], "|STRIPE_KEY|")
+        self.assertEqual(self.resolved("a")["secrets"], "|STRIPE_KEY|")      # a session after a crash: the same frozen consent
+        self.hub.answer(self.request_of("b"), False)
+        loop.on_request_closed(self.request_of("b"))
+        self.assertEqual(self.hub.report(self.task_issue("b"))["cause"], "consent-declined")
+        with self.assertRaises(SystemExit):
+            self.resolved("b")
+
+    def test_the_epilogue_turns_the_missing_secret_marker_into_blocked_and_a_capability(self):
+        self.grant("a")
+        n = self.task_issue("a")
+        tmp = os.path.join(self.w.tmp, "runner")
+        os.makedirs(tmp)
+        with open(os.path.join(tmp, "secret-missing"), "w") as fh:
+            fh.write("STRIPE_KEY\n")
+        os.environ["RUNNER_TEMP"] = tmp
+        loop.finalize(n, os.path.join(self.w.tmp, "nowork"))
+        self.assertEqual(self.hub.report(n)["cause"], "secret-missing:STRIPE_KEY")
+        self.assertEqual(len(self.hub.by_label("owner-request:capability")), 1)
+
+    def test_a_marker_for_a_name_without_consent_is_ignored(self):
+        n = self.task_issue("c")
+        tmp = os.path.join(self.w.tmp, "runner")
+        os.makedirs(tmp)
+        with open(os.path.join(tmp, "secret-missing"), "w") as fh:
+            fh.write("STRIPE_KEY\n")
+        os.environ["RUNNER_TEMP"] = tmp
+        try:
+            loop.finalize(n, os.path.join(self.w.tmp, "nowork"))
+        except Exception:
+            pass
+        self.assertEqual(self.hub.by_label("owner-request:capability"), [])
 
     def test_declined_consent_gives_no_secrets(self):
         self.hub.answer(self.request_of("a"), False)

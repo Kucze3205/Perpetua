@@ -181,7 +181,7 @@ class StallTest(WatchCase):
 
 
 class CeilingTest(WatchCase):
-    PARAMS = "ceilings:\n  iteration_minutes: 5\n"
+    PARAMS = "shaper: orchestrator\nceilings:\n  iteration_minutes: 5\n"
 
     def test_the_policymakers_iteration_ceiling_ends_a_long_iteration_without_a_rollback(self):
         it.start_iteration()

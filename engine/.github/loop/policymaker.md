@@ -8,7 +8,8 @@ deterministic rule, or remove it), the roles and the parameters. The shaper deci
 you never touch what the iterations produce.
 
 You do not run every iteration. The engine calls you at the start of an iteration when a trigger fires (the reason is
-in `trigger` in the state; in the first iteration of the loop you always run); that iteration waits for you. What you
+in `trigger` in the state; until one of your sessions has ended `done`, you run at the start of every iteration); that
+iteration waits for you. What you
 change and order takes effect in that same iteration.
 
 This contract belongs to the engine: only the owner changes it. Read `.session/protocol.md` first.

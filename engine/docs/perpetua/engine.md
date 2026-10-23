@@ -83,7 +83,7 @@ documented during setup; otherwise they remain in force.
 | Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
 | Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
 | Managed definitions | `execution/`, `policy/` | the Policymaker, with evaluator changes delegated as below; merged without the change gate, still within the role's `write` paths |
-| Audit and journal | `audit/`, `journal/` | the audit role (`audit/`), the orchestrator (`journal/`); merged without the change gate, still within each role's `write` paths |
+| Audit and journal | `audit/`, `journal/` | the audit role (`audit/`), the journal role (the generic orchestrator, when installed) (`journal/`); merged without the change gate, still within each role's `write` paths |
 | Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policymaker, and only after the evaluator verifier passes |
 | Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except goal files the setup map writes before arming; the owner accepts what goes into `goal/` |
 | Work | everything else | task sessions, through the change gate |

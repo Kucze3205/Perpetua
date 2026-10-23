@@ -274,10 +274,10 @@ class EpilogueTest(SessionCase):
     def test_k_resumes_that_use_the_agent_without_progress_open_an_outage(self):
         n = self.issue()
         loop.resolve(n)
-        for _ in range(2):
+        for _ in range(3):                  # the original run, then two resumes
             self.assertEqual(self.park_again(n)["status"], "paused")
         self.assertEqual(self.outages(), [])
-        self.assertEqual(self.park_again(n)["status"], "crashed")
+        self.assertEqual(self.park_again(n)["status"], "crashed")      # the third resume
         self.assertEqual(self.hub.issues[n]["state"], "closed")
         self.assertEqual(len(self.outages()), 1)
 
@@ -289,6 +289,21 @@ class EpilogueTest(SessionCase):
                 f = self.park_again(n, resume_after="2020-01-01T00:00:00Z")
         self.assertEqual((f["status"], f["attempts"], f["idle_resumes"]), ("paused", "5", "0"))
         self.assertEqual(self.outages(), [])
+
+    def test_the_original_run_parking_is_not_a_resume(self):
+        n = self.issue()
+        loop.resolve(n)
+        self.assertEqual(self.park_again(n)["idle_resumes"], "0")
+        self.assertEqual(self.park_again(n)["idle_resumes"], "1")
+
+    def test_turns_are_progress(self):
+        n = self.issue()
+        loop.resolve(n)
+        self.park_again(n)
+        result = dict(self.limit_result(), num_turns=3)
+        c.update_report(n, {"idle_resumes": 2})
+        self.w.session(n, report=False, exit_code="1", result=result)
+        self.assertEqual(self.hub.report(n)["idle_resumes"], "0")
 
     def test_progress_between_resumes_resets_the_breaker(self):
         n = self.issue()

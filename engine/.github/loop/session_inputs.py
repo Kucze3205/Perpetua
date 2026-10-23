@@ -73,7 +73,7 @@ def capabilities():
 def state(value):
     # Allowlist: never forward newly added internal state fields by accident.
     out = {key: value[key] for key in ('schema_version', 'iteration', 'engine_version',
-           'goal', 'no_progress', 'first_closed_iteration') if key in value}
+           'goal', 'no_progress') if key in value}
     out['iterations'] = [{key: line[key] for key in ('n', 'status', 'improved') if key in line}
                          for line in value.get('iterations', [])]
     return out

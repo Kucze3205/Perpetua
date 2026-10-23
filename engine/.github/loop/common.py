@@ -83,7 +83,7 @@ def cfg():
 
 
 def params():
-    p = {"shaper": "orchestrator", "criterion": "", "models": {"default": "claude-sonnet-5-5"}, "efforts": ["low", "medium", "high"],
+    p = {"shaper": None, "criterion": "", "models": {"default": "claude-sonnet-5-5"}, "efforts": ["low", "medium", "high"],
          "ceilings": {"job_minutes": 240, "iteration_minutes": None, "max_turns": 150},
          "policymaker_triggers": {"every_iterations": None, "no_progress": None}}
     return merged(p, load_yaml(resources.PARAMS))

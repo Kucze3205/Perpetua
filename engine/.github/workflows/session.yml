@@ -154,20 +154,18 @@ jobs:
           find "$WORK" -path "$WORK/.git" -prune -o -path "$WORK/.session" -prune -o -type f -newer "$RUNNER_TEMP/session-start" -printf '%s %p\n' > "$RUNNER_TEMP/capture/work-new-files.txt" || true
           { uname -a; lsb_release -d || true; nproc; free -m; df -h "$WORK"; claude --version || true; bwrap --version || true; } > "$RUNNER_TEMP/capture/machine.txt" 2>&1 || true
           env | grep -E '^(GITHUB_(RUN|JOB|WORKFLOW|EVENT|REF|SHA|ACTOR)|RUNNER_|ImageOS|ImageVersion)' | sort > "$RUNNER_TEMP/capture/env.txt" || true
-      - uses: actions/upload-artifact@v4
+      # a release asset, not an artifact: the artifact quota of an account can be used up, and then nothing is stored
+      - name: Store the capture (E2E_CAPTURE)
         if: always() && steps.guard.outputs.go == 'true' && vars.E2E_CAPTURE == 'on'
-        with:
-          name: capture-${{ needs.prep.outputs.iteration }}-${{ inputs.issue }}
-          path: |
-            ${{ env.WORK }}/.session
-            ${{ runner.temp }}/trusted
-            ${{ runner.temp }}/capture
-            ${{ runner.temp }}/agent-*
-            ${{ runner.temp }}/claude-*
-            ${{ runner.temp }}/script-output.txt
-            ${{ runner.temp }}/secret-missing
-          include-hidden-files: true
-          if-no-files-found: warn
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          name="capture-${{ needs.prep.outputs.iteration }}-$ISSUE"
+          present=(); for f in trusted capture stream.ndjson agent-exit agent-start agent-end claude-stderr.txt claude-execution-output.json script-output.txt secret-missing; do [ -e "$f" ] && present+=("$f"); done
+          tar -czf "$name.tgz" "${present[@]}" -C "$WORK" .session || true
+          gh release create e2e-capture --title e2e-capture --notes "Session captures of the E2E test" --target "$DEFAULT_BRANCH" -R "$GITHUB_REPOSITORY" || true
+          gh release upload e2e-capture "$name.tgz" --clobber -R "$GITHUB_REPOSITORY"
       - uses: actions/checkout@v4
         if: always() && steps.guard.outputs.go == 'true'
         with:

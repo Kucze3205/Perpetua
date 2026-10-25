@@ -195,7 +195,7 @@ def build(args):
         light, tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash(git:*)", "Bash(python3:*)"], write=["src/**"]))
     params = c.load_yaml(work / "policy/params.yml")
     params.update(shaper="orchestrator", models={"default": HAIKU, "opus": HAIKU},
-                  policymaker_triggers={"every_iterations": None, "no_progress": None},
+                  policymaker_triggers={"every_iterations": 1, "no_progress": None},
                   policymaker_session={"model": HAIKU, "effort": "low", "max_turns": MAX_TURNS, "timeout_minutes": MINUTES})
     params["ceilings"] = dict(params.get("ceilings") or {}, iteration_minutes=ITERATION_MINUTES)
     write_yaml(work / "policy/params.yml", params)
@@ -239,12 +239,19 @@ def start(args):
         raise SystemExit("secret CLAUDE_CODE_OAUTH_TOKEN is missing (the owner sets it with `gh secret set`)")
     if loop_issues("open"):
         raise SystemExit("loop issues are already open")
+    number = len([i for i in api_items("repos/%s/issues?state=all&labels=loop:map&per_page=100" % repo()) if "pull_request" not in i])
     set_var("E2E_CAPTURE", "on")
     set_var("AUTOPILOT", "on")
     gh("workflow", "run", "watchdog.yml")
     commit = api("repos/%s/commits/%s" % (repo(), BRANCH))["sha"]
-    write_json(STATE / "started.json", {"at": iso(), "commit": commit, "repo": repo()})
-    say("started at %s, commit %s: iteration 0 begins with the watchdog run" % (iso(), commit))
+    write_json(STATE / "started.json", {"at": iso(), "commit": commit, "repo": repo(), "iteration": number})
+    say("started at %s, commit %s: iteration %d begins with the watchdog run" % (iso(), commit, number))
+
+
+def target():
+    """The iteration the test measures: the number the loop gives its next iteration, fixed by `start`."""
+    f = STATE / "started.json"
+    return json.loads(read(f)).get("iteration", 0) if f.is_file() else 0
 
 
 def loop_issues(state="all"):
@@ -272,8 +279,8 @@ def wait(args):
             if outage:
                 why = "outage opened: #%s %s" % (outage[0]["number"], outage[0]["title"])
                 break
-            if record_exists(0) and not open_issues and not any(t.startswith("session #") for t in live):
-                why = "iteration record iterations/0000.json exists and nothing is running"
+            if record_exists(target()) and not open_issues and not any(t.startswith("session #") for t in live):
+                why = "iteration record iterations/%04d.json exists and nothing is running" % target()
                 break
     finally:
         set_var("AUTOPILOT", "off")
@@ -394,6 +401,7 @@ def collect(args):
     issues = attempt("issues", fetch_issues, out, R) or []
     runs = attempt("runs", fetch_runs, out, R) or []
     attempt("artifacts", fetch_artifacts, out, R)
+    attempt("captures", fetch_captures, out, R)
     attempt("repository", fetch_repository, out, R)
     report = attempt("measure", measure, out, R, issues, runs) or {}
     report["collect_errors"] = errors
@@ -449,6 +457,8 @@ def fetch_runs(out, R):
         write_json(d / "jobs.json", r["jobs_list"])
         log = gh("run", "view", str(r["id"]), "--log", check=False)
         (d / "log.txt").write_text(log.stdout or log.stderr, encoding="utf-8")
+        found = re.search(r"ISSUE: (\d+)", log.stdout or "")      # run-name does not carry the issue (see the report)
+        r["issue"] = int(found.group(1)) if found and r["name"] == "session" else None
     return runs
 
 
@@ -460,6 +470,20 @@ def fetch_artifacts(out, R):
         if a.get("expired") or not run_id:
             continue
         gh("run", "download", str(run_id), "--name", a["name"], "--dir", str(out / "artifacts" / a["name"]), check=False)
+
+
+def fetch_captures(out, R):
+    """Release `e2e-capture`: the session captures and the probe (E2E_CAPTURE; release assets, not artifacts)."""
+    tmp = out / "release-assets"
+    r = gh("release", "download", "e2e-capture", "--dir", str(tmp), "--clobber", check=False)
+    if r.returncode:
+        raise SystemExit("no release e2e-capture: " + r.stderr.strip())
+    for f in tmp.glob("*.tgz"):
+        dest = out / "artifacts" / f.stem
+        dest.mkdir(parents=True, exist_ok=True)
+        import tarfile
+        with tarfile.open(f) as tar:
+            tar.extractall(dest, filter="data")
 
 
 def fetch_repository(out, R):
@@ -480,11 +504,11 @@ def measure(out, R, issues, runs):
         names = {l["name"] for l in i["labels"]}
         roles = [n[5:] for n in names if n.startswith("role:")]
         iteration = next((int(n.split()[-1]) for n in names if n.startswith("loop:iteration ")), None)
-        if not roles or iteration is None:
+        if not roles or iteration != target() or i["title"].startswith("e2e probe"):
             continue
         n = i["number"]
         fields, comment = report_fields(i["comments_list"])
-        title_runs = [r for r in runs if (r.get("display_title") or "").split(" · ")[0] == "session #%d" % n]
+        title_runs = [r for r in runs if r.get("issue") == n]
         sessions.append({"issue": n, "role": roles[0], "iteration": iteration, "title": i["title"], "state": i["state"],
                          "labels": sorted(names), "created_at": i["created_at"], "closed_at": i["closed_at"],
                          "report": fields, "report_bytes": len((comment or {}).get("body", "")),
@@ -495,7 +519,7 @@ def measure(out, R, issues, runs):
         d = out / "sessions" / ("%03d-%s" % (s["issue"], s["role"]))
         s["dir"] = d.name
         s["analysis"] = analyze_session(out, d, s, runs)
-    record_path = repo_dir / "iterations" / "0000.json"
+    record_path = repo_dir / "iterations" / ("%04d.json" % target())
     record = json.loads(read(record_path)) if record_path.is_file() else None
     timing = actions_timing(runs)
     probe_data, probe_texts = probe_view(out)
@@ -523,6 +547,13 @@ def analyze_session(out, d, s, runs):
             shutil.copyfile(stream, d / "stream.ndjson")
             info["stream"] = analyze_stream(stream)
             info["stream_bytes"] = stream.stat().st_size
+    if "stream" not in info and capture_dir:
+        stream = next(capture_dir.rglob("stream.ndjson"), None)
+        if stream:
+            shutil.copyfile(stream, d / "stream.ndjson")
+            info["stream"] = analyze_stream(stream)
+            info["stream_bytes"] = stream.stat().st_size
+            info["stream_source"] = "capture"
     info["has_stream"] = "stream" in info
     if capture_dir:
         session = find_dir(capture_dir, ".session")
@@ -614,7 +645,7 @@ def growth(repo_dir, out, issues, sessions, record, probe_data):
         return sum(p.stat().st_size for p in base.rglob("*") if p.is_file()) if base.exists() else 0
     arts = json.loads(read(out / "github" / "artifacts.json")) if (out / "github" / "artifacts.json").is_file() else []
     state_sizes = [s["analysis"]["staged"]["files"].get("loop-state.json") for s in sessions if s["analysis"].get("staged")]
-    record_file = repo_dir / "iterations" / "0000.json"
+    record_file = repo_dir / "iterations" / ("%04d.json" % target())
     measures = {
         "iteration record, bytes": record_file.stat().st_size if record_file.is_file() else None,
         "iterations/ directory, bytes": tree("iterations"), "journal/, bytes": tree("journal"), "audit/, bytes": tree("audit"),
@@ -729,7 +760,7 @@ def contract(sessions, record, issues, runs):
     """Engine contract only; never the content of a decision, never an extrapolated value."""
     def check(ok, detail=""):
         return {"ok": bool(ok), "detail": detail}
-    out = {"iteration record exists and parses": check(record and record.get("schema_version") == 1 and record.get("iteration") == 0, "iterations/0000.json"),
+    out = {"iteration record exists and parses": check(record and record.get("schema_version") == 1 and record.get("iteration") == target(), "iterations/%04d.json" % target()),
            "iteration record status closed or failed": check(record and record.get("status") in ("closed", "failed"), (record or {}).get("status")),
            "no outage was opened": check(not any("outage" in {l["name"] for l in i["labels"]} for i in issues), ""),
            "every session issue is closed": check(all(s["state"] == "closed" for s in sessions), [s["issue"] for s in sessions if s["state"] != "closed"]),

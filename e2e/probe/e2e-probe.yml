@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   actions: read
 
@@ -31,10 +31,8 @@ jobs:
           pip install -q pyyaml
           python3 .github/loop/loop.py git-identity
           python3 e2e/probe.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: probe
-          path: ${{ env.WORKS }}
-          include-hidden-files: true
-          if-no-files-found: warn
+      - if: always()
+        run: |
+          tar -czf probe.tgz -C "$WORKS" .
+          gh release create e2e-capture --title e2e-capture --notes "Session captures of the E2E test" --target "$DEFAULT_BRANCH" || true
+          gh release upload e2e-capture probe.tgz --clobber

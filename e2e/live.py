@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 import time
 import zipfile
 from collections import Counter
@@ -332,7 +333,8 @@ def analyze_stream(path):
     init = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
     calls, answers, fills, sandbox = [], {}, [], []
     for event in events:
-        blocks = (event.get("message") or {}).get("content")
+        message = event.get("message") if isinstance(event.get("message"), dict) else {}
+        blocks = message.get("content")
         for block in blocks if isinstance(blocks, list) else []:
             if event.get("type") == "assistant" and block.get("type") == "tool_use":
                 calls.append({"id": block.get("id"), "tool": block.get("name"), "input": block.get("input")})
@@ -342,7 +344,7 @@ def analyze_stream(path):
                 if re.search(r"bwrap|sandbox|Permission denied|not permitted|denied", text, re.I):
                     sandbox.append(text[:400])
         if event.get("type") == "assistant":
-            usage = event["message"].get("usage") or {}
+            usage = message.get("usage") or {}
             fills.append(sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")))
     errors = [{"tool": x["tool"], "input": x["input"], "error": json.dumps(answers[x["id"]].get("content"), ensure_ascii=False)[:400]}
               for x in calls if answers.get(x["id"], {}).get("is_error")]
@@ -394,7 +396,7 @@ def collect(args):
         try:
             return fn(*a)
         except BaseException as error:           # keep going: a missing piece is data, the rest is still worth having
-            errors.append({"step": label, "error": repr(error)[:500]})
+            errors.append({"step": label, "error": repr(error)[:500], "trace": traceback.format_exc()[-1500:]})
             say("collect: %s failed: %s" % (label, repr(error)[:200]))
 
     meta = attempt("meta", fetch_meta, out, R) or {}
@@ -490,7 +492,7 @@ def fetch_repository(out, R):
     url = run(["git", "remote", "get-url", "origin"], cwd=PLUGIN).stdout.strip()
     target = out / "repository"
     if target.exists():
-        shutil.rmtree(target)
+        shutil.rmtree(target, onexc=lambda f, p, e: (os.chmod(p, 0o700), f(p)))     # git objects are read-only on Windows
     run(["git", "clone", "-q", "--branch", BRANCH, url, str(target)])
     log = run(["git", "log", "--format=%H%x09%an%x09%aI%x09%s", "--numstat"], cwd=target).stdout
     (out / "github" / "commits.txt").write_text(log, encoding="utf-8")
@@ -499,12 +501,13 @@ def fetch_repository(out, R):
 def measure(out, R, issues, runs):
     repo_dir = out / "repository"
     by_number = {i["number"]: i for i in issues}
+    begun = (json.loads(read(STATE / "started.json")).get("at") if (STATE / "started.json").is_file() else "")
     sessions = []
     for i in issues:
         names = {l["name"] for l in i["labels"]}
         roles = [n[5:] for n in names if n.startswith("role:")]
         iteration = next((int(n.split()[-1]) for n in names if n.startswith("loop:iteration ")), None)
-        if not roles or iteration != target() or i["title"].startswith("e2e probe"):
+        if not roles or iteration != target() or i["title"].startswith("e2e probe") or i["created_at"] < begun:
             continue
         n = i["number"]
         fields, comment = report_fields(i["comments_list"])

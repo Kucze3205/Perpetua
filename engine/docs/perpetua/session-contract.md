@@ -66,6 +66,20 @@ tool calls in online and offline sessions, denied policy reads and a useful work
 product. A surrogate CLI, successful startup, authenticated API error or skipped
 provider test does not prove that matrix. See [validation](validation.md).
 
+## Sessions without a shell
+
+One contract serves every role; what differs is the tools. The starting prompt and the protocol do not
+assume a branch, a commit or a verification command. With `Bash` among its tools a session runs `## Verification`
+itself before `done`. Without it (the shaper) it cannot, and `done` means the files the task asks for are written.
+Execution-layer sessions get no `Work on branch task/<n>` line: the engine imports their files and never reads their
+commits (`executor_boundary.import_candidate`). The engine runs `## Verification` in the epilogue for everyone.
+
+`partial` of a shaper stays the end of its iteration: the iteration fails, no retry, and `tasks.json` is not read
+(`after_session` loads the graph only on `done`). The old cause, a prompt demanding a shell the shaper lacks, is
+removed instead of adding a retry or a graph load that would turn a real shortfall into success. Covered by
+`ShaperFailureTest.test_partial_ends_the_iteration_and_the_graph_is_not_read` and
+`InputBoundaryTest.test_a_session_without_a_shell_is_not_told_to_branch_commit_or_run_commands`.
+
 ## Session secrets
 
 A session sees a secret only when the owner approved its name for that task. Three parts, each with one owner:

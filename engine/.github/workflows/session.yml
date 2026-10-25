@@ -6,7 +6,7 @@
 # epilogue re-checks the engine out, fetches the agent's commits as plain objects and does everything else itself.
 # Two kinds: `agent` (a Claude session) and `script` (a deterministic role, no model, no credential).
 name: session
-run-name: session #${{ inputs.issue }}${{ inputs.role && format(' · {0}', inputs.role) || '' }}
+run-name: "session #${{ inputs.issue }}${{ inputs.role && format(' · {0}', inputs.role) || '' }}"
 
 on:
   workflow_dispatch:

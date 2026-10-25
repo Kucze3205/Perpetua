@@ -16,9 +16,10 @@ date +%s > "$OUT/agent-start"
 NETWORK_MODE="$(cat "$TRUSTED/network-mode")"
 case "$NETWORK_MODE" in online|offline) ;; *) echo "Invalid staged network mode" >&2; exit 1 ;; esac
 
-# Secrets: only the names of the owner's consent reach the session (staged from its frozen text). An empty one stops
-# the start before any agent code runs; the epilogue turns the marker into `blocked: secret-missing:NAME`.
-while read -r name; do [ -z "$name" ] || unset "$name"; done < "$TRUSTED/unapproved"
+# Secrets: `resolve` only proves an approved name has a line in the pool, not that the repository secret has a value.
+# `stage` writes the approved names (from the frozen consent) to $TRUSTED/secrets; an empty one stops the start before
+# any agent code runs, and the epilogue turns the marker into `blocked: secret-missing:NAME`. Unapproved pool names
+# need no unsetting here: the workflow expression already gives them empty.
 while read -r name; do
   if [ -n "$name" ] && [ -z "${!name:-}" ]; then
     echo "$name" > "$OUT/secret-missing"

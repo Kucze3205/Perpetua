@@ -78,8 +78,9 @@ A session sees a secret only when the owner approved its name for that task. Thr
   text, so two sessions with different consents get different names. A new session of the same task uses the same
   consent; a changed list is a new request.
 - **Start** (trusted code): `resolve` blocks the task with `secret-missing:NAME` when an approved name has no line in
-  the `Session` step. `agent.sh` unsets the pool names that are not approved and, before any agent code runs, checks
-  that every approved secret is non-empty; if one is not, the agent does not start, the task is `blocked:
+  the `Session` step. `stage` writes the approved names to the trusted `secrets` file and, before any agent code runs,
+  `agent.sh` checks that every one is non-empty (pool names that are not approved are already empty by the expression);
+  if one is not, the agent does not start, the task is `blocked:
   secret-missing:NAME` and a `capability` request (no value) goes to the owner. Closing it creates nothing.
 
 The GitHub token never reaches the agent. `gate.env_passthrough` in `engine.yml` is a separate owner list for the gate

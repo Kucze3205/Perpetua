@@ -45,6 +45,9 @@ ENGINE = PLUGIN / "engine"
 STATE = HERE / ".state"             # when `start` and `wait` ran: report.json records it
 BRANCH, TAG = "e2e-loop", "setup-baseline"
 HAIKU = "claude-haiku-5-5"
+CLI_VERSION = "2.1.303"         # engine.yml pins 2.1.284, whose binary has no `claude-haiku-5-5` (CLI warns `unrecognized_model`);
+                                # 2.1.303 has it (checked in both binaries). `build` raises the pin on `e2e-loop` only.
+REPORT_WINDOW = 5               # iterations of reports in a session's input (engine: session_reports.py keeps the last 5)
 SCALE = 50                      # iterations the one measured iteration is extrapolated to
 CONTEXT_TOKENS = 250_000        # the session context the loop should stay under at that scale
 MAX_TURNS, MINUTES = 30, 10     # limits of every role in this environment
@@ -59,9 +62,6 @@ Create two independent files, and nothing else:
 - `src/farewell.txt` containing the single line `goodbye from perpetua`.
 """
 GATE = "echo '{\"verdict\": \"accepted\", \"improved\": true, \"detail\": \"e2e gate\"}'\n"
-NOTE = ("\n## Environment note\n\nThis is a small trial environment. The `worker` skill in "
-        "`execution/roles/worker/SKILL.md` may contain steps that waste effort or are inconsistent. If you find one, "
-        "fix it in that file and say so in the report. Keep the session short.\n")
 WORKER_SKILL = f"""---
 name: worker
 description: Writes the one small text file its task asks for, then reports.
@@ -204,12 +204,11 @@ def build(args):
     params["ceilings"] = dict(params.get("ceilings") or {}, iteration_minutes=ITERATION_MINUTES)
     write_yaml(work / "policy/params.yml", params)
     config = c.load_yaml(work / "engine.yml")
+    config["cli_version"] = CLI_VERSION
     config["gate"] = {"kind": "script", "command": "bash policy/evaluator/gate.sh"}
     config["policymaker_session_ceilings"] = {"models": [HAIKU], "efforts": ["low"], "max_turns": MAX_TURNS, "timeout_minutes": MINUTES}
     config["cadence"] = {"min_interval_minutes": 10 ** 6, "daily_iterations": None}     # one iteration, not two
     write_yaml(work / "engine.yml", config)
-    with open(work / "policy/prompts/policymaker.md", "a", encoding="utf-8", newline="\n") as fh:
-        fh.write(NOTE)
     (work / "policy/evaluator").mkdir(parents=True, exist_ok=True)
     (work / "policy/evaluator/gate.sh").write_text(GATE, encoding="utf-8", newline="\n")
     (work / "goal").mkdir(exist_ok=True)
@@ -243,6 +242,11 @@ def start(args):
         raise SystemExit("secret CLAUDE_CODE_OAUTH_TOKEN is missing (the owner sets it with `gh secret set`)")
     if loop_issues("open"):
         raise SystemExit("loop issues are already open")
+    # Session issues of earlier runs (and probes) still carry `loop:iteration N`; the new iteration reuses that number, so
+    # the loop would take them into its record and the Policymaker's input. Without the label the loop does not see them.
+    for old in loop_issues("closed"):
+        for label in [l["name"] for l in old["labels"] if l["name"].startswith("loop:iteration ")]:
+            gh("issue", "edit", str(old["number"]), "--remove-label", label)
     number = len([i for i in api_items("repos/%s/issues?state=all&labels=loop:map&per_page=100" % repo()) if "pull_request" not in i])
     set_var("E2E_CAPTURE", "on")
     set_var("AUTOPILOT", "on")
@@ -530,7 +534,7 @@ def measure(out, R, issues, runs):
     timing = actions_timing(runs)
     probe_data, probe_texts = probe_view(out)
     report = {"sessions": [{k: v for k, v in s.items() if k != "analysis"} | {"analysis_file": "sessions/%s/analysis.json" % s["dir"]} for s in sessions],
-              "iteration_record": record, "actions": timing, "growth": growth(repo_dir, out, issues, sessions, record, probe_data),
+              "iteration_record": record, "actions": timing, "actions_overhead": actions_overhead(sessions, runs), "growth": growth(repo_dir, out, issues, sessions, record, probe_data),
               "session_inputs": session_inputs(sessions, probe_data), "visibility": visibility(out, sessions, probe_texts),
               "mechanics": policymaker_mechanics(repo_dir, sessions, record),
               "environment_facts": environment_facts(sessions, probe_data),
@@ -645,51 +649,69 @@ def probe_view(out):
 
 
 def growth(repo_dir, out, issues, sessions, record, probe_data):
-    """Sizes that grow with iterations: this iteration's value and value x SCALE (no simulated history)."""
+    """What accumulates with iterations (this iteration's value and x SCALE: the repository only grows) against what one
+    iteration costs (reported as is: a time or token ceiling is per iteration, multiplying it compares nothing), and how
+    the sessions' inputs grow (see `input_projection`)."""
     def tree(prefix):
         base = repo_dir / prefix
         return sum(p.stat().st_size for p in base.rglob("*") if p.is_file()) if base.exists() else 0
-    arts = json.loads(read(out / "github" / "artifacts.json")) if (out / "github" / "artifacts.json").is_file() else []
     state_sizes = [s["analysis"]["staged"]["files"].get("loop-state.json") for s in sessions if s["analysis"].get("staged")]
     record_file = repo_dir / "iterations" / ("%04d.json" % target())
-    measures = {
-        "iteration record, bytes": record_file.stat().st_size if record_file.is_file() else None,
+    accumulating = {
         "iterations/ directory, bytes": tree("iterations"), "journal/, bytes": tree("journal"), "audit/, bytes": tree("audit"),
         "policy/ + execution/, bytes": tree("policy") + tree("execution"),
-        "loop-state.json as staged, bytes (largest)": max([x for x in state_sizes if x], default=None),
-        "raw session streams (artifacts), bytes": sum(a["size_in_bytes"] for a in arts if a["name"].startswith("stream-")),
-        "captured session data (artifacts), bytes": sum(a["size_in_bytes"] for a in arts if a["name"].startswith("capture-")),
-        "stream artifacts, count": sum(1 for a in arts if a["name"].startswith("stream-")),
+        # from the analysed streams, not from artifacts: artifacts may be absent (quota), the capture release still has them
+        "raw session streams, bytes": sum(s["analysis"].get("stream_bytes") or 0 for s in sessions),
         "issue comments of the loop (reports, state, orders), bytes": sum(len(c["body"]) for i in issues if any(l["name"].startswith("loop:iteration ") for l in i["labels"]) for c in i["comments_list"]),
-        "issues of the iteration, count": sum(1 for i in issues if any(l["name"].startswith("loop:iteration ") for l in i["labels"])),
         "commits on the branch since the baseline, count": len(run(["git", "rev-list", "%s..HEAD" % TAG], cwd=repo_dir, check=False).stdout.split()),
+    }
+    per_iteration = {
+        "iteration record, bytes": record_file.stat().st_size if record_file.is_file() else None,
+        "loop-state.json as staged, bytes (largest)": max([x for x in state_sizes if x], default=None),
+        "issues of the iteration, count": sum(1 for i in issues if any(l["name"].startswith("loop:iteration ") for l in i["labels"])),
         "tokens in + out of all sessions": sum(int(s["report"].get("tokens_in") or 0) + int(s["report"].get("tokens_out") or 0) for s in sessions),
         "cache read + write tokens of all sessions": sum(int(s["report"].get("cache_read") or 0) + int(s["report"].get("cache_write") or 0) for s in sessions),
         "turns of all sessions": sum(int(s["report"].get("turns") or 0) for s in sessions),
         "agent seconds of all sessions": sum(int(s["report"].get("agent_s") or 0) for s in sessions),
         "wall seconds of the iteration": ((record or {}).get("outcome") or {}).get("wall_s"),
     }
-    scaled = {k: {"this_iteration": v, "x%d" % SCALE: v * SCALE if isinstance(v, (int, float)) else None} for k, v in measures.items()}
-    per_iteration = {}
+    return {"accumulating": {k: {"this_iteration": v, "x%d" % SCALE: v * SCALE} for k, v in accumulating.items()},
+            "per_iteration_not_scaled": per_iteration, "session_input_growth_per_iteration": input_projection(sessions, probe_data),
+            "note": "accumulating: sizes the repository keeps; per_iteration_not_scaled: ceilings (iteration_minutes, tokens) apply per iteration"}
+
+
+def input_projection(sessions, probe_data):
+    """Role -> input of its session at SCALE iterations. The probe's session is what the next iteration is given; its excess
+    over the role's first session is what one iteration adds, by kind: `history` (reports, exports: the engine keeps the last
+    REPORT_WINDOW iterations, so it stops growing there), `state` (the `iterations` index in loop-state.json: linear), the
+    rest (skills, protocol) does not grow with iterations. The width of an iteration (sessions, report sizes) is measured in
+    `iteration_width`, not assumed."""
     first = {}
     for s in sessions:
         if s["analysis"].get("staged"):
             first.setdefault(s["role"], s)
+    result = {}
     for role, now in ((probe_data or {}).get("views") or {}).items():
         before = first.get(role)
         if not before:
             continue
         a = before["analysis"]
-        start = a["staged"]["tokens_estimated"]["inputs"] + sum((a.get("trusted") or {}).get("tokens_estimated", {}).values())
-        added = now["estimated_tokens"] - start
-        per_iteration[role] = {"first_session_estimated_tokens": start, "next_iteration_session_estimated_tokens": now["estimated_tokens"],
-                               "added_by_one_iteration": added, "projection_x%d_tokens" % SCALE: start + added * SCALE}
-    return {"sizes": scaled, "session_input_growth_per_iteration": per_iteration,
-            "note": "the probe's session is what the next iteration would be given: its excess over the first session of the role is what one iteration adds"}
+        start_by = a["staged"]["tokens_estimated"]["by_category"]
+        fixed = sum((a.get("trusted") or {}).get("tokens_estimated", {}).values())
+        start = a["staged"]["tokens_estimated"]["inputs"] + fixed
+        step = {c: now["tokens_by_category"].get(c, 0) - start_by.get(c, 0) for c in ("history", "state")}
+        extra = step["history"] * min(SCALE, REPORT_WINDOW) + step["state"] * SCALE
+        result[role] = {"first_session_estimated_tokens": start, "next_iteration_session_estimated_tokens": now["estimated_tokens"],
+                        "added_by_one_iteration": now["estimated_tokens"] - start, "added_history_tokens": step["history"],
+                        "added_state_tokens": step["state"], "projection_x%d_extra_tokens" % SCALE: extra,
+                        "projection_x%d_tokens" % SCALE: start + extra}
+    return result
 
 
 def session_inputs(sessions, probe_data):
-    """Estimated tokens of everything staged for each session against the context the CLI really used."""
+    """Estimated tokens of everything staged for each session against the context the CLI really used. The CLI's own
+    overhead is taken from that session itself, so it is per role (14.0k with Bash, 9.4k without in run 2), not shared."""
+    projection = input_projection(sessions, probe_data)
     rows = []
     for s in sessions:
         a = s["analysis"]
@@ -698,19 +720,51 @@ def session_inputs(sessions, probe_data):
         fixed = sum((a.get("trusted") or {}).get("tokens_estimated", {}).values())
         estimate = a["staged"]["tokens_estimated"]["inputs"] + fixed
         history = a["staged"]["tokens_estimated"]["by_category"].get("history", 0)
-        measured = (a.get("stream") or {}).get("first_call_context_tokens")
-        row = {"issue": s["issue"], "role": s["role"], "estimated_input_tokens": estimate, "estimated_history_tokens": history,
+        stream = a.get("stream") or {}
+        measured = stream.get("first_call_context_tokens")
+        row = {"issue": s["issue"], "role": s["role"], "has_bash_tool": any(str(t).startswith("Bash") for t in stream.get("tools_offered") or []),
+               "estimated_input_tokens": estimate, "estimated_history_tokens": history,
                "fixed_tokens": fixed, "measured_first_call_context_tokens": measured,
-               "measured_peak_context_tokens": (a.get("stream") or {}).get("peak_context_tokens"),
+               "measured_peak_context_tokens": stream.get("peak_context_tokens"),
                "cli_overhead_tokens (measured first call - estimate)": measured - estimate if measured is not None else None,
                "ratio measured / estimate": round(measured / estimate, 2) if measured and estimate else None}
-        if measured:
-            constant = measured + history * (SCALE - 1)
-            proportional = round(measured / estimate * (estimate - history + history * SCALE))
+        extra = (projection.get(s["role"]) or {}).get("projection_x%d_extra_tokens" % SCALE)
+        if measured and extra is not None:
+            constant = measured + extra
+            proportional = round(measured / estimate * (estimate + extra))
             row.update({"projection_x%d_constant_overhead_model" % SCALE: constant, "projection_x%d_proportional_model" % SCALE: proportional,
                         "over_%d_tokens" % CONTEXT_TOKENS: max(constant, proportional) > CONTEXT_TOKENS})
         rows.append(row)
     return rows
+
+
+def actions_overhead(sessions, runs):
+    """What Actions spends around the agent, per session run, and how wide the iteration is: these, not the agent, decide
+    how an iteration scales. Steps: prep job; in the session job `Tools`, `Prepare the machine` + `Stage the session`,
+    `Session` (the agent), `Epilogue`."""
+    def step(job, *names):
+        return round(sum(seconds(x.get("started_at"), x.get("completed_at")) or 0 for x in job.get("steps", []) if x["name"] in names), 1)
+    rows = []
+    by_id = {r["id"]: r for r in runs}
+    for s in sessions:
+        for run_id in s["runs"]:
+            jobs = {j["name"]: j for j in by_id[run_id].get("jobs_list", [])}
+            prep, job = jobs.get("prep"), jobs.get("session")
+            if not job:
+                continue
+            row = {"issue": s["issue"], "role": s["role"], "run": run_id, "prep_s": seconds(prep.get("started_at"), prep.get("completed_at")) if prep else None,
+                   "tools_s": step(job, "Tools"), "stage_s": step(job, "Prepare the machine", "Stage the session"),
+                   "agent_step_s": step(job, "Session"), "epilogue_s": step(job, "Epilogue"),
+                   "session_job_s": seconds(job.get("started_at"), job.get("completed_at")), "agent_s": s["report"].get("agent_s")}
+            row["around_agent_s"] = round((row["prep_s"] or 0) + (row["session_job_s"] or 0) - (row["agent_step_s"] or 0), 1)
+            rows.append(row)
+    width = {"sessions": len(sessions), "by_role": dict(Counter(s["role"] for s in sessions)),
+             "report_bytes_total": sum(s["report_bytes"] for s in sessions), "report_bytes_max": max((s["report_bytes"] for s in sessions), default=0),
+             "comment_bytes_total": sum(s["comment_bytes"] for s in sessions)}
+    around, agent = sum(r["around_agent_s"] for r in rows), sum(r["agent_step_s"] for r in rows)
+    return {"per_session_run": rows, "iteration_width": width,
+            "totals": {"around_agent_s": round(around, 1), "agent_step_s": round(agent, 1),
+                       "around_agent_share": round(around / (around + agent), 2) if around + agent else None}}
 
 
 def visibility(out, sessions, probe_texts):
@@ -789,13 +843,15 @@ def write_readme(out, report):
     (out / "README.md").write_text(f"""# Data of one real loop iteration on GitHub Actions (Haiku 5.5)
 
 Collected by `e2e/live.py collect`. Start with `report.json`, then follow `analysis_file` of a session. Nothing in it is a
-verdict: extrapolations (x{SCALE}) are this iteration's value x {SCALE}, with no simulated history; the context
+verdict: extrapolations (x{SCALE}) apply only to what accumulates (repository sizes) and to session inputs (reports capped
+at {REPORT_WINDOW} iterations, the `iterations` index linear); times and tokens of an iteration are per iteration. The context
 threshold is {CONTEXT_TOKENS} tokens. Token estimates are characters / 4; `session_inputs` compares them with the
 context the CLI really reported on its first model call.
 
 - `report.json`: `run` (repo, commits, times, platform); `sessions` (report fields as the engine published them);
   `iteration_record`; `actions` (queue, start, job and step times, cron delay, concurrency, billable-minute estimate);
-  `growth` (sizes that accumulate, x{SCALE}, and what one iteration adds to the next sessions' inputs);
+  `actions_overhead` (prep, Tools, Stage, Epilogue around the agent per session run; width of the iteration: sessions, report sizes);
+  `growth` (`accumulating` x{SCALE}, `per_iteration_not_scaled`, and what one iteration adds to the next sessions' inputs);
   `session_inputs` (estimated vs measured context, two projection models); `visibility` (did the planted step, the
   iteration's results and the exports reach the next iteration's sessions); `mechanics` (could the Policymaker change
   policy: tools, writes, diff, receipts, orders); `environment_facts` (sandbox mentions, stray files, trusted files incl.

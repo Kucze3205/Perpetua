@@ -335,6 +335,8 @@ class PolicymakerTest(Flow):
         self.assertIn("orders only", c.report_fields(self.open_iteration()["number"])["orders_refused"])
         self.finish(0)
         self.assertIn("orders only", self.record(0)["policy"]["orders_refused"])
+        # the next Policymaker session reads the refusal in its loop-state `iterations`
+        self.assertIn("orders only", it.index_lines()[0]["orders_refused"])
 
     def test_a_policymaker_change_outside_its_zone_is_refused(self):
         it.start_iteration()

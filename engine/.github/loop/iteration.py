@@ -175,7 +175,8 @@ def index_lines():
         o = r.get("outcome", {})
         out.append({"n": r["iteration"], "status": r["status"],
                     "verdict": (o.get("verdict") or {}).get("value"), "improved": (o.get("verdict") or {}).get("improved", False),
-                    "tasks": len(r.get("tasks", [])), "wall_s": o.get("wall_s"), "tokens": o.get("tokens")})
+                    "tasks": len(r.get("tasks", [])), "wall_s": o.get("wall_s"), "tokens": o.get("tokens"),
+                    "orders_refused": (r.get("policy") or {}).get("orders_refused")})
     return out
 
 
@@ -282,7 +283,7 @@ def export_state(n, directory, role=None):
     if state is not None:
         import session_inputs
         if role and session_inputs.restricted(role):
-            state = session_inputs.state(state)
+            state = dict(session_inputs.state(state), task_options=session_inputs.task_options())
         session_reports.stage(state, directory, role=role)
         with open(os.path.join(directory, "loop-state.json"), "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=1, ensure_ascii=False)

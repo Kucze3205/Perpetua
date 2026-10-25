@@ -144,9 +144,9 @@ def stage(body, role, iteration, sess):
                 for key, covered in (("iterations", covered_iterations), ("sessions", covered_sessions)):
                     for identifier in sorted(set(request.get(key, [])) - covered):
                         missing = True
-                        result("unavailable", **{"iteration" if key == "iterations" else "issue": identifier}, detail="no matching artifact in the current Actions catalogue; it may have been deleted")
+                        result("unavailable", **{"iteration" if key == "iterations" else "issue": identifier}, detail="no matching artifact in the current Actions catalogue: pruned by stream_retention_iterations, expired, or never uploaded (upload failed, e.g. artifact quota)")
                 if len(results) == before and not missing:
-                    result("unavailable", detail="no matching artifact in the current Actions catalogue; it may have been deleted")
+                    result("unavailable", detail="no matching artifact in the current Actions catalogue: pruned by stream_retention_iterations, expired, or never uploaded (upload failed, e.g. artifact quota)")
             elif source == "records":
                 for k in sorted(set(request["iterations"])):
                     text = c.safe_read(".", "iterations/%04d.json" % k)

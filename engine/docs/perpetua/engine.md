@@ -122,7 +122,7 @@ setup), `stage`, the agent, the epilogue.
   the release `iter-NNNN` and lists them in the report. A later task names them in `inputs` and the engine downloads
   them before the agent starts.
 - **Streams.** The raw `stream-json` of every session is kept as the artifact `stream-NNNN-<issue>` (for
-  `stream_retention_iterations` iterations when set). Nothing interprets it. Declarative `exports` select supported
+  `stream_retention_iterations` iterations, 8 by default; the upload may fail, e.g. on a full artifact quota, without failing the session). Nothing interprets it. Declarative `exports` select supported
   data for any role; an audit with no selectors retains the current iteration and three predecessors in
   `.session/streams/`. See [session data exports](session-exports.md) for the catalogue, scopes, manifest and Policymaker
   session tuning contract.

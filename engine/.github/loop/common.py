@@ -54,7 +54,7 @@ DEFAULTS = {
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
     "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
-               "stream_retention_iterations": None},
+               "stream_retention_iterations": 8},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
 }
 

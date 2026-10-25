@@ -722,7 +722,7 @@ def fail_iteration(n, why):
         close_iteration(n, "failed", why)
 
 
-def session_summary(x):
+def session_summary(x, streams=()):
     f = c.report_fields(x["number"])
     names = c.label_names(x)
 
@@ -736,7 +736,8 @@ def session_summary(x):
             "models": json.loads(f["models"]) if f.get("models", "").startswith("{") else {},
             "turns": num("turns"), "peak_context": num("peak_context"), "attempts": num("attempts"), "agent_s": num("agent_s"), "gate_s": num("gate_s"), "total_s": num("total_s"),
             "parked_s": num("parked_s"), "runner": f.get("runner"), "artifacts": num("artifacts"),
-            "stream": "stream-%s-%s" % (tag(c.iteration_of(names) or 0), x["number"])}
+            # Named only when the artifact exists: a failed upload (quota) leaves no field, not a dangling name.
+            **({"stream": s} if (s := "stream-%s-%s" % (tag(c.iteration_of(names) or 0), x["number"])) in streams else {})}
 
 
 def critical_path(sessions, tasks):
@@ -780,7 +781,8 @@ def close_iteration(n, status, failure=None):
     f = c.report_fields(it["number"])
     if not os.path.exists(record_path(n)):
         issues = iteration_issues(n)
-        sessions = {x["number"]: session_summary(x) for x in issues if c.roles_of(c.label_names(x))}
+        streams = {a["name"] for a in c.list_artifacts()}
+        sessions = {x["number"]: session_summary(x, streams) for x in issues if c.roles_of(c.label_names(x))}
 
         shp = sessions.get(int(f["shape_issue"])) if f.get("shape_issue", "").isdigit() else None
         tasks = read_json(tasks_path(n)) or []

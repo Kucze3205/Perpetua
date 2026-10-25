@@ -38,9 +38,20 @@ not provide a complete historical event timeline.
 the selector index, source, scope, available identifiers, and staged path on success.
 Statuses are `downloaded`, `unavailable`, `expired`, `error`, `denied`, and `unknown`.
 Expired artifacts are distinct from failed downloads. An absent artifact is
-`unavailable`: the catalogue cannot say whether it was deleted or never uploaded.
+`unavailable`: the catalogue cannot say whether it was pruned, expired or never uploaded;
+the detail lists these causes, including a failed upload on a full artifact quota.
 Unknown sources produce `unknown`; malformed scopes produce `error`. Fetch failures
 are isolated from other declarations and contain no credential-bearing stderr.
+
+Where streams live (decision). Streams stay Actions artifacts; they are not duplicated
+into the `iter-NNNN` release. They are a diagnostic copy, not a delivered result, so
+losing one costs little, and a second storage path would need its own pruning and
+download code. The upload step is `continue-on-error`, so a full account quota leaves the
+session job `success`, and the iteration record carries `stream` only for an artifact
+that exists. Retention (decision): `stream_retention_iterations` defaults to 8, twice the
+audit window of four iterations; the engine deletes older streams, so 50 iterations never
+hold more than 8 iterations' streams (about 8 KB per Haiku turn; far more for large
+Opus sessions). `null` leaves GitHub's 90 days. Quota itself is the owner's account concern.
 
 An audit order with no `exports` preserves the previous stream selection:
 `max(0, k-3)..k` inclusive, where `k` is its iteration. This is four iteration

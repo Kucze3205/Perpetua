@@ -18,6 +18,18 @@ import tempfile
 HIDDEN = {"policy", "execution", "templates", ".github", ".git", ".claude", ".codex", "iterations", "audit"}
 
 
+# Empty placeholders the `claude` CLI's bwrap sandbox leaves in its cwd (its `denyWrite` list: mount points for paths
+# that did not exist), appearing ~0.8 s after the agent starts. Source: the CLI binary, versions 2.1.284 (the default pin of
+# `cli_version`, see session.yml) and 2.1.303 carry the identical list (cwd-relative: bunfig.toml package.json .npmrc .yarnrc .yarnrc.yml
+# .gitmodules package-lock.json yarn.lock pnpm-lock.yaml, plus the eight .env* names). Empty directories among them
+# (node_modules/.bin, .claude/agents, .claude/commands) are never candidate files. When the pin changes, re-extract
+# the list: `npm pack @anthropic-ai/claude-code-linux-x64@<pin>` and search `claude` for ".yarnrc.yml".
+SANDBOX_STUBS = frozenset((".env", ".env.local", ".env.development", ".env.development.local", ".env.test",
+                           ".env.test.local", ".env.production", ".env.production.local", ".npmrc", ".yarnrc",
+                           ".yarnrc.yml", "bunfig.toml", "package.json", "package-lock.json", "yarn.lock",
+                           "pnpm-lock.yaml", ".gitmodules"))
+
+
 def visible(path):
     return path.split("/", 1)[0] not in HIDDEN and path != "engine.yml"
 
@@ -111,6 +123,10 @@ def import_candidate(work, metadata, trusted, ref):
     if os.path.abspath(work) != metadata["work"]:
         raise ValueError("executor output does not match its staged origin")
     current = files(Path(work))
+    # A stub is empty and was not in the baseline: nothing the agent wrote. Content or a baseline file makes it real.
+    for rel in SANDBOX_STUBS & set(current):
+        if not current[rel][0] and rel not in metadata["paths"]:
+            del current[rel]
     with tempfile.TemporaryDirectory(prefix="executor-admission-") as tmp:
         index = os.path.join(tmp, "index")
         env = {"GIT_INDEX_FILE": index}

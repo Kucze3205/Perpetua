@@ -306,6 +306,52 @@ PY
                     self.assertEqual(Path(uploads[0][3]).read_text(), "legitimate-artifact\n")
 
 
+class SandboxStubTest(sessions.SessionCase):
+    """The CLI sandbox creates empty placeholder files beside the agent's work; real stage -> real admission."""
+    work = sessions.StageTest.work
+    STUBS = (".env", ".env.local", ".env.development", ".env.development.local", ".env.test", ".env.test.local",
+             ".env.production", ".env.production.local", ".npmrc", ".yarnrc", ".yarnrc.yml", "bunfig.toml",
+             "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".gitmodules")
+
+    def admit(self, **files):
+        self.w.write(self.w.loop, "src/input.txt", "allowed work")
+        fakes.sh(self.w.loop, "git", "add", "-A")
+        fakes.sh(self.w.loop, "git", "commit", "-qm", "fixture")
+        fakes.sh(self.w.loop, "git", "push", "-q", "origin", "HEAD:main")
+        n = self.issue()
+        work = self.work()
+        trusted = os.path.join(self.w.tmp, "run", "trusted")
+        os.environ["RUNNER_TEMP"] = os.path.dirname(trusted)
+        for root, _, names in os.walk(os.path.join(work, ".git")):  # Windows: prepare() removes the clone's read-only objects
+            for name in names:
+                os.chmod(os.path.join(root, name), 0o644)
+        loop.stage(n, work, trusted)
+        self.assertTrue(os.path.isfile(os.path.join(trusted, "executor-baseline.json")), "role is not executor-isolated")
+        for name in self.STUBS:
+            Path(work, name).write_bytes(b"")
+        for name in (".claude/agents", ".claude/commands", "node_modules/.bin"):
+            os.makedirs(os.path.join(work, name))
+        for name, text in files.items():
+            os.makedirs(os.path.dirname(os.path.join(work, name)) or work, exist_ok=True)
+            Path(work, name).write_text(text)
+        return n, work
+
+    def test_empty_sandbox_placeholders_are_not_part_of_the_change(self):
+        n, work = self.admit(**{"src/product.txt": "result"})
+        self.assertTrue(loop.fetch_candidate(work, n)[0])
+        changed = fakes.sh(self.w.loop, "git", "diff", "--name-only", "task/%s^" % n, "task/%s" % n).split()
+        self.assertEqual(changed, ["src/product.txt"])
+
+    def test_a_real_file_outside_write_is_still_refused_beside_the_placeholders(self):
+        n, work = self.admit(**{"outside.txt": "x", "package.json": "{}"})
+        self.assertTrue(loop.fetch_candidate(work, n)[0])
+        detail = loop.merge_branch(n, "worker", self.hub.issue(n))["detail"]
+        self.assertIn("outside.txt", detail)
+        self.assertIn("package.json", detail)  # content makes it the agent's file
+        self.assertNotIn(".npmrc", detail)
+        self.assertNotIn("yarn.lock", detail)
+
+
 class MissingIsolationTest(unittest.TestCase):
     def test_restricted_model_and_online_admission_require_engine_metadata(self):
         for profile in ({"agent": True, "internet": False}, {"agent": True, "internet": True},

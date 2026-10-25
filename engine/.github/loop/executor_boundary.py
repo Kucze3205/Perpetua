@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 
-HIDDEN = {"policy", "execution", "templates", ".github", ".git", ".claude", ".codex", "iterations", "audit"}
+HIDDEN = {"policy", "execution", ".github", ".git", ".claude", ".codex", "iterations", "audit"}
 
 
 def visible(path):

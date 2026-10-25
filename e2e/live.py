@@ -183,16 +183,19 @@ def build(args):
     import common as c
     setup_roles.prepare(work)
     light = {"effort": "low", "max_turns": MAX_TURNS, "timeout_minutes": MINUTES}
-    for role, layer in [("orchestrator", "execution"), ("audit", "policy"), ("evaluator", "policy"),
-                        ("evaluator-verifier", "policy"), ("policymaker", "policy")]:
-        profile = c.load_yaml(work / "templates" / layer / "profiles.yml").get(role)
-        if profile:
-            profile = dict({k: v for k, v in profile.items() if k != "model"}, **light)
-        setup_roles.install(work, role, layer, work / "templates" / layer / "roles" / role, profile)
-    source = work.parent / (work.name + "-worker")
-    source.mkdir()
-    (source / "SKILL.md").write_text(WORKER_SKILL, encoding="utf-8", newline="\n")
-    setup_roles.install(work, "worker", "execution", source, dict(
+    # The policy roles ship with the engine; only their cost is lowered here.
+    policy_profiles = c.load_yaml(work / "policy/profiles.yml")
+    for profile in policy_profiles.values():
+        profile.pop("model", None)
+        profile.update(light)
+    write_yaml(work / "policy/profiles.yml", policy_profiles)
+    (work / "execution/roles/orchestrator").mkdir(parents=True)
+    shutil.copyfile(HERE / "fixtures" / "orchestrator" / "SKILL.md", work / "execution/roles/orchestrator/SKILL.md")
+    orchestrator = c.load_yaml(HERE / "fixtures" / "orchestrator" / "profile.yml")
+    setup_roles.install(work, "orchestrator", "execution", dict({k: v for k, v in orchestrator.items() if k != "model"}, **light))
+    (work / "execution/roles/worker").mkdir(parents=True)
+    (work / "execution/roles/worker/SKILL.md").write_text(WORKER_SKILL, encoding="utf-8", newline="\n")
+    setup_roles.install(work, "worker", "execution", dict(
         light, tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash(git:*)", "Bash(python3:*)"], write=["src/**"]))
     params = c.load_yaml(work / "policy/params.yml")
     params.update(shaper="orchestrator", models={"default": HAIKU, "opus": HAIKU},

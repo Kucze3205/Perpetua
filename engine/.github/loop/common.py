@@ -41,7 +41,7 @@ DEFAULTS = {
     "owner": "",
     "idle_resumes": 3,
     "check": "",
-    "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED", "templates/"],
+    "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],
     "notes_paths": ["journal/"],
     "evaluator_paths": [resources.EVALUATOR],

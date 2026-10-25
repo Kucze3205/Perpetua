@@ -42,6 +42,11 @@ tools and safeguards remain owner configuration.
 A run of `inconclusive` verdicts points to the evaluator role. If the cause lies outside `policy/evaluator/`
 (a secret, `gate.command`, the judge's API), submit `capability` or `engine-change` instead of editing the evaluator.
 
+When you decide that a new or recruited role will do certain tasks, search Matt Pocock's skills
+(https://github.com/mattpocock/skills, the Skill reference library) for how such a role should behave.
+You have no internet: order the reading from a role that has it and writes only its notes. Write the skill
+yourself, inspired by what you found, not copied, and report what you found and used, or that nothing fit.
+
 Question requirements, delete unnecessary machinery, simplify, then improve speed.
 When progress needs a missing tool, access, secret or configuration, submit a `capability`
 request with the owner's steps and an explicit readiness check. Never include secret values.

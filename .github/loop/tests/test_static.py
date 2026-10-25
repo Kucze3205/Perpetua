@@ -1,0 +1,220 @@
+"""Static checks of the engine as a whole: it parses, it is self-consistent, and it carries nothing of the project it came from.
+This file is ASCII only (checked below), so it hides no Polish either."""
+import os
+import re
+import subprocess
+import unittest
+
+import yaml
+
+import fakes
+from fakes import ENGINE, common as c, iteration as it
+
+BASH = None
+for cand in ("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe", "/bin/bash", "/usr/bin/bash"):
+    if os.path.exists(cand):
+        BASH = cand
+        break
+
+# Words of the project the engine was extracted from, and Polish: the engine is goal-independent and English.
+POLISH_LETTERS = "[\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c\u0104\u0106\u0118\u0141\u0143\u00d3\u015a\u0179\u017b]"
+FORBIDDEN = re.compile(
+    r"block\s*blast|blockblast|emulator|\bapk\b|\bbench(mark)?\b|\bdqn\b|kvm|tesseract|\bbridge\b|drone|reinforc|\badb\b|"
+    r"ASSETS_READ_TOKEN|\btorch\b|numpy|" + POLISH_LETTERS + r"|\b(rola|cykl|dozorca|orkiestrator|zadanie|petla|nastepca|weryfikacja|raport)\b",
+    re.I)
+
+
+# Inside a loop's own repository only the engine's code is the engine's; the rest (policy/, goal files) is the loop's.
+IN_LOOP_REPO = os.path.isdir(os.path.join(ENGINE, ".git"))
+TEMPLATE_ONLY = unittest.skipIf(IN_LOOP_REPO, "checks the template the plugin ships, not a loop's repository")
+
+
+def engine_files():
+    for root, dirs, files in os.walk(os.path.join(ENGINE, ".github") if IN_LOOP_REPO else ENGINE):
+        dirs[:] = [d for d in dirs if d not in (".git", "__pycache__")]
+        for f in files:
+            if not f.endswith(".pyc"):
+                yield os.path.join(root, f)
+
+
+@TEMPLATE_ONLY
+class TraceTest(unittest.TestCase):
+    def test_no_trace_of_the_source_project_in_any_file_or_name(self):
+        me = os.path.abspath(__file__)
+        bad = []
+        for p in engine_files():
+            rel = os.path.relpath(p, ENGINE).replace("\\", "/")
+            if FORBIDDEN.search(rel):
+                bad.append(rel)
+            if os.path.abspath(p) == me:
+                continue
+            with open(p, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    m = FORBIDDEN.search(line)
+                    if m:
+                        bad.append("%s:%s: %s" % (rel, n, m.group(0)))
+        self.assertEqual(bad, [])
+
+    def test_this_file_is_ascii(self):
+        with open(os.path.abspath(__file__), encoding="utf-8") as fh:
+            self.assertIsNone(re.search(r"[^\x00-\x7f]", fh.read()))
+
+
+class FilesTest(unittest.TestCase):
+    def test_every_file_is_lf_only_utf8(self):
+        for p in engine_files():
+            with open(p, "rb") as fh:
+                data = fh.read()
+            self.assertNotIn(b"\r", data, p)
+            data.decode("utf-8")
+
+    def test_python_compiles(self):
+        for p in engine_files():
+            if p.endswith(".py"):
+                with open(p, encoding="utf-8") as fh:
+                    compile(fh.read(), p, "exec")
+
+    @unittest.skipUnless(BASH, "no bash")
+    def test_shell_scripts_parse(self):
+        for p in engine_files():
+            if p.endswith(".sh"):
+                with open(p, encoding="utf-8") as fh:
+                    self.assertTrue(fh.readline().startswith("#!"), p)
+                r = subprocess.run([BASH, "-n", p], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, "%s: %s" % (p, r.stderr))
+
+    def test_version_stamp(self):
+        with open(os.path.join(ENGINE, "ENGINE_VERSION"), encoding="utf-8") as fh:
+            self.assertRegex(fh.read().strip(), r"^\d+\.\d+\.\d+$")
+
+
+class WorkflowTest(unittest.TestCase):
+    def workflows(self):
+        d = os.path.join(ENGINE, ".github", "workflows")
+        for f in sorted(os.listdir(d)):
+            with open(os.path.join(d, f), encoding="utf-8") as fh:
+                text = fh.read()
+            yield f, text, yaml.safe_load(text)
+
+    def test_they_parse_and_declare_permissions_and_the_switch(self):
+        seen = set()
+        for f, text, doc in self.workflows():
+            seen.add(f)
+            self.assertIn("jobs", doc, f)
+            self.assertTrue("on" in doc or True in doc, f)                   # PyYAML reads `on:` as True
+            self.assertIn("permissions", doc, f)
+            if f != "watchdog.yml":
+                self.assertIn("vars.AUTOPILOT == 'on'", text, f)               # the first condition of every loop workflow
+        if not IN_LOOP_REPO:
+            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml"})
+
+    def test_no_workflow_uses_the_dangerous_inputs(self):
+        for f, text, doc in self.workflows():
+            self.assertNotIn("pull_request_target", text, f)
+            self.assertNotIn("ANTHROPIC_API_KEY", text, f)
+            lines = text.splitlines()
+            for i, line in enumerate(lines):
+                if "uses: actions/checkout@v4" in line:
+                    block = []
+                    for nxt in lines[i + 1:]:
+                        if re.match(r"^\s{6}- ", nxt):
+                            break
+                        block.append(nxt)
+                    self.assertIn("persist-credentials: false", "\n".join(block), f)
+
+    def test_every_engine_command_a_workflow_runs_exists(self):
+        with open(os.path.join(ENGINE, ".github", "loop", "loop.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        known = set(re.findall(r'cmd == "([a-z-]+)"', src))
+        used = set()
+        for f, text, doc in self.workflows():
+            used |= set(re.findall(r"loop\.py ([a-z-]+)", text))
+        self.assertTrue(used)
+        self.assertEqual(used - known, set())
+
+    def test_engine_files_the_workflows_and_scripts_name_exist(self):
+        for f, text, doc in self.workflows():
+            for m in re.findall(r"\.github/loop/([A-Za-z_.-]+)", text):
+                self.assertTrue(os.path.exists(os.path.join(ENGINE, ".github", "loop", m)), (f, m))
+
+    def test_the_agent_never_gets_the_github_token(self):
+        with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
+            text = fh.read()
+        step = text[text.index("- name: Session"):text.index("- uses: actions/checkout@v4\n        if: always()")]
+        self.assertNotIn("github.token", step)
+        self.assertNotIn("GH_TOKEN", step)
+        with open(os.path.join(ENGINE, ".github", "loop", "agent.sh"), encoding="utf-8") as fh:
+            sh = fh.read()
+        self.assertIn("unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN", sh)
+        code = [l for l in sh.splitlines() if not l.strip().startswith("#")]
+        self.assertEqual([l for l in code if re.search(r"(^|[\s;|&(])gh\s", l)], [])          # the agent has no gh
+
+
+@TEMPLATE_ONLY
+class ConfigTest(unittest.TestCase):
+    def load(self, *parts):
+        with open(os.path.join(ENGINE, *parts), encoding="utf-8") as fh:
+            return yaml.safe_load(fh)
+
+    def test_engine_yml_has_only_known_keys_and_shows_every_default(self):
+        doc = self.load("engine.yml")
+        self.assertEqual(set(doc) - set(c.DEFAULTS), set())
+        for k in c.DEFAULTS:
+            self.assertIn(k, doc, "engine.yml should show %s" % k)
+
+    def test_the_setup_parameters_are_null_on_purpose(self):
+        doc = self.load("engine.yml")
+        self.assertEqual(set(doc["params"].values()) | set(doc["cadence"].values()), {None})
+
+    def test_template_is_layered_and_all_roles_are_inactive(self):
+        self.assertEqual(self.load('engine.yml')['resources'], {'format': 'layered'})
+        self.assertIsNone(self.load('policy', 'params.yml')['shaper'])
+        for layer in ('execution', 'policy'):
+            self.assertEqual(self.load(layer, 'profiles.yml'), {})
+            self.assertFalse(os.path.exists(os.path.join(ENGINE, layer, 'roles')))
+        self.assertIn('templates/', self.load('engine.yml')['protected'])
+
+    def test_template_candidates_are_complete_and_within_limits(self):
+        w = fakes.World()
+        try:
+            for layer in ('execution', 'policy'):
+                profs = self.load('templates', layer, 'profiles.yml')
+                for role, profile in profs.items():
+                    self.assertEqual(it.limits_exceeded(profile), [], role)
+                    path = os.path.join(ENGINE, 'templates', layer, 'roles', role, 'SKILL.md')
+                    with open(path, encoding='utf-8') as fh:
+                        fm = it.frontmatter(fh.read())[0]
+                    self.assertEqual(fm.get('name'), role)
+                    self.assertTrue(fm.get('description'), role)
+            self.assertTrue(os.path.isfile(os.path.join(ENGINE, 'templates/policy/roles/policymaker/SKILL.md')))
+        finally:
+            w.close()
+
+    def test_the_protocol_names_the_fields_the_engine_owns(self):
+        with open(os.path.join(ENGINE, ".github", "loop", "session-protocol.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        for field in ("attempts", "resume_after", "kicks", "conflicts", "cause", "verdict", "merged", "branch", "artifacts"):
+            self.assertIn(field, text)
+            self.assertIn(field, c.OWNED)
+
+
+class ProtectionTest(unittest.TestCase):
+    def test_the_engines_own_files_are_protected_from_every_session(self):
+        prot = c.DEFAULTS["protected"]
+        for p in (".github/workflows/session.yml", ".github/loop/loop.py", "engine.yml", "ENGINE_VERSION", "iterations/0001.json",
+                  "iterations/0001/tasks.json", "goal/gate.yml", "GOAL_REACHED"):
+            self.assertTrue(c.path_match(p, prot), p)
+        for p in ("policy/params.yml", "journal/0001.md", "src/x.py", "audit/0001.md"):
+            self.assertFalse(c.path_match(p, prot), p)
+
+    @TEMPLATE_ONLY
+    def test_no_shipped_profile_can_write_the_engine(self):
+        with open(os.path.join(ENGINE, "templates", "policy", "profiles.yml"), encoding="utf-8") as fh:
+            profs = yaml.safe_load(fh)
+        for role, p in profs.items():
+            for g in p.get("write") or []:
+                self.assertFalse(c.path_match(g.replace("**", "x"), c.DEFAULTS["protected"]), (role, g))
+
+
+if __name__ == "__main__":
+    unittest.main()

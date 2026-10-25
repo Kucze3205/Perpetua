@@ -1,0 +1,26 @@
+orchestrator:
+  write:
+  - journal/**
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  effort: low
+  max_turns: 30
+  timeout_minutes: 10
+worker:
+  effort: low
+  max_turns: 30
+  timeout_minutes: 10
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  - Bash(git:*)
+  - Bash(python3:*)
+  write:
+  - src/**

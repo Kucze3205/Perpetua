@@ -1,0 +1,25 @@
+{
+ "schema_version": 1,
+ "id": "change-70",
+ "issue": 70,
+ "role": "policymaker",
+ "base_commit": "d10ebbf2743b7f7b59992da0194b801984b9cc31",
+ "applied_base_commit": "5fd3b7d16e508121fb0afa145c6449b6bdff6571",
+ "accepted_commit": "1253aad01ebca199c58593b1e0d3524b99e45760",
+ "policy_rev_before": "layered-v1:40e8e49312fd71b671b2216064f79a8a6c0471caec39af1383e607fd4d7361f2",
+ "policy_rev_after": "layered-v1:3de7c978bf1c95557c9e33e89257a82fe608345043f9ad378df7a4cf3e7bf956",
+ "evaluator_rev_before": {
+  "policy/evaluator/": "259fff4de5ce599324a05ab829a6fb1e7954566a"
+ },
+ "evaluator_rev_after": {
+  "policy/evaluator/": "259fff4de5ce599324a05ab829a6fb1e7954566a"
+ },
+ "changed_paths": [
+  "execution/roles/worker/SKILL.md"
+ ],
+ "applied_at": "2026-10-25T17:49:13Z",
+ "verifier_issue": null,
+ "source_iteration": 0,
+ "applied_iteration": 0,
+ "effective_from_iteration": 0
+}

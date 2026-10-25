@@ -239,6 +239,8 @@ class LiveIterationTest(unittest.TestCase):
                               errors="replace", timeout=int(opts["agent_timeout"]) * 60 + 300)
         wall = time.time() - started
         after = snapshot(work / ".session")
+        # files the session left outside .session/ and not committed: the epilogue admits them as the session's writes
+        left = [line for line in fakes.sh(work, "git", "status", "--porcelain", "--untracked-files=all").splitlines()]
         for rel in after:
             if before.get(rel, (0, ""))[1] != after[rel][1]:
                 keep(work / ".session" / rel, directory / "outputs" / rel)
@@ -258,7 +260,7 @@ class LiveIterationTest(unittest.TestCase):
                    "report": report, "state": w.hub.issue(issue)["state"], "stream": stream,
                    "staged": {"files": {k: v[0] for k, v in before.items()}, "tokens": input_tokens(before, trusted),
                               "accumulating_tokens": accumulating(before, work / ".session")},
-                   "planted_step_visible_in": planted,
+                   "planted_step_visible_in": planted, "uncommitted_in_work_after_session": left,
                    "written_by_session": sorted(rel for rel in after if before.get(rel, (0, ""))[1] != after[rel][1]),
                    "stream_bytes": (rt / "stream.ndjson").stat().st_size if (rt / "stream.ndjson").is_file() else 0,
                    "token_in_output": any(self.token.encode() in p.read_bytes() for p in directory.rglob("*") if p.is_file())}

@@ -7,7 +7,7 @@ python -m unittest discover -s engine/.github/loop/tests
 ```
 
 In a copied loop use `-s .github/loop/tests`. The suite never arms a real loop.
-`test_template_flow.py` copies the actual inactive template, explicitly installs
+`test_template_flow.py` copies the actual shipped template, writes and registers the execution
 roles, validates the committed setup baseline, stages the selected shaper, accepts
 a work product through the accepted-tree gate, delivers a suggestion to the
 Policymaker, activates changes to both layers and checks receipts and rollback.

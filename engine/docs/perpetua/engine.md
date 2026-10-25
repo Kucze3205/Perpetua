@@ -4,7 +4,7 @@ The goal-independent machinery of this loop: workflows, scripts, protected confi
 change it. Terms (loop, owner, iteration, policy, policymaker, evaluator...) are in `CONTEXT.md`.
 
 **Managed definitions** span `execution/` (shaper and work roles) and `policy/` (Policymaker, audit,
-evaluator maintenance, verifier, parameters and measurement). Inactive candidates live under protected `templates/`. The **Policymaker** is the agent in the policy layer that creates
+evaluator maintenance, verifier, parameters and measurement). The four policy roles ship in `policy/roles/`; execution roles are written per loop. The **Policymaker** is the agent in the policy layer that creates
 and maintains that policy and manages the loop's architecture. The implementation layer applies it to shape,
 execute and evaluate work toward the goal. The engine enforces their contracts and the owner's authority.
 
@@ -28,8 +28,8 @@ Managed definitions span both roots; `policy_rev` and iteration records' `policy
 refer to their shared revision. `policy_params` holds the common parameters, and
 `policymaker_sessions` refers to the agent's session history.
 
-A fresh template has no active roles or shaper. Setup selects complete local skills and
-profiles from inactive candidates or project/global/plugin sources, validates the
+A fresh template has no execution roles or shaper and ships the four policy roles. Setup writes complete local
+execution skills (inspired by the Skill reference library) and registers their profiles, validates the
 accepted setup baseline and leaves arming to the owner. This release does not migrate,
 update or arm an existing loop. Repeating setup as a review is separate work.
 
@@ -62,7 +62,7 @@ Policymaker orders ──► tasks of the same iteration (the only tasks when `s
    Policymaker's orders, of any role, and an iteration without a shaper and without valid orders ends `failed` with that reason)
    turns the goal and state into `.session/tasks.json`: an LLM
    orchestrator, or a script role (a deterministic rule: a profile with `agent: false` and a `command`). It has no
-   GitHub token; the inactive orchestrator candidate has no shell, while a script shaper executes its configured command.
+   GitHub token; an orchestrator role has no shell, while a script shaper executes its configured command.
    The engine validates the graph and creates the issues, blocking edges and consent requests.
    The Policymaker's accepted orders start beside it (the only way to the roles in `policymaker_only_roles`).
    The width of the iteration is the widest layer of the graph, computed, not configured.
@@ -203,6 +203,10 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 
 - starts the first iteration after arming, and the next one when a run's end event was lost;
 - guards: `AUTOPILOT`, `GOAL_REACHED`, an open `outage` issue (the only quiet state without runs);
+- `E2E_CAPTURE=on` (repository variable, off by default, for the engine's own E2E test only) makes `session.yml` upload each
+  session's whole `.session/`, staged contract, raw stream and a listing of the checkout as the release asset
+  `capture-<iteration>-<issue>.tgz` of the release `e2e-capture`;
+  that artifact holds the session's inputs, so a real loop leaves it off;
 - probes the Claude credential: dead or revoked is an outage and a red run (the e-mail to the author of the workflow file is
   the free push channel);
 - `idle_resumes` (`engine.yml`, default 3) is the progress breaker: that many consecutive resumes of one parked session
@@ -245,17 +249,17 @@ types and dependencies; arming is a separate final ticket after coverage is veri
 | Initial approach | `docs/perpetua/approach.md`: steps, dependencies, unknowns, verification needs and the sources, information, tools and access each step requires |
 | Environment (derived from the approach) | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings; requirement coverage in `docs/perpetua/approach.md` |
 | Evaluator, change gate and goal gate | `engine.yml`: `check`, `gate`, `protected`, `evaluator_paths`; `policy/evaluator/`; owner-accepted `goal/gate.yml` (`command`, `owner_confirms`) |
-| Starting roles | selected `execution/roles/<role>/SKILL.md` or `policy/roles/<role>/SKILL.md`, with profiles in that layer; inactive sources under `templates/` |
+| Starting roles | `execution/roles/<role>/SKILL.md` written by the setup map, and the shipped `policy/roles/<role>/SKILL.md`, with profiles in the role's layer |
 | Accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
 | Parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
 | Arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on`, then run `gh workflow run watchdog.yml` — GitHub's schedule can take 3–6 h to start it. Done by the agent or by the owner, depending on the preflight check of arming permissions |
 
 ## Changing the engine after arming
 
-`validate --baseline <tag>` compares the revision of the managed definitions (`execution/`, `policy/`, evaluator paths) at `HEAD` with the one in the tag's commit, and `engine.yml`, `goal/` and `templates/` file by file; it does not compare commit SHAs. Two operations follow:
+`validate --baseline <tag>` compares the revision of the managed definitions (`execution/`, `policy/`, evaluator paths) at `HEAD` with the one in the tag's commit, and `engine.yml` and `goal/` file by file; it does not compare commit SHAs. Two operations follow:
 
 - **Engine fix after arming**: a commit changing only `.github/loop/` (scripts, tests). The tag stays; validation passes.
-- **Definition change**: a change to `execution/`, `policy/`, `engine.yml`, `goal/` or `templates/`. Validation fails until a new `setup-baseline` tag is agreed with the owner.
+- **Definition change**: a change to `execution/`, `policy/`, `engine.yml` or `goal/`. Validation fails until a new `setup-baseline` tag is agreed with the owner.
 
 ## Not exercised here
 

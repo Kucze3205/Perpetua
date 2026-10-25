@@ -37,7 +37,7 @@ class OfflineExecutorTest(sessions.SessionCase):
         self.w.write(self.w.loop, "src/input.txt", "allowed work")
         self.w.write(self.w.loop, "src/remove.bin", "remove me")
         self.w.write(self.w.loop, "policy/private.txt", "POLICY_SECRET_NEVER_VISIBLE")
-        self.w.write(self.w.loop, "templates/policy/SKILL.md", "POLICY_SECRET_NEVER_VISIBLE")
+        self.w.write(self.w.loop, "policy/SKILL.md", "POLICY_SECRET_NEVER_VISIBLE")
         if gate:
             self.w.write(self.w.loop, "engine.yml", "resources: {format: layered}\ngate:\n  kind: script\n  command: bash gate.sh\n")
             self.w.write(self.w.loop, "gate.sh", gate)
@@ -76,7 +76,7 @@ python3 - <<'PY'
 import os, socket, subprocess
 from pathlib import Path
 secret = b'POLICY_SECRET_NEVER_VISIBLE'
-for path in ['policy/private.txt', '/work/policy/private.txt', 'templates/policy/SKILL.md', HOST, TRUSTED, '/proc/1/root' + HOST, *RUNTIME_COPIES]:
+for path in ['policy/private.txt', '/work/policy/private.txt', HOST, TRUSTED, '/proc/1/root' + HOST, *RUNTIME_COPIES]:
     try:
         data = Path(path).read_bytes()
     except OSError:

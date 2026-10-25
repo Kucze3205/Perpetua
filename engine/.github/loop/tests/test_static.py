@@ -180,27 +180,26 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(doc["params"]["stream_retention_iterations"], 8)
         self.assertEqual(set(params.values()) | set(doc["cadence"].values()), {None})
 
-    def test_template_is_layered_and_all_roles_are_inactive(self):
+    def test_template_is_layered_with_policy_roles_and_no_execution_roles(self):
         self.assertEqual(self.load('engine.yml')['resources'], {'format': 'layered'})
         self.assertIsNone(self.load('policy', 'params.yml')['shaper'])
-        for layer in ('execution', 'policy'):
-            self.assertEqual(self.load(layer, 'profiles.yml'), {})
-            self.assertFalse(os.path.exists(os.path.join(ENGINE, layer, 'roles')))
-        self.assertIn('templates/', self.load('engine.yml')['protected'])
+        self.assertEqual(self.load('execution', 'profiles.yml'), {})
+        self.assertFalse(os.path.exists(os.path.join(ENGINE, 'execution', 'roles')))
+        self.assertFalse(os.path.exists(os.path.join(ENGINE, 'templates')))
 
-    def test_template_candidates_are_complete_and_within_limits(self):
+    def test_shipped_policy_roles_are_complete_and_within_limits(self):
         w = fakes.World()
         try:
-            for layer in ('execution', 'policy'):
-                profs = self.load('templates', layer, 'profiles.yml')
-                for role, profile in profs.items():
-                    self.assertEqual(it.limits_exceeded(profile), [], role)
-                    path = os.path.join(ENGINE, 'templates', layer, 'roles', role, 'SKILL.md')
-                    with open(path, encoding='utf-8') as fh:
-                        fm = it.frontmatter(fh.read())[0]
-                    self.assertEqual(fm.get('name'), role)
-                    self.assertTrue(fm.get('description'), role)
-            self.assertTrue(os.path.isfile(os.path.join(ENGINE, 'templates/policy/roles/policymaker/SKILL.md')))
+            profs = self.load('policy', 'profiles.yml')
+            self.assertEqual(set(profs), {'audit', 'evaluator', 'evaluator-verifier'})
+            for role, profile in profs.items():
+                self.assertEqual(it.limits_exceeded(profile), [], role)
+            for role in [*profs, 'policymaker']:
+                path = os.path.join(ENGINE, 'policy', 'roles', role, 'SKILL.md')
+                with open(path, encoding='utf-8') as fh:
+                    fm = it.frontmatter(fh.read())[0]
+                self.assertEqual(fm.get('name'), role)
+                self.assertTrue(fm.get('description'), role)
         finally:
             w.close()
 
@@ -223,7 +222,7 @@ class ProtectionTest(unittest.TestCase):
 
     @TEMPLATE_ONLY
     def test_no_shipped_profile_can_write_the_engine(self):
-        with open(os.path.join(ENGINE, "templates", "policy", "profiles.yml"), encoding="utf-8") as fh:
+        with open(os.path.join(ENGINE, "policy", "profiles.yml"), encoding="utf-8") as fh:
             profs = yaml.safe_load(fh)
         for role, p in profs.items():
             for g in p.get("write") or []:

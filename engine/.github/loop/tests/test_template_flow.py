@@ -26,20 +26,18 @@ class TemplateFlowTest(unittest.TestCase):
         self.addCleanup(self.w.close)
         root = Path(self.w.loop)
         # Replace fixture definitions with precisely the material setup copies.
-        for name in ('execution', 'policy', 'templates'):
+        for name in ('execution', 'policy'):
             shutil.rmtree(root / name, ignore_errors=True)
             shutil.copytree(Path(fakes.ENGINE, name), root / name)
         shutil.copyfile(Path(fakes.ENGINE, 'engine.yml'), root / 'engine.yml')
         setup_roles.prepare(root)
-        for role, layer in [('orchestrator', 'execution'), ('audit', 'policy'),
-                            ('evaluator', 'policy'), ('evaluator-verifier', 'policy'),
-                            ('policymaker', 'policy')]:
-            catalog = c.load_yaml(root / 'templates' / layer / 'profiles.yml')
-            setup_roles.install(root, role, layer, root / 'templates' / layer / 'roles' / role,
-                                catalog.get(role))
-        setup_roles.install(root, 'worker', 'execution',
-                            root / 'templates/execution/roles/orchestrator',
-                            {'tools': ['Read', 'Write'], 'write': ['src/**']})
+        # The setup map writes the execution skills; the policy roles ship with the engine.
+        for role in ('orchestrator', 'worker'):
+            skill = root / 'execution/roles' / role / 'SKILL.md'
+            skill.parent.mkdir(parents=True)
+            skill.write_text('---\nname: %s\ndescription: test role\n---\n# %s\n' % (role, role), encoding='utf-8')
+        setup_roles.install(root, 'orchestrator', 'execution', {'tools': ['Read', 'Write'], 'write': ['journal/**']})
+        setup_roles.install(root, 'worker', 'execution', {'tools': ['Read', 'Write'], 'write': ['src/**']})
         params = c.load_yaml(root / 'policy/params.yml')
         params['shaper'] = 'orchestrator'
         params['policymaker_triggers'] = {'every_iterations': None, 'no_progress': None}

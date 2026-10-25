@@ -49,8 +49,8 @@ expands the map as it learns, and splits work that outgrows one session.
   locates behavior, contracts and tests;
   [engine lifecycle](engine/docs/perpetua/engine.md) explains how they fit together.
 - **Change role behavior:** `engine/execution/` holds implementation definitions,
-  `engine/policy/` holds policy definitions, and protected `engine/templates/`
-  holds inactive candidates. Setup explicitly installs selected local roles.
+  `engine/policy/` holds policy definitions, including the four shipped policy
+  roles. The setup map writes the execution roles and registers them.
   Use the code map to distinguish definitions from engine-owned contracts.
 
 Setup copies the contents of `engine/` to the target repository root. Paths in its

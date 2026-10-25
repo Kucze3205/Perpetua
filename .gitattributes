@@ -1,3 +1,4 @@
 # The engine is copied into other repositories and runs on Linux runners: LF everywhere.
 engine/** text eol=lf
 *.sh text eol=lf
+e2e/** text eol=lf

@@ -2,7 +2,7 @@
 # loop at once; the logic (what the answer means) is in the engine script. The watchdog sweeps requests whose
 # event was lost (for instance closed while AUTOPILOT was off).
 name: owner-request
-run-name: owner request #${{ github.event.issue.number }} closed
+run-name: "owner request #${{ github.event.issue.number }} closed"
 
 on:
   issues:

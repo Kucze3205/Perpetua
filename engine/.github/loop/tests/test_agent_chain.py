@@ -106,26 +106,27 @@ class PlainPromptTest(AgentChainCase):
         os.chmod(os.path.join(fakebin, "claude"), 0o755)
         return fakebin + os.pathsep + os.environ["PATH"]
 
-    def stage_secrets(self, approved, unapproved):
+    def stage_secrets(self, approved):
         def put(trusted):
             Path(trusted, "secrets").write_text("".join(x + "\n" for x in approved))
-            Path(trusted, "unapproved").write_text("".join(x + "\n" for x in unapproved))
         return put
 
     def test_only_the_approved_secret_reaches_the_agent(self):
         n = self.issue("audit")
         path = self.stand_in(RECORDER + 'env > "$RUNNER_TEMP/agent-env"\n')
-        env = {"A": "va", "B": "vb", "GH_TOKEN": "gh", "GITHUB_TOKEN": "gh"}
-        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"], ["B"]), env)
+        # What the workflow hands over: an unapproved pool name is `''` (`contains(...) && secrets.B || ''`), not a value.
+        env = {"A": "va", "B": "", "GH_TOKEN": "gh", "GITHUB_TOKEN": "gh"}
+        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"]), env)
         seen = Path(output, "agent-env").read_text()
         self.assertIn("A=va", seen.splitlines())
+        self.assertIn("B=", seen.splitlines())
         names = {line.split("=", 1)[0] for line in seen.splitlines()}
-        self.assertFalse(names & {"B", "GH_TOKEN", "GITHUB_TOKEN"})
+        self.assertFalse(names & {"GH_TOKEN", "GITHUB_TOKEN"})
 
     def test_an_empty_approved_secret_stops_the_start(self):
         n = self.issue("audit")
         path = self.stand_in(RECORDER)
-        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"], []), {"A": ""})
+        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"]), {"A": ""})
         self.assertEqual(Path(output, "secret-missing").read_text().strip(), "A")
         self.assertEqual(Path(output, "agent-exit").read_text().strip(), "1")
         self.assertFalse(Path(output, "received-prompt").exists())

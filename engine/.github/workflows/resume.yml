@@ -3,7 +3,7 @@
 # and launches the session; a park longer than a job hands the clock to the next run. The watchdog is only a safety
 # net here (a lost event), not the loop's clock.
 name: resume
-run-name: resume #${{ inputs.issue }}
+run-name: "resume #${{ inputs.issue }}"
 
 on:
   workflow_dispatch:

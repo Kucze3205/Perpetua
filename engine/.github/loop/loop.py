@@ -235,13 +235,21 @@ def stage(n, work, trusted):
         bootstrap += "Read .session/policymaker.md and .session/loop-state.json. "
     if "loop:shaper" in labels and session_inputs.restricted(role):
         bootstrap += "Plan using .session/capabilities.json and .session/loop-state.json. "
-    bootstrap += "Write .session/report.md. Work on branch task/%s.\n\n" % n
+    bootstrap += "Write .session/report.md."
+    if not session_inputs.restricted(role):      # the executor layer is imported as files: it has no branch
+        bootstrap += " Work on branch task/%s." % n
+    bootstrap += "\n\n"
     with open(os.path.join(trusted, "prompt.md"), "w", encoding="utf-8", newline="\n") as fh:
         # The Policymaker reads its template from the staged file named in bootstrap.
         # Include it once, rather than loading the same instructions again through that pointer.
         fh.write(bootstrap if role == "policymaker" else bootstrap + template)
     with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("online\n" if p.get("internet", False) else "offline\n")
+    # The approved names, for agent.sh's empty-value check. Unapproved pool names need no file: the workflow expression
+    # `contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || ''` already hands them over empty.
+    granted = role != "policymaker" and consent_status(p, labels)[0]
+    with open(os.path.join(trusted, "secrets"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("".join(x + "\n" for x in secrets_of_consent(labels) if granted))
     with open(os.path.join(trusted, "tools"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(",".join(security.tool_names(p)))
     with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:

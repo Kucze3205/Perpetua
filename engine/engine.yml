@@ -53,7 +53,7 @@ params:
   no_progress_iterations: null   # open a notice after this many iterations without an improving accepted change
   quiet_minutes: null            # no iteration closed this long: roll back both managed roots and start over
   owner_wait_counts: null        # does time spent waiting for the owner count toward quiet_minutes
-  stream_retention_iterations: null   # keep raw session streams for this many iterations (null: GitHub's default)
+  stream_retention_iterations: 8   # keep raw session streams for this many iterations (null: GitHub's 90 days)
 cadence:
   min_interval_minutes: null     # null: iteration after iteration
   daily_iterations: null

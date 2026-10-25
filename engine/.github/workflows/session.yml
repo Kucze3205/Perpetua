@@ -6,7 +6,7 @@
 # epilogue re-checks the engine out, fetches the agent's commits as plain objects and does everything else itself.
 # Two kinds: `agent` (a Claude session) and `script` (a deterministic role, no model, no credential).
 name: session
-run-name: session #${{ inputs.issue }}${{ inputs.role && format(' · {0}', inputs.role) || '' }}
+run-name: "session #${{ inputs.issue }}${{ inputs.role && format(' · {0}', inputs.role) || '' }}"
 
 on:
   workflow_dispatch:
@@ -152,6 +152,9 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: actions/upload-artifact@v4
+        # The stream is a diagnostic copy. A full artifact quota must not turn a good session into `failure`;
+        # the record then simply has no `stream`.
+        continue-on-error: true
         if: always() && steps.guard.outputs.go == 'true'
         with:
           name: stream-${{ needs.prep.outputs.iteration }}-${{ inputs.issue }}

@@ -49,6 +49,21 @@ class InputBoundaryTest(LayeredSessionTest):
         self.assertNotIn(str(policy) + '.json', reports)
         self.assertIn('USEFUL WORK', read(os.path.join(sess, 'reports/%s.json' % worker)))
 
+    def test_shaper_input_lists_every_alias_and_effort_validate_tasks_accepts(self):
+        _, sess, _ = self.stage_inputs(shaper=True, state={'iteration': 1})
+        options = json.loads(read(os.path.join(sess, 'loop-state.json')))['task_options']
+        self.assertIn('opus', options['models'])
+        self.assertEqual(set(options['models']), set(c.params()['models']))
+        self.assertNotIn('claude-opus-5-5', json.dumps(options))
+        for alias in options['models']:
+            self.assertEqual(it.validate_tasks({'tasks': [task('a', model=alias)]}), [])
+        for effort in options['efforts']:
+            self.assertEqual(it.validate_tasks({'tasks': [task('a', effort=effort)]}), [])
+        self.assertTrue(it.validate_tasks({'tasks': [task('a', model='sonnet')]}))
+        self.assertIn('max_turns', options['ceilings'])
+        catalog = json.loads(read(os.path.join(sess, 'capabilities.json')))
+        self.assertEqual([x['description'] for x in catalog], ['fixture'])
+
     def test_explicit_policy_exports_are_denied_without_downloading(self):
         policy = self.started_issue('audit')
         c.update_report(policy, {'status': 'done'}, 'PRIVATE POLICY')

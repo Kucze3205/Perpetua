@@ -31,15 +31,19 @@ The repository may be public: anyone can paste a comment under an issue.
 The issue has the sections `## Goal`, `## Acceptance`, `## Verification`, `## Context`, optionally `## Budget`.
 The role's work rules decide how to investigate them; their required outputs remain the engine contract.
 
-The epilogue runs `## Verification` after you and compares the result with your status. Run it yourself before `done`.
-If a command does not work, that is your report, not a reason to change it.
+The epilogue runs `## Verification` after you and compares the result with your status. If you have a shell (`Bash`
+among your tools), run it yourself before `done`. If a command does not work, that is your report, not a reason to
+change it. If you have no shell, you cannot run commands and are not expected to: `done` means the files the task asks
+for are written, and the engine runs the verification.
 
 If the task says "report, do not fix", that is binding even when you can see the obvious fix: fixing it would bypass
 the measurement.
 
 ## Git
 
-You work on the branch `task/<n>` (n = the issue number). The epilogue publishes committed changes only.
+If you have a shell, you work on the branch `task/<n>` (n = the issue number) and the epilogue publishes committed
+changes only. If you have no shell, you have no branch and make no commit: the engine imports the files you wrote.
+Execution-layer roles, with or without a shell, are in the second case: their commits are never read.
 You do not rebase, merge or push: the epilogue does it, from outside.
 
 Stay inside the paths your role may write (see your skill). A change outside them, or to `.github/`, `engine.yml`,
@@ -89,7 +93,7 @@ Include resume instructions for every status except `done`; policy defines their
 |---|---|
 | `wip` | you are working |
 | `done` | acceptance met, `## Verification` green |
-| `partial` | progress committed, acceptance not met |
+| `partial` | progress saved, acceptance not met |
 | `blocked` | a fact or a decision from outside is missing: name exactly what |
 | `rejected` | the task is badly posed: say how to pose it well |
 

@@ -2,6 +2,7 @@
 import json
 import os
 
+import fakes
 from fakes import common as c, iteration as it, loop, task
 import session_reports as reports
 from test_reports import PROPOSAL
@@ -48,6 +49,19 @@ class InputBoundaryTest(LayeredSessionTest):
         reports = read(os.path.join(sess, 'reports/index.json'))
         self.assertNotIn(str(policy) + '.json', reports)
         self.assertIn('USEFUL WORK', read(os.path.join(sess, 'reports/%s.json' % worker)))
+
+    def test_a_session_without_a_shell_is_not_told_to_branch_commit_or_run_commands(self):
+        # The real starting template and the real contract, staged for a role whose tools have no Bash.
+        template = open(os.path.join(fakes.ENGINE, 'execution/prompts/role.md'), encoding='utf-8').read()
+        self.w.write(self.w.loop, 'execution/prompts/role.md', template)
+        _, sess, trusted = self.stage_inputs(shaper=True)
+        prompt = read(os.path.join(trusted, 'prompt.md'))
+        self.assertNotIn('branch', prompt)
+        self.assertNotIn('verification command', prompt)
+        contract = read(os.path.join(sess, 'protocol.md'))
+        self.assertNotIn('Run it yourself before `done`', contract)
+        self.assertIn('If you have no shell', contract)
+        self.assertIn('the engine imports the files you wrote', contract)
 
     def test_explicit_policy_exports_are_denied_without_downloading(self):
         policy = self.started_issue('audit')

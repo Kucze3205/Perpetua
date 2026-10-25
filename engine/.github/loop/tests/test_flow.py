@@ -385,6 +385,16 @@ class ShaperFailureTest(Flow):
         self.assertEqual(rec["status"], "failed")
         self.assertEqual(it.iteration_number(self.open_iteration()), 1)         # the next one started
 
+    def test_partial_ends_the_iteration_and_the_graph_is_not_read(self):
+        # Decision (b) of docs/perpetua/session-contract.md: `partial` is final for the shaper, no retry,
+        # no graph loading. The cause (a prompt demanding a shell) is removed at the source instead.
+        it.start_iteration()
+        s = self.session_issue("orchestrator")
+        self.w.session(s, status="partial", files={"journal/0000.md": "## State\nx\n"},
+                       session_files={"tasks.json": tasks_json(task("a"))})
+        self.assertEqual(self.record(0)["status"], "failed")
+        self.assertIsNone(self.task_issue("a"))
+
     def test_no_tasks_file_is_a_failure_too(self):
         it.start_iteration()
         self.w.session(self.session_issue("orchestrator"))

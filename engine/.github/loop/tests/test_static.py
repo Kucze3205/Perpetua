@@ -108,6 +108,18 @@ class WorkflowTest(unittest.TestCase):
         if not IN_LOOP_REPO:
             self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml"})
 
+    def test_run_names_keep_their_hash(self):
+        """An unquoted ' #' in a YAML value is a comment: run-name became 'session' and no run matched its session (#84)."""
+        for f, text, doc in self.workflows():
+            name = doc.get("run-name")
+            if name is None:
+                continue
+            self.assertIn("#", name, f)
+            rendered = re.sub(r"\$\{\{ (inputs\.issue|github\.event\.issue\.number) \}\}", "12", name)
+            rendered = re.sub(r"\$\{\{.*?\}\}", "", rendered)
+            if f == "session.yml":
+                self.assertEqual(c.run_issue(rendered), "session #12")
+
     def test_no_workflow_uses_the_dangerous_inputs(self):
         for f, text, doc in self.workflows():
             self.assertNotIn("pull_request_target", text, f)

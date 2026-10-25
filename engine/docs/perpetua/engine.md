@@ -203,6 +203,9 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 
 - starts the first iteration after arming, and the next one when a run's end event was lost;
 - guards: `AUTOPILOT`, `GOAL_REACHED`, an open `outage` issue (the only quiet state without runs);
+- `E2E_CAPTURE=on` (repository variable, off by default, for the engine's own E2E test only) makes `session.yml` upload each
+  session's whole `.session/`, staged contract and a listing of the checkout as the artifact `capture-<iteration>-<issue>`;
+  that artifact holds the session's inputs, so a real loop leaves it off;
 - probes the Claude credential: dead or revoked is an outage and a red run (the e-mail to the author of the workflow file is
   the free push channel);
 - `idle_resumes` (`engine.yml`, default 3) is the progress breaker: that many consecutive resumes of one parked session

@@ -8,7 +8,7 @@ New templates declare `resources: {format: layered}`. Omission uses that same
 format; explicit legacy formats are rejected. Existing loops keep their own
 versioned engine (ADR-0001); this release supplies no migration or update.
 
-## Active definitions and inactive sources
+## Active definitions
 
 The execution layer uses `execution/profiles.yml`, `execution/roles/<role>/`,
 `execution/protocol.md`, and `execution/prompts/role.md`. The policy layer uses
@@ -39,7 +39,7 @@ and reference symlinks), explicit layer overrides, and policy
 roles selected as the execution shaper. The configured shaper belongs to
 execution; `audit`, `evaluator` (maintenance), and the configured verifier role
 belong to policy. Other goal roles are installed in execution; additional
-policy roles may be installed in the policy profile file. Inactive skill
+policy roles may be installed in the policy profile file. Skill
 materials without a profile are not advertised as roles.
 
 The Policymaker is always a policy role. Its permission profile remains owned
@@ -120,8 +120,7 @@ work scripts cannot expand it through their environment, current directory or
 Python startup customization. This same file allowlist can be used by the model
 and online boundaries without granting access to host directories.
 
-The work snapshot excludes managed definitions in both layers, inactive
-`templates/`, engine internals/configuration, policy iteration/audit records and
+The work snapshot excludes managed definitions in both layers, engine internals/configuration, policy iteration/audit records and
 tool discovery directories. It retains regular tracked product files and the
 already filtered `.session/` recipient view. Redirected product inputs are
 refused. Its fresh Git root commit contains only that view: no original commit
@@ -147,8 +146,10 @@ preservation and admission refusals. A skip on another platform is not evidence
 of isolation. No provider or actual GitHub credential is needed.
 ## New-loop setup
 
-The shipped template has empty `execution/profiles.yml` and `policy/profiles.yml`, no active skills and no selected shaper. Candidate skills and profiles live under protected `templates/`. `setup_roles.py prepare` checks this fresh state before the setup branch is committed; it does not convert definitions or change the plugin installation.
+The shipped template has an empty `execution/profiles.yml`, no execution skills and no selected shaper; the policy layer ships the Policymaker, audit, evaluator and evaluator-verifier skills with their profiles. `setup_roles.py prepare` checks this fresh state before the setup branch is committed; it does not convert definitions or change the plugin installation.
 
-The setup map chooses sources from project/global/plugin skills (including optional Matt Pocock skills), inactive templates, or a newly authored skill when no source fits. `setup_roles.py install` copies a complete skill directory and installs the explicitly supplied profile in one layer. Adaptations modify local copies only; separate names allow independent adaptations of one source in both layers. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
+The setup map writes each execution role's complete skill in `execution/roles/<role>/`, inspired by the Skill reference library (Matt Pocock's skills) rather than copied from it. `setup_roles.py install` then registers the explicitly supplied profile for a skill already written in one layer; it copies nothing. The shipped policy roles are edited in place when the goal needs it. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
+
+Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no `internet` together with writing code beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: `.session/protocol.md`; terms: `CONTEXT.md`.
 
 Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires a selected execution shaper, all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline matching HEAD. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This adds no migration, update or reconfiguration mode.

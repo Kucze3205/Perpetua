@@ -24,7 +24,7 @@ SOURCE = "https://github.com/Kucze3205/Perpetua"
 SOURCE_REF = "refs/perpetua-source/main"
 IDENTITY = {"GIT_AUTHOR_NAME": "Perpetua", "GIT_AUTHOR_EMAIL": "perpetua@users.noreply.github.com",
             "GIT_COMMITTER_NAME": "Perpetua", "GIT_COMMITTER_EMAIL": "perpetua@users.noreply.github.com"}
-DEFINITIONS = ("execution/", "policy/", "engine.yml", "goal/", "templates/")   # a change needs a new setup-baseline
+DEFINITIONS = ("execution/", "policy/", "engine.yml", "goal/")   # a change needs a new setup-baseline
 
 
 def git(*args, env=None, check=True):

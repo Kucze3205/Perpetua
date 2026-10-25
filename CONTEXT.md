@@ -26,10 +26,10 @@ belongs to that loop; a setup map may change it. Changed only by the owner.
 _Avoid_: framework, runtime
 
 **Role**:
-A pair of skill + permission profile, selected by a label on an issue. Built
-per loop during setup, using existing global or project skills and supplied
-templates as sources. Each active role skill belongs to one layer; separate
-layer-specific skills may be adapted from the same source.
+A pair of skill + permission profile, selected by a label on an issue. The
+policy-layer roles ship with the engine; the setup map and the policymaker write
+every other role's skill per loop, drawing on the **Skill reference library**.
+Each active role skill belongs to exactly one layer.
 _Avoid_: persona, agent type
 
 **Goal**:
@@ -134,10 +134,11 @@ they cannot read policy internals and submit suggestions to the Policymaker.
 The local definitions used by the Policymaker, audit, evaluator
 maintenance and evaluator verifier. The engine invokes measurement separately.
 
-**Role template**:
-An inactive candidate supplied by the plugin or another project/global source.
-Setup selects and copies complete skills into exactly one active layer. Sources
-remain unchanged, and separate local adaptations may share the same source.
+**Skill reference library**:
+Matt Pocock's skills, treated as a good source of ideas. After deciding that a
+new or recruited role will do certain tasks, the setup map or the policymaker
+searches it for how such a role should behave, then writes the skill itself:
+inspired by what it found, never a copy.
 
 **Evaluator**:
 The measurement that tells whether work moved the loop toward the goal: a

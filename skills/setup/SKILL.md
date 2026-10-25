@@ -38,7 +38,7 @@ Create branch `perpetua/setup` from the default branch. Copy into the repo:
 
 If any other destination file already exists, stop and list them; overwrite nothing. Quote paths: on Windows they contain `C:\`.
 
-Before committing, run `python3 .github/loop/setup_roles.py prepare` in the target repository. This checks that the copied layered template has inactive `templates/`, empty active catalogs and no selected shaper. Copying materials is not role selection. If preparation fails, stop before committing; obtain the current engine template instead of converting existing installations. See the role-selection procedure in the setup notes.
+Before committing, run `python3 .github/loop/setup_roles.py prepare` in the target repository. This checks that the copied engine has no execution roles and no selected shaper; the four policy roles ship with it. Copying the engine is not role selection. If preparation fails, stop before committing; obtain the current engine template instead of converting existing installations. See the role-selection procedure in the setup notes.
 
 Commit as `Perpetua engine <ENGINE_VERSION>` and push the branch. Then record the untouched engine for later updates: `python3 PLUGIN_ROOT/skills/update/engine_update.py snapshot PLUGIN_ROOT/engine` prints a commit; push it with `git push origin <commit>:refs/heads/perpetua/engine`. `/perpetua:update` merges future engine versions against it. Stay on the setup branch: the setup map writes its configuration there. The default branch is untouched until arming.
 

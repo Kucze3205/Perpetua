@@ -3,6 +3,7 @@ triggers, at the start of an iteration."""
 import json
 import os
 import unittest
+from unittest import mock
 from datetime import timedelta
 
 import fakes
@@ -572,6 +573,39 @@ class ConsentSecretsTest(Flow):
         self.assertEqual(o["consented"], "true")
         self.assertEqual(self.resolved("c")["consented"], "false")
         self.assertEqual(self.resolved("c")["secrets"], "")
+
+    def staged(self, tid):
+        work = os.path.join(self.w.tmp, "stagework-" + tid)
+        fakes.sh(self.w.tmp, "git", "clone", "-q", self.w.origin, work)
+        trusted = os.path.join(self.w.tmp, "trusted-" + tid)
+        os.environ["RUNNER_TEMP"] = os.path.join(self.w.tmp, "run-" + tid)
+        # the real stage; only the native-ELF executor preparation is left out (it needs Linux)
+        with mock.patch.object(loop.executor_boundary, "prepare"):
+            loop.stage(self.task_issue(tid), work, trusted)
+        return work, trusted
+
+    def test_stage_writes_the_approved_names_for_agent_sh(self):
+        self.grant("a")
+        _, trusted = self.staged("a")
+        with open(os.path.join(trusted, "secrets")) as fh:
+            self.assertEqual(fh.read(), "STRIPE_KEY\n")
+        _, trusted = self.staged("c")
+        with open(os.path.join(trusted, "secrets")) as fh:
+            self.assertEqual(fh.read(), "")
+
+    @unittest.skipIf(os.name == "nt", "requires a POSIX shell: bash on Windows may be WSL")
+    def test_an_empty_approved_secret_stops_a_really_staged_start(self):
+        import subprocess
+        self.grant("a")
+        work, trusted = self.staged("a")
+        out = os.environ["RUNNER_TEMP"]
+        os.makedirs(out, exist_ok=True)
+        env = dict(os.environ, WORK=work, KIND="agent", ISSUE="1", AGENT_TIMEOUT="1", STRIPE_KEY="")
+        r = subprocess.run(["bash", os.path.join(trusted, "agent.sh")], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("No such file", r.stderr)
+        with open(os.path.join(out, "secret-missing")) as fh:
+            self.assertEqual(fh.read().strip(), "STRIPE_KEY")
 
     def test_the_pool_is_the_env_of_the_session_step(self):
         self.assertEqual(loop.secret_pool(), ["SMTP_PASS", "STRIPE_KEY"])

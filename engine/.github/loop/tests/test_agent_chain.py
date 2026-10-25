@@ -116,7 +116,7 @@ class PlainPromptTest(AgentChainCase):
         n = self.issue("audit")
         path = self.stand_in(RECORDER + 'env > "$RUNNER_TEMP/agent-env"\n')
         env = {"A": "va", "B": "vb", "GH_TOKEN": "gh", "GITHUB_TOKEN": "gh"}
-        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"], ["B"]), env)
+        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"]), env)
         seen = Path(output, "agent-env").read_text()
         self.assertIn("A=va", seen.splitlines())
         names = {line.split("=", 1)[0] for line in seen.splitlines()}
@@ -125,7 +125,7 @@ class PlainPromptTest(AgentChainCase):
     def test_an_empty_approved_secret_stops_the_start(self):
         n = self.issue("audit")
         path = self.stand_in(RECORDER)
-        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"], []), {"A": ""})
+        _, output, _ = self.run_agent(n, "audit", path, self.stage_secrets(["A"]), {"A": ""})
         self.assertEqual(Path(output, "secret-missing").read_text().strip(), "A")
         self.assertEqual(Path(output, "agent-exit").read_text().strip(), "1")
         self.assertFalse(Path(output, "received-prompt").exists())

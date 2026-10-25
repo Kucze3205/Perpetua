@@ -118,6 +118,15 @@ class StageTest(SessionCase):
         fakes.sh(self.w.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.w.origin, d)
         return d
 
+    def test_stage_writes_the_secrets_file_agent_sh_reads(self):
+        n = self.issue(body="## Goal\nx\n")
+        trusted = os.path.join(self.w.tmp, "trusted-secrets")
+        with patch.object(loop, "consent_status", return_value=(True, None)), \
+                patch.object(loop, "secrets_of_consent", return_value=["A", "B"]):
+            loop.stage(n, self.work(), trusted)
+        self.assertEqual(read(os.path.join(trusted, "secrets")), "A\nB\n")
+        self.assertFalse(os.path.exists(os.path.join(trusted, "unapproved")))
+
     def test_everything_the_agent_needs_is_put_in_place(self):
         n = self.issue(body="## Goal\nstage me\n")
         self.hub.post_comment(n, "trusted words")

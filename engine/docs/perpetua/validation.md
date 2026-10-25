@@ -32,6 +32,14 @@ execution-layer role and requires a completed session (`turns` of at least 1), a
 no `origin` remote in the executor repository. Without its requirements it is skipped with the reason
 printed; a skip is an outstanding check, never a pass.
 
+`test_live_iteration.py` plays one real iteration (Policymaker, shaper, task, record) with the real `agent.sh`, pinned
+CLI and executor boundary, every role on Haiku 5.5. It runs only on a non-root Linux host with bubblewrap and socat, and
+only with `LOOP_NETWORK_INTEGRATION=1` and `CLAUDE_CODE_OAUTH_TOKEN`; otherwise it is skipped, and the skip is an
+outstanding check. It is a measurement, not a quality test: it writes the full inputs and outputs of every session, tool
+and stream analysis, and the sizes that grow with iterations (x50 extrapolation against ~250k tokens) to `$LOOP_E2E_OUT`
+(`README.md` there explains the files). Extrapolated values are reported, never asserted; assertions cover the engine
+contract only. See the test's docstring for the command.
+
 Record the commit, command, platform, test count and skips for each validation run.
 Report provider quota/authentication or missing kernel support separately from
 test failures. Require both the full Linux regressions and the opted-in live

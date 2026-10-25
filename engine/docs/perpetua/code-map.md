@@ -39,6 +39,7 @@ The engine uses the accepted checkout; agent commits enter through `fetch_candid
 | Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
+| One real iteration on a light model, scale measurements (opt-in, Linux) | `loop.resolve`, `stage`, `finalize` driven around the real `agent.sh` | `test_live_iteration.py`; [validation guide](validation.md) |
 | Setup selection, local copying and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
 | Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |

@@ -1,0 +1,19 @@
+[
+ {
+  "id": "order-70-audit-0",
+  "title": "Audit loop environment after iteration 0000 setup",
+  "role": "audit",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nReport how the loop uses its environment: tokens and context per role, where sessions wait, and unused substrate. Write the report to audit/latest.md.\n## Acceptance\n- [ ] audit/latest.md exists and lists per-role token and wait findings\n- [ ] Each finding names its evidence path\n## Verification\n`test -s audit/latest.md`\n## Context\n- policy/roles/audit/SKILL.md: audit work rules\n- execution/roles/worker/SKILL.md: the worker role being measured\n## Budget\n- Read-only over loop records; no more than 30 turns",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 10,
+   "max_turns": 30
+  },
+  "inputs": [],
+  "exports": [],
+  "issue": 71
+ }
+]

@@ -152,6 +152,9 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: actions/upload-artifact@v4
+        # The stream is a diagnostic copy. A full artifact quota must not turn a good session into `failure`;
+        # the record then simply has no `stream`.
+        continue-on-error: true
         if: always() && steps.guard.outputs.go == 'true'
         with:
           name: stream-${{ needs.prep.outputs.iteration }}-${{ inputs.issue }}

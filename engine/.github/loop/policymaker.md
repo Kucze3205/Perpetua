@@ -12,7 +12,7 @@ in `trigger` in the state; until one of your sessions has ended `done`, you run 
 iteration waits for you. What you
 change and order takes effect in that same iteration.
 
-This contract belongs to the engine: only the owner changes it. Read `.session/protocol.md` first.
+This contract belongs to the engine: only the owner changes it. Follow the engine contract supplied in system instructions.
 Your editable work instructions are staged in `.session/policymaker.md`.
 
 ## Input
@@ -64,3 +64,14 @@ iteration. You cannot accept a goal, a goal gate or a limit: you may only propos
   roll both managed roots back, so keep changes small and each one explainable.
 
 Report in `.session/report.md` as the protocol says: what you changed in `execution/` and `policy/` and why, what you ordered and why.
+
+## Suggestion decisions
+
+The Policymaker receives pending suggestions in `.session/loop-state.json` `suggestions`.
+Only the Policymaker may write `.session/suggestion-decisions.json`, an array of
+`{"id":"<staged suggestion ID>","status":"handled","reason":"What was done and why"}`;
+`rejected` is the other terminal status. Every decision requires a reason.
+Decisions are frozen after successful completion and take effect when that Policymaker
+branch is accepted at an iteration boundary. Source snapshots stay immutable.
+Pending suggestions trigger one Policymaker opportunity per new ID, even if that session
+does not resolve them; unresolved entries remain visible in later Policymaker inputs.

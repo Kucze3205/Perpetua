@@ -73,7 +73,7 @@ Do exactly what `.session/issue.md` asks.
 
 ## Steps
 
-1. Read `.session/issue.md` and `.session/protocol.md`.
+1. Read `.session/issue.md`; follow the engine contract in system instructions.
 2. {PLANT} and copy every acceptance line into your notes before touching anything.
 3. Read `.session/issue.md` in full a third time and compare it with your notes line by line.
 4. Write the requested file under `src/`.

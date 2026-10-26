@@ -1,12 +1,24 @@
 # Session instructions and network access
 
-The engine owns `.github/loop/session-protocol.md` and the Policymaker's ownership/order
-contract in `.github/loop/policymaker.md`. Staging writes the contract to a trusted file
-passed with `--append-system-prompt-file`. It also combines that contract with
-the selected layer's `protocol.md` in `.session/protocol.md`. Editable work rules and starting
-templates (`<layer>/prompts/role.md`, `policy/prompts/policymaker.md`) take effect at the
-next stage from the accepted tree. They cannot change parsed outputs, field
-ownership, required inputs, or merge/security restrictions. Role skills remain
+The engine owns the common contract in `.github/loop/session-protocol.md`, the
+report-reader and task-graph sections in `.github/loop/task-graph.md`,
+and the Policymaker's ownership/order contract in `.github/loop/policymaker.md`.
+`loop.session_contract` selects sections by the engine-selected role and shaper label,
+and adds verification/delivery instructions from shell access and execution isolation.
+Execution sessions deliver file bytes; policy sessions deliver committed repository
+changes. A policy role without a shell can publish session outputs, but must report
+blocked if its task requires repository edits.
+All sessions retain trust, reporting and owner-request rules. Only the Policymaker
+receives suggestion-decision instructions; only it and the shaper receive graph and
+report-reader instructions. There is no role-configurable contract selector.
+
+Staging writes the selected contract once to a trusted file passed with
+`--append-system-prompt-file`. There is no `.session/protocol.md` copy.
+The selected layer's `protocol.md` work rules are placed in the starting user prompt;
+editable rules never become system instructions. Work rules and starting templates
+(`<layer>/prompts/role.md`, `policy/prompts/policymaker.md`) come from the accepted
+tree. They cannot change parsed outputs, field ownership, required inputs, or
+merge/security restrictions. Role skills remain
 local to `<layer>/roles/` and staged with their complete references; global skill installations remain sources.
 
 Every implementation session also runs inside the filesystem boundary in
@@ -99,3 +111,7 @@ A session sees a secret only when the owner approved its name for that task. Thr
 
 The GitHub token never reaches the agent. `gate.env_passthrough` in `engine.yml` is a separate owner list for the gate
 command only, never for an agent.
+
+Script roles launch no model and incur no instruction tokens. They receive staged data
+files and their configured command, without a protocol copy. Existing custom role
+skills must replace references to `.session/protocol.md` when updating a loop.

@@ -66,9 +66,6 @@ class CompositionTest(SessionCase):
     def test_next_stage_uses_accepted_policy_rules_but_keeps_engine_contract(self):
         for role in ("worker", "policymaker"):
             n = self.issue(role)
-            original = read(".github/loop/session-protocol.md")
-            if role == "policymaker":
-                original += "\n\n" + read(".github/loop/policymaker.md")
             prompt_name = "policymaker" if role == "policymaker" else "role"
             layer = "policy" if role == "policymaker" else "execution"
             for revision in ("first", "second"):
@@ -82,18 +79,20 @@ class CompositionTest(SessionCase):
                     self.w.write(work, layer + "/prompts/%s.md" % prompt_name, "Unaccepted prompt")
                     trusted = os.path.join(self.w.tmp, role + "-" + revision)
                     loop.stage(n, work, trusted)
-                    protocol = read(os.path.join(work, ".session", "protocol.md"))
+                    self.assertFalse(os.path.exists(os.path.join(work, ".session", "protocol.md")))
+                    contract = read(os.path.join(trusted, "contract.md"))
                     prompt = read(os.path.join(trusted, "prompt.md"))
                     if role == "policymaker":
                         self.assertIn("Read .session/policymaker.md", prompt)
                         self.assertNotIn("Prompt " + revision, prompt)
                         prompt += read(os.path.join(work, ".session", "policymaker.md"))
-                    self.assertIn(original, protocol)
-                    self.assertIn("Rules " + revision, protocol)
+                    self.assertIn("Required files, formats, field ownership", contract)
+                    self.assertEqual(prompt.count("Rules " + revision), 1)
                     self.assertIn("Prompt " + revision, prompt)
-                    self.assertNotIn("Unaccepted", protocol + prompt)
-                    self.assertEqual(read(os.path.join(trusted, "contract.md")), original)
-                    self.assertNotIn("Rules " + revision, original)
+                    self.assertNotIn("Unaccepted", contract + prompt)
+                    self.assertNotIn("Untrusted contract", contract)
+                    self.assertNotIn("Rules " + revision, contract)
+                    self.assertNotIn("Required files, formats, field ownership", prompt)
                     self.assertEqual(read(os.path.join(trusted, "network-mode")), "offline\n")
 
 

@@ -394,7 +394,7 @@ def begin_shape(n, it):
         return fail_iteration(n, "shaper role `%s` has no profile" % shaper)
     s = c.create_issue("Shape iteration %s" % tag(n),
                        "Decide what iteration %s does and write its task graph.\n\nInput: `.session/loop-state.json`. "
-                       "Output: `.session/tasks.json` (format: `.session/protocol.md`).\n" % tag(n),
+                       "Output: `.session/tasks.json` (format: the engine contract in system instructions).\n" % tag(n),
                        labels=("role:" + shaper, c.ITER + str(n), "loop:shaper"))
     c.update_report(it, {"phase": "shape", "shape_issue": s, "shaper": shaper})
     c.launch(s)

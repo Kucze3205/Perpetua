@@ -173,6 +173,40 @@ def resolve(n):
                  secrets="|%s|" % "|".join(names) if names else "")
 
 
+def session_contract(role, profile, labels):
+    """Engine-owned instructions selected from accepted sources, never from the task tree."""
+    paths = [".github/loop/session-protocol.md"]
+    if role == "policymaker" or "loop:shaper" in labels:
+        paths.append(".github/loop/task-graph.md")
+    if role == "policymaker":
+        paths.append(".github/loop/policymaker.md")
+    parts = []
+    for path in paths:
+        text = c.safe_read(".", path)
+        if not text:
+            raise SystemExit("missing engine contract: " + path)
+        parts.append(text)
+    shell = "Bash" in security.tool_names(profile) or profile.get("agent") is False
+    parts.append("## This session's verification and delivery")
+    if shell:
+        parts.append("Run the task's verification command before reporting `done`. "
+                     "If it fails, report the failure; do not change the command.")
+    else:
+        parts.append("You have no shell and cannot run commands. `done` means the requested files "
+                     "are written; the engine runs verification.")
+    if session_inputs.restricted(role):
+        parts.append("Do not create a branch or commit: the engine imports the files you wrote, "
+                     "not your commits.")
+    elif shell:
+        parts.append("Work on branch task/<n> (n is the issue number). "
+                     "The epilogue publishes committed changes only. Commit before ending the session.")
+    else:
+        parts.append("Your .session outputs are published, but repository edits require commits. "
+                     "Without a shell you cannot deliver repository edits: report blocked if the task "
+                     "requires them, and request a shell-capable role. Do not report such edits as done.")
+    return "\n\n".join(parts) + "\n"
+
+
 def stage(n, work, trusted):
     """Everything the agent needs, put in place by trusted code before the engine checkout is removed from the disk."""
     i = c.issue(n)
@@ -217,18 +251,14 @@ def stage(n, work, trusted):
     if "loop:shaper" in labels and session_inputs.restricted(role):
         with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
             json.dump(session_inputs.capabilities(), fh, indent=1)
-    contract = c.safe_read(".", ".github/loop/session-protocol.md") or ""
-    if role == "policymaker":
-        contract += "\n\n" + (c.safe_read(".", ".github/loop/policymaker.md") or "")
+    contract = session_contract(role, p, labels)
     rules = c.safe_read(".", resources.rules(role)) or ""
     template = c.safe_read(".", resources.prompt(role)) or ""
-    # The trusted contract is also passed as a system instruction; editable rules are user instructions.
-    with open(os.path.join(sess, "protocol.md"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(contract + "\n\n# Policy work rules (subordinate to the engine contract)\n\n" + rules)
+    # Only the engine contract is a system instruction; accepted policy stays user-level.
     with open(os.path.join(trusted, "contract.md"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(contract)
     bootstrap = ("You are the Policymaker" if role == "policymaker" else "You are role `%s`" % role)
-    bootstrap += " of this loop. Read .session/protocol.md and .session/issue.md. "
+    bootstrap += " of this loop. Read .session/issue.md. "
     if resources.layered() and p.get("agent") is not False:
         bootstrap += "Read your staged role skill .session/role/SKILL.md and its relevant references. "
     if role == "policymaker":
@@ -236,13 +266,12 @@ def stage(n, work, trusted):
     if "loop:shaper" in labels and session_inputs.restricted(role):
         bootstrap += "Plan using .session/capabilities.json and .session/loop-state.json. "
     bootstrap += "Write .session/report.md."
-    if not session_inputs.restricted(role):      # the executor layer is imported as files: it has no branch
-        bootstrap += " Work on branch task/%s." % n
     bootstrap += "\n\n"
     with open(os.path.join(trusted, "prompt.md"), "w", encoding="utf-8", newline="\n") as fh:
         # The Policymaker reads its template from the staged file named in bootstrap.
         # Include it once, rather than loading the same instructions again through that pointer.
-        fh.write(bootstrap if role == "policymaker" else bootstrap + template)
+        fh.write(bootstrap + "# Policy work rules (subordinate to the engine contract)\n\n"
+                 + rules + "\n\n" + ("" if role == "policymaker" else template))
     with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("online\n" if p.get("internet", False) else "offline\n")
     # The approved names, for agent.sh's empty-value check. Unapproved pool names need no file: the workflow expression
@@ -263,7 +292,7 @@ def stage(n, work, trusted):
         security.check_skills(staged_role)
     if role == "policymaker":
         with open(os.path.join(sess, "policymaker.md"), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write("You are the Policymaker. Follow the engine contract in .session/protocol.md.\n\n" + template)
+            fh.write("You are the Policymaker. Follow the engine contract supplied in system instructions.\n\n" + template)
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")

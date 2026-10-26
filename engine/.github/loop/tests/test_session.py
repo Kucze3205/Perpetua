@@ -137,7 +137,8 @@ class StageTest(SessionCase):
         self.assertIn("stage me", issue_md)
         self.assertIn("trusted words", issue_md)
         self.assertNotIn("stranger words", issue_md)
-        self.assertIn("Session protocol", read(os.path.join(work, ".session", "protocol.md")))
+        self.assertFalse(os.path.exists(os.path.join(work, ".session", "protocol.md")))
+        self.assertIn("Session protocol", read(os.path.join(trusted, "contract.md")))
         for f in ("agent.sh", "stream_filter.py", "remaining.py", "settings.json"):
             self.assertTrue(os.path.exists(os.path.join(trusted, f)), f)
         self.assertTrue(os.path.exists(os.path.join(work, ".session", "role", "SKILL.md")))

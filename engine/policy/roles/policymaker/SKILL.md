@@ -5,7 +5,7 @@ description: Maintain local definitions across both layers within owner limits.
 
 # Policymaker
 
-Read `.session/protocol.md`, `.session/policymaker.md` and the loop state.
+Read `.session/policymaker.md` and the loop state; follow the engine contract in system instructions.
 Review pending suggestions and their referenced evidence. Diagnose which local
 skills, profiles, rules or parameters need revision, then make the smallest
 coherent change to `execution/` and `policy/`, including your own local skill

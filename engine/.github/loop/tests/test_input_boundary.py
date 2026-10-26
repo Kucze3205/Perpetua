@@ -73,10 +73,46 @@ class InputBoundaryTest(LayeredSessionTest):
         prompt = read(os.path.join(trusted, 'prompt.md'))
         self.assertNotIn('branch', prompt)
         self.assertNotIn('verification command', prompt)
-        contract = read(os.path.join(sess, 'protocol.md'))
+        contract = read(os.path.join(trusted, 'contract.md'))
         self.assertNotIn('Run it yourself before `done`', contract)
-        self.assertIn('If you have no shell', contract)
+        self.assertIn('You have no shell', contract)
         self.assertIn('the engine imports the files you wrote', contract)
+
+    def test_contract_scope_follows_role_and_shaper_duty(self):
+        for role, shaper in [('worker', False), ('worker', True), ('audit', False), ('policymaker', False)]:
+            with self.subTest(role=role, shaper=shaper):
+                _, sess, trusted = self.stage_inputs(role, shaper=shaper)
+                contract = read(os.path.join(trusted, 'contract.md'))
+                prompt = read(os.path.join(trusted, 'prompt.md'))
+                self.assertFalse(os.path.exists(os.path.join(sess, 'protocol.md')))
+                self.assertNotIn('.session/protocol.md', prompt + contract)
+                self.assertIn('You have no `gh`, no GitHub token', contract)
+                self.assertIn('.session/requests.json', contract)
+                self.assertIn('.session/report.md', contract)
+                self.assertEqual('## The task graph' in contract, shaper or role == 'policymaker')
+                self.assertEqual('## Historical reports' in contract, shaper or role == 'policymaker')
+                self.assertEqual('## Suggestion decisions' in contract, role == 'policymaker')
+                self.assertNotIn('# Session protocol', prompt)
+
+    def test_shellless_policy_does_not_promise_repository_file_import(self):
+        _, _, trusted = self.stage_inputs('audit')
+        contract = read(os.path.join(trusted, 'contract.md'))
+        self.assertIn('Your .session outputs are published', contract)
+        self.assertIn('report blocked', contract)
+        self.assertNotIn('the engine imports the files you wrote', contract)
+        self.assertNotIn('Work on branch', contract)
+
+    def test_shell_verification_and_git_delivery_are_independent(self):
+        self.w.write(self.w.loop, 'engine.yml', 'resources:\n  format: layered\nlimits:\n  tools: [Read, Write, Bash]\n')
+        self.w.write(self.w.loop, 'execution/profiles.yml', 'worker:\n  tools: [Read, Write, Bash]\n  write: [src/**]\n')
+        self.w.write(self.w.loop, 'policy/profiles.yml', 'audit:\n  tools: [Read, Bash]\n  write: [audit/**]\n')
+        for role in ('worker', 'audit'):
+            with self.subTest(role=role):
+                _, _, trusted = self.stage_inputs(role)
+                contract = read(os.path.join(trusted, 'contract.md'))
+                self.assertIn("Run the task's verification command", contract)
+                self.assertEqual('publishes committed changes only' in contract, role == 'audit')
+                self.assertEqual('the engine imports the files you wrote' in contract, role == 'worker')
 
     def test_explicit_policy_exports_are_denied_without_downloading(self):
         policy = self.started_issue('audit')

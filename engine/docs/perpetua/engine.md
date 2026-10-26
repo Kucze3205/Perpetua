@@ -100,9 +100,9 @@ setup), `stage`, the agent, the epilogue.
 - **The agent has no GitHub token, no `gh`, no push rights.** Its Claude credential lives only in the `claude`
   process. The engine checkout is removed from the disk while it works. The epilogue re-checks the engine out and fetches
   the agent's commits as plain objects into the trusted checkout; the agent's repository is never used to run git.
-- **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments), `protocol.md`,
+- **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments),
   `loop-state.json` (Policymaker, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `orders.json`, `requests.json`,
-  `artifacts/` go out. See `.github/loop/session-protocol.md`, the contract every role reads.
+  `artifacts/` go out. See `.github/loop/session-protocol.md`, the common contract supplied through system instructions.
 - **Kinds.** `agent` (a Claude session, pinned CLI) and `script` (a role with `agent: false`: no model, no credential).
 - **Model credential.** By default the engine is wired for a Claude subscription: the repository secret `CLAUDE_CODE_OAUTH_TOKEN`
   (`claude setup-token`), the watchdog's probe and the parking on a subscription limit. Another model provider means

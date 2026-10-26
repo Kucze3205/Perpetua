@@ -56,6 +56,6 @@ diff and application instructions. Say what each request unblocks and why it is 
 The engine freezes the proposal and base version; only the owner decides. Closing a
 capability request does not create a secret. An accepted engine change becomes a PR the owner merges, unless it touches
 `.github/workflows/**` or no longer applies to `main`; then the owner applies it manually.
-Follow `.session/protocol.md` for the JSON fields and readiness confirmations. You may
+Follow the engine contract in system instructions for the JSON fields and readiness confirmations. You may
 propose these changes but cannot accept them or edit the engine yourself.
 Report the changes you made and the evidence behind them in `.session/report.md`.

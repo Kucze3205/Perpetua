@@ -3,7 +3,7 @@
 Paths below are relative to a loop's repository root. In the plugin source they
 live under `engine/`; setup copies that directory's contents to the target root.
 
-For a running session, start with `.session/issue.md`, `.session/protocol.md` and
+For a running session, start with `.session/issue.md`, the engine contract in system instructions and
 the staged role instructions. Read this map when investigating engine behavior
 or preparing an engine-change proposal. The engine remains owner-controlled.
 
@@ -12,7 +12,7 @@ or preparing an engine-change proposal. The engine remains owner-controlled.
 | Question | Read |
 |---|---|
 | What do the domain terms mean? | `CONTEXT.md` |
-| What must every session read and produce? | `.github/loop/session-protocol.md`, staged in `.session/protocol.md` |
+| What must every session read and produce? | `.github/loop/session-protocol.md`, selected with role-specific sections and supplied in system instructions |
 | What may the Policymaker change or order? | `.github/loop/policymaker.md` |
 | How should roles do their work? | `<layer>/protocol.md`, `<layer>/roles/<role>/SKILL.md` (`execution` or `policy`) |
 | Which settings are owner-controlled? | `engine.yml`; omitted values fall back to `common.DEFAULTS` |

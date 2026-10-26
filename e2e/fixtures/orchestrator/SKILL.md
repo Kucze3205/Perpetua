@@ -9,7 +9,7 @@ You shape **one iteration**: you decide what it is for and write the task graph 
 parallel sessions. You leave behind: `.session/tasks.json`, a journal entry, a report. The next iteration has its own
 orchestrator session; you cannot delegate yourself.
 
-Protocol (task format, report, trust): `.session/protocol.md`.
+Protocol (task format, report, trust): the engine contract in system instructions.
 
 ## Principles
 
@@ -34,7 +34,7 @@ Protocol (task format, report, trust): `.session/protocol.md`.
 
 Read these first, then follow only the evidence needed to shape this iteration:
 
-1. `.session/protocol.md`;
+1. the engine contract in system instructions;
 2. `.session/loop-state.json` (the goal, open owner requests, the iteration index);
 3. `.session/capabilities.json` (the roles that exist);
 4. the newest `journal/NNNN.md`, only its `## State` (it stands alone);

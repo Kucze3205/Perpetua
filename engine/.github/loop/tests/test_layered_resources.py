@@ -36,7 +36,7 @@ class LayeredSessionTest(sessions.SessionCase):
                 loop.stage(n, work, trusted)
                 self.assertIn(expected, read(os.path.join(work, '.session/role/SKILL.md')))
                 if role == 'worker':
-                    self.assertIn('Execution rules', read(os.path.join(work, '.session/protocol.md')))
+                    self.assertIn('Execution rules', read(os.path.join(trusted, 'prompt.md')))
                     self.assertIn('Execution prompt', read(os.path.join(trusted, 'prompt.md')))
                 self.w.branch(n, files)
                 result = loop.merge_branch(n, role, self.hub.issue(n), override={'verdict': 'accepted'})

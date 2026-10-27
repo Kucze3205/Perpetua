@@ -29,7 +29,7 @@ from role instructions instead of copying its schemas into each role.
 ## Execution and tests
 
 All Python paths below are in `.github/loop/`. Workflows call `loop.py main`.
-The engine uses the accepted checkout; agent commits enter through `fetch_candidate`.
+The engine uses the accepted checkout; files left by a session (committed or not) enter through `fetch_candidate`.
 
 | Behavior | Implementation entry points | Tests in `tests/` |
 |---|---|---|

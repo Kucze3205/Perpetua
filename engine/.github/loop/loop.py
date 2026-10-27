@@ -200,13 +200,9 @@ def session_contract(role, profile, labels):
     if session_inputs.restricted(role):
         parts.append("Do not create a branch or commit: the engine imports the files you wrote, "
                      "not your commits.")
-    elif shell:
-        parts.append("Work on branch task/<n> (n is the issue number). "
-                     "The epilogue publishes committed changes only. Commit before ending the session.")
     else:
-        parts.append("Your .session outputs are published, but repository edits require commits. "
-                     "Without a shell you cannot deliver repository edits: report blocked if the task "
-                     "requires them, and request a shell-capable role. Do not report such edits as done.")
+        parts.append("The epilogue publishes the files you leave in your write paths, as they are when the session "
+                     "ends. No commit is needed.")
     return "\n\n".join(parts) + "\n"
 
 
@@ -303,6 +299,8 @@ def stage(n, work, trusted):
     if session_inputs.restricted(role):
         shutil.copy(".github/loop/executor_boundary.py", trusted)
         executor_boundary.prepare(work, trusted)
+    else:
+        executor_boundary.record(work, trusted)
     if p.get("agent") is not False:
         session_startup.prepare(n, role, session_options(i, role, p)["model"], work, trusted,
                                 shaper="loop:shaper" in labels)
@@ -410,26 +408,31 @@ class Tree:
 
 
 def fetch_candidate(work, n):
-    """The agent's HEAD into `refs/heads/task/N` of the trusted checkout: objects only, nothing of the agent's repository
-    (its config, its hooks) is ever executed. Returns (short sha, protected paths the change touches). The branch goes
-    to origin only when it touches none: GitHub refuses a token's push of workflow files, and such a change is refused
-    at merge anyway."""
-    metadata = os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "trusted", "executor-baseline.json")
-    if os.path.isfile(metadata):
-        try:
-            with open(metadata, encoding="utf-8") as fh:
-                executor_boundary.import_candidate(work, json.load(fh), ".", "refs/heads/task/%s" % n)
-        except (ValueError, OSError, subprocess.SubprocessError):
-            print("Executor output could not be admitted safely")
+    """The files the session left, as one commit on its staged baseline in `refs/heads/task/N` of the trusted checkout:
+    objects only, nothing of the agent's repository (its commits, config, hooks) is ever read or executed. Returns
+    (short sha, protected paths the change touches). The branch goes to origin only when it touches none: GitHub refuses
+    a token's push of workflow files, and such a change is refused at merge anyway."""
+    trusted = os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "trusted")
+    executor, policy = (os.path.join(trusted, name) for name in ("executor-baseline.json", "policy-baseline.json"))
+    ref = "refs/heads/task/%s" % n
+    try:
+        if os.path.isfile(executor):
+            with open(executor, encoding="utf-8") as fh:
+                executor_boundary.import_candidate(work, json.load(fh), ".", ref)
+        elif os.path.isfile(policy):
+            with open(policy, encoding="utf-8") as fh:
+                meta = json.load(fh)
+            # A new path outside the role's write paths is environment debris (CLI stubs, runner home files, IDE
+            # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
+            write = profile_of(c.roles_of(c.label_names(c.issue(n)))[0]).get("write") or []
+            executor_boundary.admit(work, meta, ".", ref, "Policy session files admitted as data\n",
+                                    skip=lambda rel, tracked: not tracked and not c.path_match(rel, write))
+        else:
+            print("Required session admission metadata unavailable")
             return None, []
-    else:
-        role = c.roles_of(c.label_names(c.issue(n)))[0]
-        if session_inputs.restricted(role):
-            print("Required executor admission metadata unavailable")
-            return None, []
-        r = c.git(".", "fetch", "-q", "--no-tags", "--no-recurse-submodules", os.path.join(work, ".git"), "+HEAD:refs/heads/task/%s" % n, check=False)
-        if r.returncode:
-            return None, []
+    except (ValueError, OSError, subprocess.SubprocessError):
+        print("Session output could not be admitted safely")
+        return None, []
     d = c.default_branch()
     c.git(".", "fetch", "-q", "origin", d, check=False, remote=True)
     touched = [f for f in c.git(".", "diff", "--name-only", "origin/%s...task/%s" % (d, n), check=False).stdout.split()

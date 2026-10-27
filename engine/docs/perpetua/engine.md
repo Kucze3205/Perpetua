@@ -99,7 +99,8 @@ setup), `stage`, the agent, the epilogue.
 
 - **The agent has no GitHub token, no `gh`, no push rights.** Its Claude credential lives only in the `claude`
   process. The engine checkout is removed from the disk while it works. The epilogue re-checks the engine out and fetches
-  the agent's commits as plain objects into the trusted checkout; the agent's repository is never used to run git.
+  the files the agent left (not its commits) as one commit on the staged baseline in the trusted checkout; the agent's
+  repository is never used to run git.
 - **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments),
   `loop-state.json` (Policymaker, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `orders.json`, `requests.json`,
   `artifacts/` go out. See `.github/loop/session-protocol.md`, the common contract supplied through system instructions.

@@ -107,15 +107,15 @@ def prepare(work, trusted):
     Path(trusted, "executor-mode").write_text("isolated\n", encoding="utf-8")
 
 
-def files(work):
-    """Reject redirects and special files before reading any candidate bytes."""
+def files(work, skip=lambda rel: False):
+    """Reject redirects and special files before reading any candidate bytes; `skip` paths are neither checked nor read."""
     result = {}
     for root, dirs, names in os.walk(work, followlinks=False):
         dirs[:] = [name for name in dirs if name not in (".git", ".session")]
         for name in dirs + names:
             path = Path(root, name)
             rel = path.relative_to(work).as_posix()
-            if rel.startswith((".git/", ".session/")) or rel in (".git", ".session"):
+            if rel.startswith((".git/", ".session/")) or rel in (".git", ".session") or skip(rel):
                 continue
             mode = path.lstat().st_mode
             if stat.S_ISDIR(mode):
@@ -126,32 +126,46 @@ def files(work):
     return result
 
 
-def import_candidate(work, metadata, trusted, ref):
-    """Write objects/index in the engine repo, without consulting worker .git."""
+def record(work, trusted):
+    """Policy-layer staging: the session's baseline, written before any untrusted process (the tree is not rebuilt)."""
+    names = git(work, "ls-tree", "-rz", "--name-only", "--full-tree", "HEAD").split(b"\0")
+    Path(trusted, "policy-baseline.json").write_text(json.dumps({
+        "baseline": git(work, "rev-parse", "HEAD").decode().strip(),
+        "paths": [n.decode("utf-8") for n in names if n], "work": os.path.abspath(work)}), encoding="utf-8")
+
+
+def admit(work, metadata, trusted, ref, message, ignore=lambda rel, data, tracked: False,
+          skip=lambda rel, tracked: False):
+    """Write objects/index in the engine repo, without consulting worker .git: one commit on the baseline from the file
+    bytes the session left. Environment debris never reaches any check: `skip(rel, tracked)` by path, before the file is
+    inspected or read; `ignore(rel, data, tracked)` by content."""
     if os.path.abspath(work) != metadata["work"]:
         raise ValueError("executor output does not match its staged origin")
-    current = files(Path(work))
-    # A stub is empty and was not in the baseline: nothing the agent wrote. Content or a baseline file makes it real.
-    for rel in SANDBOX_STUBS & set(current):
-        if not current[rel][0] and rel not in metadata["paths"]:
-            del current[rel]
+    tracked = set(metadata["paths"])
+    current = {rel: v for rel, v in files(Path(work), lambda rel: skip(rel, rel in tracked)).items()
+               if not ignore(rel, v[0], rel in tracked)}
     with tempfile.TemporaryDirectory(prefix="executor-admission-") as tmp:
         index = os.path.join(tmp, "index")
         env = {"GIT_INDEX_FILE": index}
         git(trusted, "read-tree", metadata["baseline"], env=env)
-        for rel in set(metadata["paths"]) - set(current):
+        for rel in tracked - set(current):
             git(trusted, "update-index", "--force-remove", "--", rel, env=env)
         for rel, (data, mode) in current.items():
             # Hidden additions must reach protected/write checks, not be discarded.
             oid = git(trusted, "hash-object", "-w", "--stdin", data=data).decode().strip()
             git(trusted, "update-index", "--add", "--cacheinfo", mode, oid, rel, env=env)
         tree = git(trusted, "write-tree", env=env).decode().strip()
-        commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"],
-                     data=b"Executor output admitted as data\n",
+        commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"], data=message.encode(),
                      # fixed dates: the same output is the same commit, so "the head did not move" is observable
                      env={"GIT_AUTHOR_DATE": "@0 +0000", "GIT_COMMITTER_DATE": "@0 +0000"}).decode().strip()
     git(trusted, "update-ref", ref, commit)
     return commit
+
+
+def import_candidate(work, metadata, trusted, ref):
+    # A stub is empty and was not in the baseline: nothing the agent wrote. Content or a baseline file makes it real.
+    return admit(work, metadata, trusted, ref, "Executor output admitted as data\n",
+                 lambda rel, data, tracked: rel in SANDBOX_STUBS and not data and not tracked)
 
 
 def runtime_files(extra=()):

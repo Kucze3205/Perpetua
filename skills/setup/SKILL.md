@@ -17,11 +17,12 @@ Prepare an owner-context block with separate fields for architecture, requested 
 
 Stop at the first failure and say what to fix, in one line each:
 
-- inside a git work tree with a clean status and a GitHub `origin` (`gh repo view --json nameWithOwner,defaultBranchRef`)
+- inside a git work tree with a clean status and a GitHub `origin`: `gh repo view --json nameWithOwner,defaultBranchRef` succeeds. This is the only test; do not interpret the `origin` URL
 - `gh auth status` is logged in; GitHub Actions is enabled (`gh api repos/{owner}/{repo}/actions/permissions --jq .enabled`)
 - `PLUGIN_ROOT/engine/ENGINE_VERSION` and the sibling `brief.md` and `setup-notes.md` exist; read the engine version. If not, identify the incomplete installation and ask for a plugin update before changing the target repo.
 - resolve `wayfinder`, `grilling`, `domain-modeling`, `research` and `prototype` from the client's available skills (including plugin-qualified names). For a skill absent from that list, check the target repo's `.agents/skills/` and `.claude/skills/`, then the user's `.agents/skills/`, `.codex/skills/` (or configured Codex skills directory) and `.claude/skills/`, for `<name>/SKILL.md`. Read wayfinder's instructions and resolve its relative resources from that file's real directory. If any dependency is missing, name it and tell the owner to install the corresponding `mattpocock-skills` skill for their client, then stop. A filesystem-backed skill can be followed without a Skill tool.
 - arming permissions, without side effects. Arming needs three actions: push a tag, write a repository variable, run a workflow. Check `gh api repos/{owner}/{repo} --jq .permissions` (`push` for tag and workflow run, `admin` for the variable) and that `gh api repos/{owner}/{repo}/actions/variables` and `.../actions/workflows` answer without 403. Never create the tag, variable or run to test. Any 403 or doubt (typical in a cloud session) means the owner arms: do not stop, record the result per action as `agent` or `owner` in the notes' "Arming permissions" line (step 3) — arming then uses the owner variant.
+- no destination file of step 3 exists yet (all of `PLUGIN_ROOT/engine/` relative to the repo root, and `docs/perpetua/setup-notes.md`; `CONTEXT.md` may exist). List collisions and stop; overwrite nothing. Quote paths: on Windows they contain `C:\`.
 - the repo has no `ENGINE_VERSION` and no open or closed issue labelled `wayfinder:map` (otherwise the loop is already set up here)
 
 ## 2. Labels
@@ -35,8 +36,6 @@ Create branch `perpetua/setup` from the default branch. Copy into the repo:
 - the contents of `PLUGIN_ROOT/engine/` into the repo root;
 - `PLUGIN_ROOT/CONTEXT.md` to `CONTEXT.md`, the loop's one glossary. If the repo already has a `CONTEXT.md`, append the plugin's `## Language` entries to it under a `## Perpetua` heading instead;
 - `SKILL_DIR/setup-notes.md` to `docs/perpetua/setup-notes.md`, with `{{REPO}}` (`owner/name`), `{{BRANCH}}`, `{{ENGINE_VERSION}}` and `{{OWNER_CONTEXT}}` (the owner-context block above) replaced. Persist the context before handing over, so map continuations can recover it from this file. Also replace `{{ARMING_PERMISSIONS}}` with the preflight result (`tag: agent|owner; variable: agent|owner; workflow run: agent|owner`).
-
-If any other destination file already exists, stop and list them; overwrite nothing. Quote paths: on Windows they contain `C:\`.
 
 Before committing, run `python3 .github/loop/setup_roles.py prepare` in the target repository. This checks that the copied engine has no execution roles and no selected shaper; the four policy roles ship with it. Copying the engine is not role selection. If preparation fails, stop before committing; obtain the current engine template instead of converting existing installations. See the role-selection procedure in the setup notes.
 

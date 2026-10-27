@@ -157,7 +157,7 @@ def import_candidate(work, metadata, trusted, ref):
 def runtime_files(extra=()):
     """Resolve a small trusted runtime, never expose a host directory wholesale.
 
-    The isolated interpreter probe enumerates individual imported module files;
+    The isolated interpreter probe exercises the guard and enumerates imported module files;
     arbitrary files added beside executables, libraries or stdlib stay private.
     Extend the explicit program/module lists when supporting additional tools.
     """
@@ -170,15 +170,21 @@ def runtime_files(extra=()):
         if not executable:
             raise RuntimeError("required executor runtime unavailable: " + name)
         paths.add(executable)
-    probe = '''import ctypes, socket, subprocess, pathlib, json, shutil, tempfile, platform
+    probe = '''import socket, subprocess, pathlib, json, shutil, tempfile, platform
 import hashlib, math, random, datetime, collections, itertools, functools, typing
 import encodings.utf_8, encodings.ascii, encodings.latin_1, encodings.idna
 import ssl, urllib.request
 import sys
+# Run the actual guard path: ctypes can load further modules when structures are defined.
+namespace = {'__name__': 'runtime_probe', '__file__': sys.argv[1]}
+with open(sys.argv[1], 'rb') as source:
+    exec(compile(source.read(), sys.argv[1], 'exec'), namespace)
+namespace['restrict']()
 print(json.dumps(sorted({m.__file__ for m in sys.modules.values()
                         if getattr(m, '__file__', None)})))'''
     python = shutil.which("python3", path=environment()["PATH"])
-    result = subprocess.run([python, "-I", "-S", "-c", probe], cwd="/", env=environment(),
+    result = subprocess.run([python, "-I", "-S", "-c", probe, str(Path(__file__).with_name("offline_exec.py"))],
+                            cwd="/", env=environment(),
                             capture_output=True, check=True, text=True)
     paths.update(json.loads(result.stdout))
     # ldd is run only by the trusted engine on explicitly selected runtime files.

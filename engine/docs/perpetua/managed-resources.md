@@ -143,8 +143,8 @@ result then passes the existing protected/write checks and merge path; the
 change gate still runs from the accepted tree with the reconstructed candidate
 and accepted baseline. This does not migrate legacy installations.
 
-Run `python3 -m unittest discover -s tests -p test_executor_boundary.py -v`
-from `.github/loop` on Linux with bubblewrap namespaces enabled. These tests
+Run `python3 -m unittest discover -s engine/.github/loop/tests -p test_executor_boundary.py -v`
+on Linux (host requirements: [validation](validation.md)). These tests
 execute the staged script and epilogue, probe host/files/Git/network access,
 attempt credential-bearing worker Git hooks/configuration, and check data
 preservation and admission refusals. A skip on another platform is not evidence

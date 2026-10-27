@@ -33,7 +33,7 @@ OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", 
          "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit")
 SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
 
-DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)"]
+DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)", "Bash(echo:*)", "Bash(printf:*)", "Bash(mkdir:*)"]
 DEFAULTS = {
     "resources": {"format": "layered"},
     "cli_version": "2.1.284",

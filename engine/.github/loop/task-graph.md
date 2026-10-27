@@ -33,7 +33,7 @@ Policymaker's orders, and the orders only of those roles: the engine refuses eit
 session**.
 
 `## Verification` is run by the session itself before it reports `done` and again by the engine afterwards, so it must be
-runnable with the role's tools. The default tools allow Bash only as `git …` or `python3 …`: write one such command, with no
+runnable with the role's tools. The default tools allow Bash only as `git …`, `python3 …`, `echo`, `printf` or `mkdir`: write one plain command, with no redirection,
 `$(…)`, pipes or `test`. Checking a file's content: `python3 -c "import sys; sys.exit(open('src/a.txt').read() != 'text\n')"`.
 
 To consume an artifact produced by another task in this graph, add

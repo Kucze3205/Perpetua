@@ -4,6 +4,23 @@ status: accepted
 
 # Separate engine, iteration core and policy-layer resources
 
+## Historical status
+
+This ADR records the accepted design and the evidence available when it was
+written. The access gap and file locations under "Existing isolation and remaining
+gap" and "Evidence" describe that earlier state, not the current engine.
+[ADR-0005](0005-no-role-templates.md) supersedes the role-template choice below:
+policy roles now ship as active definitions and execution roles are written per
+loop, with the Skill reference library used for inspiration. Setup leaves
+`shaper: null`; the first Policymaker session chooses the organization.
+Current behavior is documented in [managed definitions](../../engine/docs/perpetua/managed-resources.md),
+[session isolation](../../engine/docs/perpetua/session-sandbox.md) and
+[validation](../../engine/docs/perpetua/validation.md). Explicit engine updates
+are described in [the update skill](../../skills/update/SKILL.md); the exclusion
+of migration/reconfiguration in this ADR is the scope of the original change.
+
+## Decision
+
 The owner has raised a boundary problem: setup installs implementation-role skills
 under `policy/roles/`, alongside policy-layer resources, and ships an orchestrator
 there before the setup map chooses the starting shaper. The current glossary uses
@@ -33,6 +50,7 @@ evaluator verifier. The engine starts sessions, enforces access, invokes gates,
 merges changes and performs rollback. The evaluator-maintenance role is distinct
 from the measurement command invoked by the engine.
 
+**Historical choice, superseded by [ADR-0005](0005-no-role-templates.md).**
 The owner accepted supplying role templates outside active loop resources, with
 setup selecting or creating and then installing the roles it needs. Setup must
 also draw on existing global skills, explicitly including Matt Pocock's skills;
@@ -52,7 +70,7 @@ implementation and its validation limits are documented in
 [managed resources](../../engine/docs/perpetua/managed-resources.md) and
 [validation](../../engine/docs/perpetua/validation.md).
 
-## Existing isolation and remaining gap
+## Existing isolation and remaining gap (at decision time)
 
 The suggestions interface already exists in
 `engine/.github/loop/session-protocol.md` (`.session/suggestions.json`). Role write
@@ -67,7 +85,7 @@ of `/proc` for offline sessions, but does not deny policy reads. Staging one rol
 skill does not hide the other skills stored in the repository. The target access
 boundary must account for both working-tree files and repository history.
 
-## Existing installations
+## Existing installations (scope at decision time)
 
 The owner excluded migration of installed loops from the current change. They
 also requested a future ability to invoke setup again against an installed loop
@@ -76,7 +94,7 @@ review/reconfiguration mode rather than a fresh installation or automatic upgrad
 its detailed behavior and implementation scope remain to be resolved separately.
 The current setup explicitly stops when it finds an existing installation.
 
-## Evidence
+## Evidence (at decision time)
 
 - `skills/setup/SKILL.md`, section 3, copies the entire engine template.
 - `skills/setup/setup-notes.md`, Starting roles, requires copied skills under

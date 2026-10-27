@@ -1,135 +1,67 @@
 # The Perpetua engine
 
-The goal-independent machinery of this loop: workflows, scripts, protected configuration and session contracts. It was copied into this repository by `/perpetua:setup` and belongs to this loop; the setup map may
-change it. Terms (loop, owner, iteration, policy, policymaker, evaluator...) are in `CONTEXT.md`.
+The goal-independent machinery copied into this loop by `/perpetua:setup`: workflows,
+scripts, protected configuration and session contracts. It belongs to this loop.
+Terms are in `CONTEXT.md`; `ENGINE_VERSION` identifies the installed engine.
 
-**Managed definitions** span `execution/` (shaper and work roles) and `policy/` (Policymaker, audit,
-evaluator maintenance, verifier, parameters and measurement). The four policy roles ship in `policy/roles/`; execution roles are written per loop. The **Policymaker** is the agent in the policy layer that creates
-and maintains that policy and manages the loop's architecture. The implementation layer applies it to shape,
-execute and evaluate work toward the goal. The engine enforces their contracts and the owner's authority.
+Use the [code map](code-map.md) to find the responsible module and tests.
+Details have one home:
 
-GitHub Actions, the Claude subscription and GitHub issue owner requests are the shipped architecture defaults. The
-owner may replace them during setup; this requires implementing and checking the affected integration, tools and
-arming procedure, not selecting a generic backend. Record each decision and the specific guarantee it removes or
-replaces in the setup notes and implementing files; preserve that account in `docs/perpetua/setup-decisions.md` before
-arming deletes the notes. Losing a guarantee informs the owner's decision and does not automatically veto it. With
-no owner change, the shipped behavior remains in force.
+- [Managed definitions](managed-resources.md): role layout, ownership, activation,
+  rollback and fresh-setup validation.
+- [Session instructions and isolation](session-sandbox.md): staging, credentials,
+  filesystem and network boundaries, output admission and sessions without a shell.
+- [Session context](session-context.md): startup reads and working memory.
+- [Session data exports](session-exports.md): historical inputs and recipient views.
+- [Reports and records](session-reports.md): session reports, iteration records and suggestions.
+- [Change provenance](policy-changes.md): immutable receipts and evaluator verification.
+- [Validation](validation.md): test commands, host requirements and limits of the evidence.
 
-Engine version: `ENGINE_VERSION`. There is no update path from the plugin in the first release.
+## Setup and updates
 
-When investigating behavior or proposing an engine change, use the [code map](code-map.md)
-to find the responsible module, contract and tests.
+Setup clarifies the owner-accepted goal, derives an initial approach, then prepares
+the environment it requires. Its active map's `docs/perpetua/setup-notes.md` holds
+the outcome checklist, role-writing and arming procedure. Arming preserves decisions
+in `docs/perpetua/setup-decisions.md`, records `setup-baseline` and enables the
+owner's `AUTOPILOT` switch. The first Policymaker session chooses the execution
+organization; setup leaves `shaper: null`.
 
-The agent uses `role:policymaker`, the owner-controlled `policymaker` profile in `engine.yml`,
-`policymaker_session_ceilings`, and the editable `policymaker_session` and `policymaker_triggers` parameters.
-Its contract is `.github/loop/policymaker.md`; its editable starting prompt is `policy/prompts/policymaker.md`,
-staged as `.session/policymaker.md`. `policymaker_only_roles` identifies roles only this agent may order.
-Managed definitions span both roots; `policy_rev` and iteration records' `policy` section
-refer to their shared revision. `policy_params` holds the common parameters, and
-`policymaker_sessions` refers to the agent's session history.
+GitHub Actions, a Claude subscription and GitHub issue owner requests are the
+shipped defaults. The owner may replace them during setup by implementing and
+checking the integration and documenting each lost or replacement guarantee in
+setup decisions. This gives the Policymaker no additional authority after arming.
 
-A fresh template has no execution roles or shaper and ships the four policy roles. Setup writes complete local
-execution skills (inspired by the Skill reference library) and registers their profiles, validates the
-accepted setup baseline and leaves arming to the owner. This release does not migrate,
-update or arm an existing loop. Repeating setup as a review is separate work.
+Plugin changes do not automatically change an installed loop. The explicit
+[`/perpetua:update` procedure](https://github.com/Kucze3205/Perpetua/blob/main/skills/update/SKILL.md)
+merges the plugin engine with the loop's local changes using the untouched
+`perpetua/engine` branch as the merge base. It is separate from fresh setup;
+review/reconfiguration by repeating setup is not implemented.
 
 ## One iteration
 
-Iterations run one after another. An iteration is an issue labelled `loop:map` + `loop:iteration N`; everything it
-does is an issue labelled `loop:iteration N` + `role:<name>`.
+Iterations run sequentially. Each is an issue labelled `loop:map` and
+`loop:iteration N`; its sessions carry `loop:iteration N` and `role:<name>`.
 
-```
-Policymaker session ──► shaper session ──► task graph ──► task sessions (parallel) ──► record
- (when a trigger is due;    (optional: an      issues and       rebase, check, gate,      iterations/NNNN.json
-  always in the first)       orchestrator      blocking edges   merge
-                             or a script)
-
-Policymaker orders ──► tasks of the same iteration (the only tasks when `shaper: null`)
-```
-
-1. **Start.** The watchdog (or the end of the previous iteration) starts iteration N when none is open, if the
-   cadence allows. The triggers of the policy layer are checked now, at the start, never after the previous close.
-2. **Policymaker.** When a trigger is due the iteration begins with a `role:policymaker` session and waits for it: the first
-   iteration of the loop always (it sets up the execution layer's organization, so it is the larger piece of work), later
-   ones on `every_iterations`, `no_progress`, a new audit report or new suggestions. It may change `execution/` and
-   `policy/` and write `.session/orders.json`. When it ends, its changes merge and its orders become tasks of this same
-   iteration; the iteration record keeps the policy revision before and after, the session and its trigger. A failed
-   Policymaker session fails open: the iteration runs on the last organization (`policy/` as it stood); two failed sessions
-   in a row roll both managed roots back. With no trigger due the iteration starts at once on the last organization. The
-   engine then snapshots the state (`.session/loop-state.json`: goal, parameters, limits, open owner requests, an index line
-   per past iteration, `no_progress`) into a comment of the iteration issue.
-3. **Shaper (optional).** The role named by `shaper` in `policy/params.yml` (`null`: none; the tasks are then only the
-   Policymaker's orders, of any role, and an iteration without a shaper and without valid orders ends `failed` with that reason)
-   turns the goal and state into `.session/tasks.json`: an LLM
-   orchestrator, or a script role (a deterministic rule: a profile with `agent: false` and a `command`). It has no
-   GitHub token; an orchestrator role has no shell, while a script shaper executes its configured command.
-   The engine validates the graph and creates the issues, blocking edges and consent requests.
-   The Policymaker's accepted orders start beside it (the only way to the roles in `policymaker_only_roles`).
-   The width of the iteration is the widest layer of the graph, computed, not configured.
-4. **Tasks.** Each free task is a `session.yml` run (parallel jobs). When a task closes, what it blocked starts. A
-   producer that did not deliver closes its consumers as `blocked`.
-5. **Close.** When no session of the iteration is open the engine writes `iterations/NNNN.json` (only the engine writes
-   it), closes the iteration, prunes old session streams, raises a notice if there was no progress for too long,
-   checks the goal gate, and starts the next iteration.
-
-## Who may change what
-
-These are the shipped boundaries after arming. The owner's ability to change architecture during setup gives the
-Policymaker no additional authority. Any owner-chosen change to these boundaries must be explicit, implemented and
-documented during setup; otherwise they remain in force.
-
-| Zone | Contents | Changed by |
-|---|---|---|
-| Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
-| Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
-| Managed definitions | `execution/`, `policy/` | the Policymaker, with evaluator changes delegated as below; merged without the change gate, still within the role's `write` paths |
-| Audit and journal | `audit/`, `journal/` | the audit role (`audit/`), the journal role (the generic orchestrator, when installed) (`journal/`); merged without the change gate, still within each role's `write` paths |
-| Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policymaker, and only after the evaluator verifier passes |
-| Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except goal files the setup map writes before arming; the owner accepts what goes into `goal/` |
-| Work | everything else | task sessions, through the change gate |
-
-The Policymaker never touches the engine, the goal gate, `AUTOPILOT` or a token. `AUTOPILOT` (repository variable) is the
-owner's switch; it is the first condition of every workflow and anything but a literal `on` means stop.
-
-## Sessions
-
-A session is one `session.yml` run: `prep` (guard, credential probe, `resolve`) then `session`: two checkouts (the engine
-from the default branch, the agent's own working copy), machine preparation (`.github/loop/prepare.sh`, filled in by the
-setup), `stage`, the agent, the epilogue.
-
-- **The agent has no GitHub token, no `gh`, no push rights.** Its Claude credential lives only in the `claude`
-  process. The engine checkout is removed from the disk while it works. The epilogue re-checks the engine out and fetches
-  the files the agent left (not its commits) as one commit on the staged baseline in the trusted checkout; the agent's
-  repository is never used to run git.
-- **Input and output are files** in `.session/`: `issue.md` (the issue and trusted comments),
-  `loop-state.json` (Policymaker, shaper), `inputs/`, `streams/` (audit); `report.md`, `tasks.json`, `orders.json`, `requests.json`,
-  `artifacts/` go out. See `.github/loop/session-protocol.md`, the common contract supplied through system instructions.
-- **Kinds.** `agent` (a Claude session, pinned CLI) and `script` (a role with `agent: false`: no model, no credential).
-- **Model credential.** By default the engine is wired for a Claude subscription: the repository secret `CLAUDE_CODE_OAUTH_TOKEN`
-  (`claude setup-token`), the watchdog's probe and the parking on a subscription limit. Another model provider means
-  changing `session.yml`, `watchdog.yml`, `agent.sh`, the probe in `common.py` and `stream_filter.py`; the setup map may
-  do it for this loop. Changing provider removes the shipped credential-probe and subscription-limit parking/reset
-  guarantees until equivalents have been implemented and checked; document the specific consequences the owner accepts.
-- **Limits.** Per-task limits never exceed the ceilings in `policy/params.yml`; the engine enforces time (`timeout`) and
-  turns (`--max-turns`) hard. Policymaker session tuning lives in `policymaker_session` in that file and additionally respects
-  the owner's `policymaker_session_ceilings` in `engine.yml`; tools and engine safeguards remain owner configuration.
-  Tokens are recorded, not budgeted; there is no money limit anywhere in the engine.
-- **Statuses.** Agent: `wip`, `done`, `partial`, `blocked`, `rejected`. Engine: `paused` (subscription limit; it
-  resumes at the reset time, `resume.yml` keeps the clock), `crashed`. A task can also wait: `awaiting:owner` (the
-  change gate is the owner) or `awaiting:verifier` (an evaluator change).
-- **Report.** One marked comment with a YAML block. Fields the engine owns (tokens, verdict, merged, times...) cannot be
-  forged by the agent. `status`, `commit`, `result` are the agent's.
-- **Large outputs** (> `large_file_bytes`, binaries) go in `.session/artifacts/`; the epilogue uploads them as assets of
-  the release `iter-NNNN` and lists them in the report. A later task names them in `inputs` and the engine downloads
-  them before the agent starts.
-- **Streams.** The raw `stream-json` of every session is kept as the artifact `stream-NNNN-<issue>` (for
-  `stream_retention_iterations` iterations, 8 by default; the upload may fail, e.g. on a full artifact quota, without failing the session). Nothing interprets it. Declarative `exports` select supported
-  data for any role; an audit with no selectors retains the current iteration and three predecessors in
-  `.session/streams/`. See [session data exports](session-exports.md) for the catalogue, scopes, manifest and Policymaker
-  session tuning contract.
-
-See [session instructions and network access](session-sandbox.md) for the contract's precedence, editable policy
-rules and starting prompts, and enforcement of `internet: false` for tools and script roles.
+1. **Start.** The watchdog or previous close starts an iteration if cadence allows.
+   Policy triggers are checked at the start, always firing for the first iteration.
+2. **Policymaker.** When due, its session opens the iteration and writes proposed
+   definitions and orders. `apply_policy` admits the completed candidate at the
+   iteration boundary before work begins; completion alone does not activate it.
+   A failure leaves the accepted organization in force; two consecutive failures
+   roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
+3. **Shape.** The optional execution shaper reads the staged state and writes
+   `.session/tasks.json`. It may be a model orchestrator or a script. The engine
+   validates and creates graph issues, blocking edges and consent requests.
+   Accepted Policymaker orders become tasks alongside it. With `shaper: null`,
+   orders are the only tasks; no valid orders means a failed iteration.
+   [Task graph](../../.github/loop/task-graph.md) defines the interface.
+4. **Execute.** Free tasks start parallel `session.yml` jobs. Each prepares and stages
+   inputs, executes its role and hands outputs to the trusted epilogue. Closing a
+   task releases its consumers; a producer that did not deliver blocks them.
+   [Session isolation](session-sandbox.md) defines how outputs are admitted.
+5. **Close.** Once no session remains open, the engine writes the immutable iteration
+   record, closes the issue, prunes streams, checks progress and the goal gate,
+   then starts the next iteration.
 
 ## The change gate
 
@@ -154,10 +86,9 @@ report carrying the error, up to two times (`fixes`). A gate verdict is not retr
 `improved` (default: `verdict == accepted`) feeds `no_progress`: the number of trailing iterations without an improving
 accepted change.
 
-**Evaluator changes.** A merge that touches `evaluator_paths` does not merge: the engine opens a session of
-`verifier_role` (default `evaluator-verifier`, starting from the branch) and merges only if its report says
-`result: pass`; until then the old evaluator is the one in force (it lives on the default branch). A failed check goes
-back as a rejected task, visible to the Policymaker.
+Evaluator changes additionally require an independent passing verifier pinned to
+that evaluator snapshot. See [activation](managed-resources.md#layered-activation-and-recovery)
+and [verification receipts](policy-changes.md).
 
 ## The goal gate and the end
 
@@ -206,10 +137,6 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 
 - starts the first iteration after arming, and the next one when a run's end event was lost;
 - guards: `AUTOPILOT`, `GOAL_REACHED`, an open `outage` issue (the only quiet state without runs);
-- `E2E_CAPTURE=on` (repository variable, off by default, for the engine's own E2E test only) makes `session.yml` upload each
-  session's whole `.session/`, staged contract, raw stream and a listing of the checkout as the release asset
-  `capture-<iteration>-<issue>.tgz` of the release `e2e-capture`;
-  that artifact holds the session's inputs, so a real loop leaves it off;
 - probes the Claude credential: dead or revoked is an outage and a red run (the e-mail to the author of the workflow file is
   the free push channel);
 - `idle_resumes` (`engine.yml`, default 3) is the progress breaker: that many consecutive resumes of one parked session
@@ -223,55 +150,3 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 - `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, both managed roots are rolled back to the
   state in which the last iteration closed (at the start: the `setup-baseline` tag), and a `notice` is opened for the owner.
   Time spent waiting for the owner counts only when `params.owner_wait_counts` is true.
-
-## The iteration record
-
-`iterations/NNNN.json`, written once by the engine, never edited: `schema_version`, `iteration`, `status`
-(`closed`/`failed`; the last good state is the last `closed`), `started`, `ended`, `engine_version`, `input_state` (the
-snapshot at iteration start, without the index), `policy` (`rev_start`, `rev_end`, `commit_end`, refused orders),
-`decided_by` (the shaper role), `tasks` (the frozen graph), `outcome` (sessions with status,
-verdict, tokens in/out/cache and by model, turns, agent/gate/total/parked seconds, runner, branch, commit, stream name;
-the shaper; the iteration verdict; token sums; wall time; critical path; width; owner requests opened and open at close).
-The offline module (not shipped) replays decisions from `input_state` plus the index.
-
-[Change provenance](policy-changes.md) records accepted policy/evaluator changes and verifier outcomes separately,
-without modifying closed records. [Reports and suggestions](session-reports.md) describes frozen source evidence,
-staged report bodies and the separate suggestion lifecycle.
-
-## Setup outcomes and where they write
-
-Setup clarifies the goal first, then analyses an initial approach, then prepares the environment from that
-analysis. The approach is a revisable plan; the loop can adapt it as it learns. Success criteria and evidence
-must be verifiable; numerical metrics are optional. Goal criteria do not themselves enable a goal gate.
-The rows describe required outcomes, not one issue each. Wayfinder chooses and revises ticket boundaries,
-types and dependencies; arming is a separate final ticket after coverage is verified and no in-scope fog remains.
-
-| Outcome | Writes |
-|---|---|
-| charting (no ticket) | `goal/goal.md`: clear outcome, scope, success criteria and evidence, accepted by the owner |
-| Initial approach | `docs/perpetua/approach.md`: steps, dependencies, unknowns, verification needs and the sources, information, tools and access each step requires |
-| Environment (derived from the approach) | `.github/loop/prepare.sh`; `engine.yml`: `cli_version`, `owner`, `author`; repository secrets and settings; requirement coverage in `docs/perpetua/approach.md` |
-| Evaluator, change gate and goal gate | `engine.yml`: `check`, `gate`, `protected`, `evaluator_paths`; `policy/evaluator/`; owner-accepted `goal/gate.yml` (`command`, `owner_confirms`) |
-| Starting roles | `execution/roles/<role>/SKILL.md` written by the setup map, and the shipped `policy/roles/<role>/SKILL.md`, with profiles in the role's layer |
-| Accepted limits | `engine.yml`: `limits`; consent secrets in `session.yml` |
-| Parameters | `engine.yml`: `params`, `cadence`; `policy/params.yml`: `criterion`, `ceilings`, `models`, `policymaker_triggers` |
-| Arming | delete `docs/perpetua/setup-notes.md`, merge the setup branch into the default branch, tag `setup-baseline`, set `AUTOPILOT=on`, then run `gh workflow run watchdog.yml` — GitHub's schedule can take 3–6 h to start it. Done by the agent or by the owner, depending on the preflight check of arming permissions |
-
-## Changing the engine after arming
-
-`validate --baseline <tag>` compares the revision of the managed definitions (`execution/`, `policy/`, evaluator paths) at `HEAD` with the one in the tag's commit, and `engine.yml` and `goal/` file by file; it does not compare commit SHAs. Two operations follow:
-
-- **Engine fix after arming**: a commit changing only `.github/loop/` (scripts, tests). The tag stays; validation passes.
-- **Definition change**: a change to `execution/`, `policy/`, `engine.yml` or `goal/`. Validation fails until a new `setup-baseline` tag is agreed with the owner.
-
-## Not exercised here
-
-The default test suite runs the engine against an in-memory GitHub and real git repositories. It does not validate
-live GitHub workflow execution, release operations, assignment or cancellation. Linux kernel isolation and the real
-model/network boundary have separate checks described in [session instructions and network access](session-sandbox.md);
-the provider check requires explicit opt-in and credentials. Exercise the deployed workflows in the trial loop.
-
-## Tests
-
-`python -m unittest discover -s .github/loop/tests` (needs `pyyaml`, `git`, `bash`). `fakes.py` is the fake GitHub and the
-git world. In a loop's repository the suites for the template (`test_static.py`) skip themselves.

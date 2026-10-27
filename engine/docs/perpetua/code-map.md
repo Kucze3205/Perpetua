@@ -40,7 +40,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
-| Setup selection, local copying and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
+| Setup role registration and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
 | Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
@@ -56,7 +56,7 @@ GitHub operations with `tests/fakes.py` and use real temporary git repositories.
 Run the suite from the loop repository root:
 `python -m unittest discover -s .github/loop/tests`.
 From the plugin source use `-s engine/.github/loop/tests` instead.
-See `engine.md` for prerequisites and limits of this verification.
+See [validation](validation.md) for prerequisites and limits of this verification.
 
 ## Details that are easy to misread
 

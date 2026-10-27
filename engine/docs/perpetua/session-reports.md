@@ -38,3 +38,14 @@ Later scheduling opportunities still expose unresolved suggestions, without
 repeatedly triggering on the same IDs. Suggestions arriving while Policymaker is open
 remain eligible for the next opportunity. Resolving a suggestion never changes
 its original source snapshot or a closed iteration record.
+
+## Iteration records
+
+`iterations/NNNN.json`, written once by the engine, never edited: `schema_version`, `iteration`, `status`
+(`closed`/`failed`; the last good state is the last `closed`), `started`, `ended`, `engine_version`, `input_state` (the
+snapshot at iteration start, without the index), `policy` (`rev_start`, `rev_end`, `commit_end`, refused orders),
+`decided_by` (the shaper role), `tasks` (the frozen graph), `outcome` (sessions with status,
+verdict, tokens in/out/cache and by model, turns, agent/gate/total/parked seconds, runner, branch, commit, stream name;
+the shaper; the iteration verdict; token sums; wall time; critical path; width; owner requests opened and open at close).
+
+See [change provenance](policy-changes.md) for separate accepted-change and verifier receipts; closed iteration records are never enriched later.

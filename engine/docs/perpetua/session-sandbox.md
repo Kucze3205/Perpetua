@@ -24,21 +24,63 @@ tree. They cannot change parsed outputs, field ownership, required inputs, or
 merge/security restrictions. Role skills remain
 local to `<layer>/roles/` and staged with their complete references; global skill installations remain sources.
 
-Every implementation session also runs inside the filesystem boundary in
-`executor_boundary.py`, including model sessions and online scripts. Its work
-repository has a new root commit containing product files and the filtered
-recipient view; policy definitions, original Git objects and host checkouts are
-absent. The trusted engine imports regular output bytes against the recorded
-baseline, without executing worker Git. Missing isolation or admission metadata
-fails closed. Policymaker sessions retain access to definitions in both layers;
-protected contracts and accepted limits remain enforced at admission.
+## Filesystem isolation and output admission
 
-Model sessions require the pinned native CLI and run as a non-root user. The
-outer namespace admits individual runtime files, DNS/CA files and selected engine
-contracts, with private home, temp and process namespaces. The CLI can connect to
-its provider. Its PID 1 environment, memory and task views are masked; an inherited
-seccomp filter blocks ptrace and cross-process memory syscalls. Provider credentials
-remain scrubbed from subprocess environments. These controls also apply online.
+Every implementation session, including model sessions and online scripts, runs
+inside the Linux bubblewrap boundary in `executor_boundary.py`. Only explicit
+runtime files, the sanitized work snapshot and selected enforcement files are
+mounted, with private process, home and temp namespaces. Neither engine checkout,
+host home/temp nor other host checkouts are mounted. Missing bubblewrap, runtime
+files, namespace support or admission metadata fails closed, without host fallback.
+Policymaker sessions retain access to both managed roots; protected contracts and
+accepted limits remain enforced at admission.
+
+The supported runtime is Bash, Git, Python 3 and the basic file/text commands
+listed in `executor_boundary.runtime_files`. Python supports the standard modules
+explicitly imported by its trusted `-I -S` probe and their imported dependencies;
+site packages and arbitrary additional modules are excluded. The engine resolves
+each executable and imported Python file separately, then adds individual ELF
+shared-library dependencies from `ldd`. It never mounts a runtime parent
+directory. Adding tools or Python modules requires extending this trusted list;
+work scripts cannot expand it through their environment, current directory or
+Python startup customization. Model and online boundaries use this same file
+allowlist without granting access to host directories.
+
+The work snapshot excludes managed definitions in both layers, engine internals/configuration, policy iteration/audit records and
+tool discovery directories. It retains regular tracked product files and the
+already filtered `.session/` recipient view. Redirected product inputs are
+refused. Its fresh Git root commit contains only that view: no original commit
+IDs, object store, alternates, reflogs, remotes, credential configuration or
+hooks. Scripts can use Git locally, but must leave their final files in the
+working tree; the engine admits those bytes, including uncommitted work.
+
+The trusted epilogue never invokes worker Git for these sessions. It reads
+regular output files as data and builds an index against the staged original
+baseline in the engine repository, retaining excluded definitions unchanged.
+Symlinks, hardlinks and special output files are refused. Binary contents,
+executable modes and deletion of visible inputs are preserved. Worker Git
+configuration, hooks and attributes cannot execute during this import. The
+result then passes the existing protected/write checks and merge path; the
+change gate still runs from the accepted tree with the reconstructed candidate
+and accepted baseline.
+
+Candidate-owned product checks and task verification for layered execution roles
+use the same offline namespace and narrow runtime after admission. Each command
+gets a disposable product-only snapshot with a new Git root; check writes do not
+alter the candidate. Missing isolation fails the check, without a host fallback.
+The accepted change gate still runs through its trusted measurement path with
+the full candidate and baseline required by ADR-0003.
+
+## Model process and network access
+
+Model sessions require the pinned native CLI and a non-root user. The outer
+namespace admits individual runtime, DNS/CA and selected engine contract files.
+The CLI retains network access to its provider. `launch_model` passes its credential
+through a pipe identified by `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`, keeping the
+value out of process environments and `/proc/*/environ`. Private procfs supports
+the native CLI's nested sandbox; the inherited process guard denies ptrace and
+cross-process memory syscalls. Subprocess environments scrub provider credentials.
+These controls also apply online.
 
 `internet` defaults to false and must be a boolean, including on script profiles.
 Offline model sessions use the pinned Claude CLI's strict Bash sandbox: subprocesses
@@ -53,32 +95,21 @@ outside the Bash sandbox. They read their complete staged role skill tree from
 or interpolation content is rejected. Creating a new skill during the session cannot
 re-enable native discovery.
 
-Offline script roles run inside a bubblewrap PID/network namespace and inherit an
-engine seccomp filter denying socket creation (including Unix sockets and io_uring).
-This prevents access to local proxy or container-daemon sockets. Script roles receive
-no model credential. Missing isolation support fails the session; online execution is
-never a fallback. Supported script hosts are Linux x86_64 and aarch64. Online profiles
-still require the accepted-limit/consent checks; internet access does not add tools.
+Offline script roles use a private network namespace and inherit an engine seccomp
+filter denying socket creation (including Unix sockets and io_uring), preventing
+access to local proxy or container-daemon sockets. Script roles receive no model
+credential. Supported script hosts are Linux x86_64 and aarch64. Online scripts
+share the network and receive DNS/CA files, while retaining filesystem isolation.
+Online profiles still require accepted-limit/consent checks; internet access does
+not add tools.
 
 The native sandbox is a boundary around tool commands, not around the trusted CLI
 or engine hooks. Keep the runner and pinned CLI trusted. See the provider's
 [sandbox contract](https://code.claude.com/docs/en/sandboxing) and
 [settings precedence](https://code.claude.com/docs/en/settings).
 
-Run `python3 -m unittest discover -s .github/loop/tests -p test_security.py -v`.
-The kernel test runs on Linux without credentials. To check the real provider and
-Bash HTTP/raw-socket denial together, install the pinned CLI and sandbox dependencies,
-set `LOOP_NETWORK_INTEGRATION=1` plus `CLAUDE_CODE_OAUTH_TOKEN`, and run the same command.
-It first checks host internet, then requires a successful model result and a proof
-file written by its Bash/Python subprocess with blocked HTTP, IPv4, and loopback
-connections. This live check is skipped on other hosts or without explicit opt-in.
-
-Run `test_model_boundary.py` separately (host requirements: [validation](validation.md)). Its local tests check namespace access, useful online
-connectivity and credential-free native startup. With the same explicit opt-in
-and credential, its provider matrix requires actual Read, Glob, Grep and Bash
-tool calls in online and offline sessions, denied policy reads and a useful work
-product. A surrogate CLI, successful startup, authenticated API error or skipped
-provider test does not prove that matrix. See [validation](validation.md).
+Test commands, Linux requirements and opt-in live-provider evidence are in
+[validation](validation.md).
 
 ## Sessions without a shell
 
@@ -89,9 +120,8 @@ Neither layer gets a `Work on branch task/<n>` line: the engine admits the files
 commits (`executor_boundary.import_candidate` for execution, `admit` with the write-path filter for policy). A policy
 contract says the epilogue publishes the files left in the write paths and no commit is needed. The engine runs `## Verification` in the epilogue for everyone.
 
-`partial` of a shaper stays the end of its iteration: the iteration fails, no retry, and `tasks.json` is not read
-(`after_session` loads the graph only on `done`). The old cause, a prompt demanding a shell the shaper lacks, is
-removed instead of adding a retry or a graph load that would turn a real shortfall into success. Covered by
+A shaper reporting `partial` fails the iteration without retry; `after_session`
+reads its graph only on `done`. Covered by
 `ShaperFailureTest.test_partial_ends_the_iteration_and_the_graph_is_not_read` and
 `InputBoundaryTest.test_a_session_without_a_shell_is_not_told_to_branch_commit_or_run_commands`.
 
@@ -115,6 +145,33 @@ A session sees a secret only when the owner approved its name for that task. Thr
 The GitHub token never reaches the agent. `gate.env_passthrough` in `engine.yml` is a separate owner list for the gate
 command only, never for an agent.
 
-Script roles launch no model and incur no instruction tokens. They receive staged data
-files and their configured command, without a protocol copy. Existing custom role
-skills must replace references to `.session/protocol.md` when updating a loop.
+Script roles receive staged data and their configured command, without a protocol
+copy. Existing custom role skills must replace references to `.session/protocol.md`
+when updating a loop.
+
+## Session lifecycle and outputs
+
+`session.yml` runs `prep` (guard, credential probe, resolve), then the session job:
+trusted engine and worker checkouts, `.github/loop/prepare.sh`, staging, role
+execution and epilogue. The agent has no GitHub token, `gh` or push rights. The
+trusted checkout is removed while it works. Both layers publish final file bytes
+against their staged baseline as described above; the engine does not read worker
+commits or execute worker Git.
+
+The [session protocol](../../.github/loop/session-protocol.md) defines input/output
+files, statuses and report field ownership. Agent and script roles use the same
+file interfaces; scripts launch no model and consume no instruction tokens.
+`timeout` and `--max-turns` enforce time and turn ceilings. Tokens are recorded,
+not budgeted; the engine has no money limit. Policymaker tuning in
+`policy/params.yml` also respects owner ceilings in `engine.yml`.
+
+Files over `large_file_bytes` and binaries go in `.session/artifacts/`; the epilogue
+uploads release assets to `iter-NNNN` and lists them in the report. Consumers name
+them in `inputs`. Raw session streams use artifact `stream-NNNN-<issue>` and
+`stream_retention_iterations` retention (default 8); upload failure does not fail
+the session. [Exports](session-exports.md) defines selectors and audit defaults.
+
+The shipped model integration uses `CLAUDE_CODE_OAUTH_TOKEN`, the watchdog probe
+and subscription-limit parking/reset. A provider change affects `session.yml`,
+`watchdog.yml`, `agent.sh`, the probe in `common.py` and `stream_filter.py`. Setup
+must implement and check equivalents or record the guarantees the owner gives up.

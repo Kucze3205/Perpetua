@@ -355,7 +355,8 @@ def begin_work(n, it):
     from loop import apply_policy
 
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
-    orders = apply_policy()
+    policy_orders, implementation_orders = split_orders(orders_of(apply_policy()))
+    orders = policy_orders + implementation_orders
     if policymaker_failures() >= 2:
         revert_policy("two Policymaker sessions in a row failed")
     store_state(it, build_state(n))
@@ -455,6 +456,17 @@ def read_orders(p):
     pre = "order-%s-" % p
     return [dict(o, id=pre + str(o.get("id")), blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
             for o in (tasks if isinstance(tasks, list) else []) if isinstance(o, dict)]
+
+
+def orders_of(sessions):
+    """The orders the given finished Policymaker sessions left, in the order of the sessions."""
+    return [o for p in sessions for o in read_orders(p)]
+
+
+def split_orders(orders):
+    """Orders by layer: (policy-layer roles, implementation-layer roles)."""
+    layer = c.cfg()["policymaker_only_roles"]
+    return [o for o in orders if o.get("role") in layer], [o for o in orders if o.get("role") not in layer]
 
 
 def place_orders(n, it, orders):

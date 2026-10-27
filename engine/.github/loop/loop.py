@@ -197,12 +197,7 @@ def session_contract(role, profile, labels):
     else:
         parts.append("You have no shell and cannot run commands. `done` means the requested files "
                      "are written; the engine runs verification.")
-    if session_inputs.restricted(role):
-        parts.append("Do not create a branch or commit: the engine imports the files you wrote, "
-                     "not your commits.")
-    else:
-        parts.append("The epilogue publishes the files you leave in your write paths, as they are when the session "
-                     "ends. No commit is needed.")
+    parts.append("Do not create a branch or commit: the engine imports the files you wrote, not your commits.")
     return "\n\n".join(parts) + "\n"
 
 
@@ -413,23 +408,22 @@ def fetch_candidate(work, n):
     (short sha, protected paths the change touches). The branch goes to origin only when it touches none: GitHub refuses
     a token's push of workflow files, and such a change is refused at merge anyway."""
     trusted = os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "trusted")
-    executor, policy = (os.path.join(trusted, name) for name in ("executor-baseline.json", "policy-baseline.json"))
+    baseline = os.path.join(trusted, "executor-baseline.json")
     ref = "refs/heads/task/%s" % n
     try:
-        if os.path.isfile(executor):
-            with open(executor, encoding="utf-8") as fh:
-                executor_boundary.import_candidate(work, json.load(fh), ".", ref)
-        elif os.path.isfile(policy):
-            with open(policy, encoding="utf-8") as fh:
-                meta = json.load(fh)
-            # A new path outside the role's write paths is environment debris (CLI stubs, runner home files, IDE
-            # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
-            write = profile_of(c.roles_of(c.label_names(c.issue(n)))[0]).get("write") or []
-            executor_boundary.admit(work, meta, ".", ref, "Policy session files admitted as data\n",
-                                    skip=lambda rel, tracked: not tracked and not c.path_match(rel, write))
-        else:
+        if not os.path.isfile(baseline):
             print("Required session admission metadata unavailable")
             return None, []
+        with open(baseline, encoding="utf-8") as fh:
+            meta = json.load(fh)
+        role = c.roles_of(c.label_names(c.issue(n)))[0]
+        skip = lambda rel, tracked: False
+        if not session_inputs.restricted(role):
+            # A new path outside a policy role's write paths is environment debris (CLI stubs, runner home files, IDE
+            # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
+            write = profile_of(role).get("write") or []
+            skip = lambda rel, tracked: not tracked and not c.path_match(rel, write)
+        executor_boundary.import_candidate(work, meta, ".", ref, skip)
     except (ValueError, OSError, subprocess.SubprocessError):
         print("Session output could not be admitted safely")
         return None, []

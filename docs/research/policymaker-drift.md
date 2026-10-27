@@ -56,16 +56,25 @@ worth its cost" for a two-file goal). That last call is the one the skill asks f
    read-only audit 60 min and 80 turns, while the audit profile allows 10 min and 30 turns; #138 flagged the
    mismatch.
 3. **Reports claim work that never landed.** #99, #127, #137 and #160 reported `done` and "working memory updated",
-   but never ran `git commit`. The contract says "Commit before ending the session" and the epilogue publishes only
-   committed changes, so each of those memory updates was lost. Neither the engine nor the next Policymaker noticed.
-   4 out of 8 sessions on the current skill lost their memory this way. That memory is what a multi-pass policy
-   phase relies on.
-4. **The Policymaker watches loop health, not the goal.** In #160, the previous iteration had been accepted and
-   `improved`. The Policymaker concluded "the loop is progressing … iteration 0008 proceeds on the current policy",
-   even though the goal was already met. The shaper #161 noticed and asked the owner
-   ([#162](https://github.com/Kucze3205/Perpetua/issues/162)). In no run was the gate accepted. Each Policymaker noted
-   this, and none filed a request: "that needs an owner decision, not a request from me now" (#160, likewise #147 and
-   #155). Without an accepted gate, the loop cannot decide on its own that it is done.
+   but never ran `git commit`. That is 4 of the 7 sessions on the current skill. The epilogue publishes only committed
+   changes, so each of those memory updates was lost. Neither the engine nor the next Policymaker noticed. That memory
+   is what a multi-pass policy phase relies on.
+
+   Cause: the model skipped the last step; nothing blocked it. None of the four sessions attempted a commit.
+   `Bash(git:*)` was allowed, and the same command went through in #116, #147 and #155. Early permission denials (a
+   `cat >` or `printf >` redirect) are not the cause either: #147 had one and still committed, while #137 had none and
+   did not.
+
+   Part of this is specific to the test, part is not:
+   - **Engine, same on `main`:** only policy-layer roles (Policymaker, audit, evaluator) must commit on their own.
+     For execution roles the engine imports the written files itself
+     ([session_inputs.py:11](../../engine/.github/loop/session_inputs.py#L11),
+     [loop.py:200-205](../../engine/.github/loop/loop.py#L200-L205)), and no worker or orchestrator in the data ran
+     `git commit`. The commit rule is a single line at the end of the contract ("Commit before ending the session"),
+     and nothing checks for uncommitted changes. A forgotten commit therefore ends silently as `done`.
+   - **Test only:** the Policymaker ran on Haiku 5.5 with `low` effort and 30 turns. The default is Opus 5.5 with
+     `high` effort and 150 turns ([engine/policy/params.yml](../../engine/policy/params.yml)). The 4/7 rate belongs to
+     Haiku. There is no data on how often Opus forgets.
 
 ## Risk 3: same response to repeated `inconclusive` or no progress. No data.
 
@@ -76,13 +85,13 @@ No run produced either signal.
 - The environment focus in the skill needs no change: no drift was observed. The duration of the environment phase
   over many iterations remains unverified.
 - Risk 2 is real, but its causes are narrower than "the Policymaker lacks commitment to the goal":
-  - **Engine:** a session can report `done` with uncommitted changes in its writable paths (item 3). This is the most
-    important finding: it silently breaks memory continuity, and a multi-pass phase would make that worse. The
-    epilogue should detect it and downgrade the status, or reject the report.
+  - **Engine:** a policy-layer session can report `done` with uncommitted changes in its writable paths (item 3). This
+    is the most important finding: it silently breaks memory continuity, and a multi-pass phase would make that worse.
+    The mechanism does not depend on the model, only the frequency does. Two ways to fix it: import the files the
+    session wrote, as is already done for execution roles, or have the epilogue detect a dirty tree and downgrade the
+    status.
   - **Skill:** "State expected effects in your report" yields descriptions of the process. Require instead that each
-    order name the gain it expects toward the goal, and how the next pass will check that gain. Also have the
-    Policymaker check whether the goal is already met, and file an owner request when the gate is not accepted
-    (items 1 and 4).
+    order name the gain it expects toward the goal, and how the next pass will check that gain (item 1).
   - **Evaluator:** none of the findings point at it.
 - The data does not support removing the pass limit. Keep a limit until a run with a non-trivial goal spans several
   iterations, including at least one with no progress, after the two fixes above are in.

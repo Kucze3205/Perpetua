@@ -1,0 +1,38 @@
+# Audit 0001: first environment audit (issue #138)
+
+Copy of `audit/0001.md`.
+
+## Measured facts
+
+- **Startup documents:** 3 declared, 3,860 bytes total (`.session/issue.md` 839, `.session/role/SKILL.md` 2980, `.session/exports/manifest.json` 41). Source: `.session/startup.json`.
+- **Startup token measure:** `unmeasured`. Detail: `ANTHROPIC_API_KEY is not configured for trusted staging`. Limit 100,000. No token count exists for this session, so the budget check could not be performed. Source: `.session/startup.json`.
+- **Exports:** none. `.session/exports/manifest.json` has `results: []`; the task has `exports: []`.
+- **History:** `.session/history/manifest.json` reports scope "task-selected inputs", `records: 0`, `report_snapshots: 0`.
+- **Streams:** `.session/streams/` does not exist. No raw session streams are staged, so no tool-call, token or turn measures can be derived.
+- **Iteration records:** `iterations/` holds one directory, `0005/`, containing only `tasks.json` (one task, `order-137-first-audit`, role `audit`, no blockers, limits 60 min / 80 turns). No `iterations/NNNN.json` record exists yet.
+- **Git history:** 6 commits on the checkout (`git log --oneline`).
+- **Engine:** `ENGINE_VERSION` 0.5.0; `engine.yml` `cli_version` 2.1.303; `idle_resumes: 3`; `startup_token_warning: 100000`; `stream_retention_iterations: 8`; `gate` = `bash policy/evaluator/gate.sh`.
+- **Substrate offered, per `engine.yml`:** `cadence.min_interval_minutes: 1000000`, `daily_iterations: null`. Parallelism settings are not set in `engine.yml`; `params.yml` has `no_progress_iterations: null`, `quiet_minutes: null`.
+- **Configured ceilings:** `policy/params.yml` `ceilings`: `job_minutes: 240`, `iteration_minutes: 60`, `max_turns: 150`.
+
+## Configuration mismatches (observations, not applied)
+
+- The audit profile in `policy/profiles.yml` sets `max_turns: 30` and `timeout_minutes: 10`, `effort: low`. The task `iterations/0005/tasks.json` sets `max_turns: 80` and `timeout_minutes: 60`. The task limits exceed the profile values. Which one governs is not stated in the files read.
+- `policy/params.yml` `models.default` and `policymaker_session.model` are `claude-haiku-5-5`, the same model as this session. No Opus-class session is configured.
+
+## What could not be measured
+
+- Token and cost-unit per role and model: no streams, no records, and no API key for the startup measure.
+- Context fill and wall time per step: no `iterations/NNNN.json` and no Actions timing export.
+- Where the loop waits (queue, gate, parked): no timing data staged.
+- Parallelism used: no records.
+
+## Proposals for the Policymaker
+
+1. Decide which turn/timeout limits govern the audit role: the profile (30 turns, 10 min) or the task (80 turns, 60 min). Expected effect: removes ambiguity in budgets; no measured number yet, so this is a decision point, not a tuning change.
+2. Provide `ANTHROPIC_API_KEY` for trusted staging so the startup token measure can be taken. Expected effect: the 100,000-token warning can be checked against the measured value instead of remaining `unmeasured`.
+3. Stage session streams for the next audit (the legacy window is the current iteration and three predecessors). Expected effect: first measures of tokens per role and model.
+
+## Scripts
+
+None added. No metric was mechanical enough to script with one iteration and no streams.

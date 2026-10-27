@@ -1,0 +1,18 @@
+[
+ {
+  "id": "order-116-first-audit",
+  "title": "First environment audit of the loop",
+  "role": "audit",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nMeasure the loop environment once and report findings: the layout of `execution/` and `policy/`, which roles and profiles exist, and what the trusted startup budget and params look like.\n## Acceptance\n- [ ] Audit report lists the roles under `execution/roles` and `policy/roles` with their profiles.\n- [ ] Audit report states the startup budget status from `.session/startup.json` (currently unmeasured).\n- [ ] Findings are reported only; no files under `execution/` or `policy/` are changed.\n## Verification\n`test -s audit/latest.md || test -s .session/report.md`\n## Context\n- link: policy/params.yml, policy/profiles.yml, execution/profiles.yml: current parameters and profiles to measure\n- link: .session/startup.json: unmeasured budget notice to report on\n## Budget\n- policy/ and execution/ read-only; the goal (src/greeting.txt, src/farewell.txt) is not part of this task",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 30,
+   "max_turns": 40
+  },
+  "inputs": [],
+  "issue": 117
+ }
+]

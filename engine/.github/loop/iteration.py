@@ -355,8 +355,7 @@ def begin_work(n, it):
     from loop import apply_policy
 
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
-    policy_orders, implementation_orders = split_orders(orders_of(apply_policy()))
-    orders = policy_orders + implementation_orders
+    orders = orders_of(apply_policy())
     if policymaker_failures() >= 2:
         revert_policy("two Policymaker sessions in a row failed")
     store_state(it, build_state(n))

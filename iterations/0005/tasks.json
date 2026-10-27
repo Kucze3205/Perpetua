@@ -13,5 +13,39 @@
   "inputs": [],
   "exports": [],
   "issue": 138
+ },
+ {
+  "id": "greeting-file",
+  "title": "Write src/greeting.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate the file `src/greeting.txt` containing the single line `hello from perpetua`. Create nothing else. Report, do not add other files.\n## Acceptance\n- [ ] `src/greeting.txt` exists and its only line is `hello from perpetua`\n- [ ] no other file is created or changed\n## Verification\n`test \"$(cat src/greeting.txt)\" = \"hello from perpetua\"`\n## Context\n- goal: `.session/loop-state.json` field `goal.text`, the full goal for this iteration\n## Budget\n- `src/greeting.txt` (new file, the only file to write)",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 15,
+   "max_turns": 10
+  },
+  "inputs": [],
+  "exports": [],
+  "issue": 140
+ },
+ {
+  "id": "farewell-file",
+  "title": "Write src/farewell.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate the file `src/farewell.txt` containing the single line `goodbye from perpetua`. Create nothing else. Report, do not add other files.\n## Acceptance\n- [ ] `src/farewell.txt` exists and its only line is `goodbye from perpetua`\n- [ ] no other file is created or changed\n## Verification\n`test \"$(cat src/farewell.txt)\" = \"goodbye from perpetua\"`\n## Context\n- goal: `.session/loop-state.json` field `goal.text`, the full goal for this iteration\n## Budget\n- `src/farewell.txt` (new file, the only file to write)",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 15,
+   "max_turns": 10
+  },
+  "inputs": [],
+  "exports": [],
+  "issue": 141
  }
 ]

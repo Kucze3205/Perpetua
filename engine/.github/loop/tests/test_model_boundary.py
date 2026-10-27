@@ -1,8 +1,8 @@
 """Linux namespace evidence; surrogate CLI tests are NOT provider evidence.
 
-Run on a non-root Linux host with bubblewrap, socat, the pinned native Claude
-CLI, and PYTHONPATH=.github/loop (from engine):
-    python3 -m unittest discover -s .github/loop/tests -p test_model_boundary.py -v
+Host requirements: https://github.com/Kucze3205/Perpetua/blob/main/.github/workflows/engine-tests.yml
+Run alone:
+    python3 -m unittest discover -s engine/.github/loop/tests -p test_model_boundary.py -v
 The provider matrix opts in only with LOOP_NETWORK_INTEGRATION=1 and an existing
 CLAUDE_CODE_OAUTH_TOKEN supplied by the credential manager. It sends synthetic
 temporary files, never the checkout. A quota/auth failure is a failure, not a skip
@@ -19,9 +19,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import executor_boundary as boundary
-import session_security as security
 LOOP_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(LOOP_DIR))
+
+import executor_boundary as boundary  # noqa: E402
+import session_security as security  # noqa: E402
 
 
 @unittest.skipUnless(sys.platform == "linux" and shutil.which("bwrap"), "requires Linux bubblewrap")

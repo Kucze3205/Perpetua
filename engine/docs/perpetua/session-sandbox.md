@@ -70,8 +70,7 @@ It first checks host internet, then requires a successful model result and a pro
 file written by its Bash/Python subprocess with blocked HTTP, IPv4, and loopback
 connections. This live check is skipped on other hosts or without explicit opt-in.
 
-Run `test_model_boundary.py` separately on non-root Linux with the pinned native
-CLI, bubblewrap and socat. Its local tests check namespace access, useful online
+Run `test_model_boundary.py` separately (host requirements: [validation](validation.md)). Its local tests check namespace access, useful online
 connectivity and credential-free native startup. With the same explicit opt-in
 and credential, its provider matrix requires actual Read, Glob, Grep and Bash
 tool calls in online and offline sessions, denied policy reads and a useful work

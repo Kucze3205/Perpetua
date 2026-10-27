@@ -1,0 +1,12 @@
+{
+ "diagnostics": [],
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/100\niteration: 2\nrunner: Linux\ncause: terminal_reason=completed\nturns: 11\npeak_context: 18539\ntokens_in: 12\ntokens_out: 3473\ncache_read: 81965\ncache_write: 14721\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":81965,\"cache_write\":14721,\"in\":12,\"out\":3473}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 20\ntotal_s: 46\ncommit: 07416c4\nmerged: true\nstatus: done\n```\nShaped iteration 0002 as two independent `worker` tasks, one per file the goal names:\n\n- `write-greeting`: creates `src/greeting.txt` with `hello from perpetua`.\n- `write-farewell`: creates `src/farewell.txt` with `goodbye from perpetua`.\n\nWhy two tasks: the worker profile writes one small file per task, and the paths are disjoint, so there is no `blocked_by` and no merge conflict. Both use the default model at low effort. Limits are 15 minutes and 10 turns, well under the ceilings.\n\nEach task has a `test` command as its `## Verification`, so the epilogue can check the exact content.\n\nNo prior journal, iterations or report snapshots exist, so this is the first iteration and nothing was compared against history. `startup.json` is `unmeasured` because the trusted staging has no `ANTHROPIC_API_KEY`; this did not block the shaping.\n\nJournal: `journal/0002.md` with the five sections and a State of a few lines.\n\n## What next\nNothing is deferred. The next orchestrator should read the outcome of both tasks. If both verifications pass, the goal is met in the work itself, but `gate_accepted` is false and there is no gate, so the owner decides on any goal gate.\n",
+  "comment": 6438187706,
+  "issue": 100,
+  "snapshot": "f1052c119aea660d04d1713eae5bde13c52646d584860d8b3e47cd1ce9865366",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/100#issuecomment-6438187706"
+ },
+ "schema_version": 1,
+ "suggestions": []
+}

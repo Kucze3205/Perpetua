@@ -9,8 +9,13 @@ import managed_resources as resources
 ROOT = "iterations/changes"
 
 
-def path(issue):
-    return "%s/change-%s.json" % (ROOT, issue)
+def change_id(issue, k=1):
+    """The first pass of a Policymaker session keeps the session's plain id; later passes add theirs."""
+    return "change-%s" % issue + ("-%s" % k if k > 1 else "")
+
+
+def path(issue, k=1):
+    return "%s/%s.json" % (ROOT, change_id(issue, k))
 
 
 def read(filename):
@@ -38,7 +43,7 @@ def association(i):
             "effective_from_iteration": applied if applied is not None else max(closed, default=-1) + 1}
 
 
-def receipt(cand, n, role, i, session_base, baseline, candidate, changed, verifier=None):
+def receipt(cand, n, role, i, session_base, baseline, candidate, changed, verifier=None, k=1):
     """Add a receipt after the checked code commit, before the atomic push of both commits.
 
     accepted_commit names the code commit. The following engine-only receipt commit does
@@ -46,7 +51,7 @@ def receipt(cand, n, role, i, session_base, baseline, candidate, changed, verifi
     """
     if not any(resources.is_managed(p) for p in changed):
         return None
-    record = dict(schema_version=1, id="change-%s" % n, issue=n, role=role,
+    record = dict(schema_version=1, id=change_id(n, k), issue=n, role=role,
                   base_commit=session_base, applied_base_commit=baseline, accepted_commit=candidate,
                   policy_rev_before=resources.revision(baseline, cand),
                   policy_rev_after=resources.revision(candidate, cand),
@@ -54,12 +59,12 @@ def receipt(cand, n, role, i, session_base, baseline, candidate, changed, verifi
                   evaluator_rev_after=evaluator_rev(candidate, cand),
                   changed_paths=changed, applied_at=c.iso(), verifier_issue=verifier,
                   **association(i))
-    dest = os.path.join(cand, path(n))
+    dest = os.path.join(cand, path(n, k))
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     with open(dest, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(record, fh, indent=1, ensure_ascii=False)
         fh.write("\n")
-    c.git(cand, "add", "-f", "--", path(n))
+    c.git(cand, "add", "-f", "--", path(n, k))
     c.git(cand, "commit", "-q", "-m", "Record accepted change of session #%s" % n)
     return record
 

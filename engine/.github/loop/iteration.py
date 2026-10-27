@@ -27,6 +27,8 @@ REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "res
 SESSION_KINDS = ("goal-gate", "goal-change", "question") + requests.KINDS
 STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
+HELD_MARK = "<!-- policymaker-held-orders -->"
+PASS_MARK = "<!-- policymaker-pass -->"
 HANDLED = "request:handled"
 
 
@@ -265,12 +267,13 @@ def store_state(it, state, mark=STATE_MARK):
     c.post_comment(it, "%s\n```json\n%s\n```\n" % (mark, json.dumps(state, indent=1, ensure_ascii=False)))
 
 
-def read_state(it, mark=STATE_MARK):
-    for x in c.comments(it):
-        if x["body"].startswith(mark) and c.trusted(x):
-            m = re.search(r"```json\n(.*?)\n```", x["body"], re.S)
-            return json.loads(m.group(1)) if m else None
-    return None
+def read_state(it, mark=STATE_MARK, last=False):
+    """The first stored state with this mark, or the last one."""
+    found = [x for x in c.comments(it) if x["body"].startswith(mark) and c.trusted(x)]
+    if not found:
+        return None
+    m = re.search(r"```json\n(.*?)\n```", found[-1 if last else 0]["body"], re.S)
+    return json.loads(m.group(1)) if m else None
 
 
 def export_state(n, directory, role=None, full_history=True):
@@ -282,6 +285,8 @@ def export_state(n, directory, role=None, full_history=True):
         it = find_iteration_issue(k, state="all") if k is not None else None
         state = read_state(it["number"]) if it else None
     os.makedirs(directory, exist_ok=True)
+    if state is not None and role == "policymaker" and (passed := read_state(n, PASS_MARK, last=True)):
+        state = dict(state, policy_pass=passed)
     if state is not None:
         import session_inputs
         if role and session_inputs.restricted(role):
@@ -317,8 +322,8 @@ def cadence_ok():
 
 def start_iteration():
     """Begin the next iteration if none is open. The policy layer goes first: a due Policymaker session opens the
-    iteration and the iteration waits for it; its changes and orders hold from this iteration on. Serial by
-    construction: one open iteration at most."""
+    iteration and the iteration waits for it, and for the policy-layer work it orders, before the execution phase.
+    Serial by construction: one open iteration at most."""
     if not c.guard_ok() or c.outage_open():
         return None
     c.sync_main()
@@ -350,12 +355,13 @@ def start_iteration():
 
 
 def begin_work(n, it):
-    """The policy layer is settled: merge what the Policymaker finished, then the shaper and the Policymaker's orders
-    make the tasks. A Policymaker that failed twice in a row is reverted: the iteration runs on the last good policy."""
+    """The execution phase: the policy phase is over. The shaper and the Policymaker's implementation-layer orders (held
+    from every pass) make the tasks. A Policymaker that failed twice in a row is reverted: the iteration runs on the last
+    good policy."""
     from loop import apply_policy
 
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
-    orders = orders_of(apply_policy())
+    orders = held_orders(it) + orders_of(apply_policy())      # apply_policy: a session left over from an earlier iteration
     if policymaker_failures() >= 2:
         revert_policy("two Policymaker sessions in a row failed")
     store_state(it, build_state(n))
@@ -366,6 +372,73 @@ def begin_work(n, it):
     if not (orders and place_orders(n, it, orders)):
         return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks")
     c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(orders), "width": width(orders)})
+
+
+def held_orders(it):
+    """The implementation-layer orders the policy phase's passes held, in the order of the passes."""
+    held = {}
+    for x in c.comments(it):
+        if x["body"].startswith(HELD_MARK) and c.trusted(x) and (m := re.search(r"```json\n(.*?)\n```", x["body"], re.S)):
+            doc = json.loads(m.group(1))
+            held[doc["pass"]] = doc["tasks"]
+    return [o for k in sorted(held) for o in held[k]]
+
+
+def policy_pass(n, it):
+    """A Policymaker pass is over: merge its changes, hold its implementation-layer orders and start its policy-layer
+    orders. The issue waits for them; a pass that ordered no policy-layer work ends the policy phase."""
+    from loop import apply_policy
+    placed = {}
+
+    def settle(p):
+        orders = read_orders(p)
+        taken = {t["id"] for t in read_json(tasks_path(n)) or []} | {o["id"] for o in held_orders(it)}
+        errs = validate_tasks({"tasks": orders}, ordered=True, taken=taken) if orders else []
+        if errs:
+            c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
+            return False
+        now, later = split_orders(orders)
+        if later:
+            ids = {o["id"] for o in now}
+            store_state(it, {"pass": policy_pass_of(p), "tasks": [dict(o, blocked_by=[d for d in o["blocked_by"] if d not in ids]) for o in later]}, HELD_MARK)
+        placed[p] = now
+        return bool(now)
+    waiting = False
+    for p in apply_policy(settle):
+        if placed.get(p):
+            numbers = create_tasks(n, placed[p])
+            c.update_report(p, {"ordered": " ".join(map(str, numbers))})
+            for num in numbers:
+                c.launch(num)
+            waiting = True
+    if not waiting:
+        begin_work(n, it)
+
+
+def policy_pass_of(p):
+    """The pass the Policymaker session on issue p is on: the first until the engine relaunches it."""
+    return int(c.report_fields(p).get("pass") or 1)
+
+
+def orders_ended(p):
+    return all(c.issue(int(x))["state"] == "closed" for x in (c.report_fields(p).get("ordered") or "").split())
+
+
+def resume_policymaker(p):
+    """Every session the pass ordered has ended, in any status: the same issue runs again, with a fresh agent context, on
+    its branch brought to what has merged, and sees how its orders ended."""
+    f = c.report_fields(p)
+    k = policy_pass_of(p) + 1
+    ordered = [{"issue": int(x), "role": (c.roles_of(c.label_names(c.issue(int(x)))) or [""])[0],
+                "status": c.report_fields(int(x)).get("status")} for x in (f.get("ordered") or "").split()]
+    store_state(p, {"pass": k, "ordered": ordered}, PASS_MARK)
+    spent = ("status", "commit", "fixes", "merged", "verdict", "improved", "detail", "verifier_issue", "verified_commit",
+             "verifier_passed", "owner_accepted", "owner_accepted_commit", "ordered")
+    c.update_report(p, dict({x: None for x in spent}, **{"pass": k}), "Pass %s: the ordered sessions ended, the Policymaker runs again." % k)
+    c.sync_main()
+    c.git(".", "push", "-q", "-f", "origin", "origin/%s:refs/heads/task/%s" % (c.default_branch(), p), remote=True)
+    c.edit_labels(p, remove=["awaiting:orders"])
+    c.launch(p)
 
 
 def policy_settled(n):
@@ -437,22 +510,24 @@ def policymaker_due(n):
 
 
 def start_policymaker(n, why):
-    """A Policymaker session that opens iteration n: the iteration waits for it, and what it changes and orders holds
-    in that iteration."""
+    """A Policymaker session that opens iteration n: the iteration's policy phase. The iteration waits for it and for the
+    policy-layer sessions it orders; all its passes are this one issue."""
     p = c.create_issue("Policymaker at the start of iteration %s" % tag(n),
                        "Runs because: %s. Change `policy/` and `execution/` where needed; order work in `.session/orders.json`.\n\n"
-                       "Input: `.session/loop-state.json`. Rules: `.session/policymaker.md`. Iteration %s waits for you: your changes "
-                       "and orders hold in it.\n" % (why, tag(n)), labels=("role:policymaker", c.ITER + str(n)))
+                       "Input: `.session/loop-state.json`. Rules: `.session/policymaker.md`. Iteration %s waits for you; "
+                       "orders of policy-layer roles start when you finish, and you run again when they end.\n" % (why, tag(n)), labels=("role:policymaker", c.ITER + str(n)))
     store_state(p, dict(build_state(n), trigger=why))
     c.launch(p)
     return p
 
 
 def read_orders(p):
-    """The orders a finished Policymaker session left, ids made unique across sessions: `order-<issue>-<id>`."""
-    raw = read_state(p, ORDERS_MARK)
+    """The orders the latest pass of a Policymaker session left, ids made unique across sessions and passes:
+    `order-<issue>-<id>`, and from the second pass `order-<issue>-<pass>-<id>`."""
+    raw = read_state(p, ORDERS_MARK, last=True)
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
-    pre = "order-%s-" % p
+    k = raw.get("pass", 1) if isinstance(raw, dict) else 1
+    pre = "order-%s-%s" % (p, "%s-" % k if k > 1 else "")
     return [dict(o, id=pre + str(o.get("id")), blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
             for o in (tasks if isinstance(tasks, list) else []) if isinstance(o, dict)]
 
@@ -469,7 +544,7 @@ def split_orders(orders):
 
 
 def place_orders(n, it, orders):
-    """The Policymaker's orders become tasks of iteration n, running beside the shaper and its graph. True when placed."""
+    """The Policymaker's held implementation-layer orders become tasks of iteration n, running beside the shaper and its graph. True when placed."""
     errs = validate_tasks({"tasks": orders}, ordered=True)
     if errs:
         c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
@@ -716,8 +791,12 @@ def advance():
         if not pending:
             close_iteration(n, "closed")
     elif phase == "policy":
-        if policy_settled(n):
-            begin_work(n, it["number"])
+        p = int(f["policy_issue"])
+        if "awaiting:orders" in c.label_names(c.issue(p)):
+            if orders_ended(p):
+                resume_policymaker(p)
+        elif policy_settled(n):
+            policy_pass(n, it["number"])
     elif phase == "starting":
         pass
     return n
@@ -733,6 +812,9 @@ def fail_iteration(n, why):
                         c.cancel_run(r["databaseId"])
                 c.update_report(x["number"], {"status": "crashed", "cause": "iteration-failed"}, why)
                 c.close_issue(x["number"], "not planned")
+        from loop import close_out
+        for x in c.list_issues(labels=("role:policymaker", "awaiting:orders")):       # no one would relaunch it
+            close_out(x["number"], x, "crashed", {"cause": "iteration-failed"}, why)
         close_iteration(n, "failed", why)
 
 

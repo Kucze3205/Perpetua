@@ -541,11 +541,8 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                     res["verdict"] = override
                 else:
                     t0 = time.time()
-                    listing = os.path.join(cand, "..", "changed.txt")
-                    with open(listing, "w", encoding="utf-8", newline="\n") as fh:
-                        fh.write("\n".join(changed) + "\n")
                     v = it.run_gate(cand, os.path.abspath("."), {"candidate_sha": c.head(cand), "baseline_sha": c.head("."),
-                                                                  "changed_file": os.path.abspath(listing), "task": n,
+                                                                  "changed": changed, "task": n,
                                                                   "iteration": c.iteration_of(c.label_names(i)) or 0})
                     res["gate_s"] = int(time.time() - t0)
                     res["verdict"] = v

@@ -1,0 +1,36 @@
+# The one tokenless job: no permissions, no GitHub secret. It downloads the bundle artifact, runs `run.sh` from it
+# and uploads what the command printed. The caller validates the outputs as data.
+name: tokenless-job
+
+on:
+  workflow_call:
+    inputs:
+      key:
+        type: string
+        required: true
+      timeout_minutes:
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions: {}
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ inputs.key }}
+          path: bundle
+      - run: |
+          mkdir out
+          set +e
+          bash bundle/run.sh > out/stdout.txt 2> out/stderr.txt
+          echo $? > out/exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ inputs.key }}
+          path: out

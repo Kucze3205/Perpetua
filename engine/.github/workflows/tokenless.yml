@@ -1,0 +1,44 @@
+# Runs one command on data, on a machine that holds no GitHub token (ADR-0006). The engine pushes a bundle to the
+# branch `tokenless/<key>` and dispatches this workflow; the bundle's `run.sh` runs in `tokenless-job.yml`
+# (`permissions: {}`) and its outputs come back as the artifact `result-<key>`. The first user is the change gate.
+name: tokenless
+run-name: "tokenless ${{ inputs.key }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      key:
+        description: Key of the bundle branch tokenless/<key>
+        required: true
+      timeout_minutes:
+        description: Time limit of the command
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    if: vars.AUTOPILOT == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tokenless/${{ inputs.key }}
+          path: bundle
+          persist-credentials: false
+      - run: rm -rf bundle/.git
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ inputs.key }}
+          path: bundle
+          include-hidden-files: true
+
+  run:
+    needs: stage
+    permissions: {}
+    uses: ./.github/workflows/tokenless-job.yml
+    with:
+      key: ${{ inputs.key }}
+      timeout_minutes: ${{ inputs.timeout_minutes }}

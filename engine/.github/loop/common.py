@@ -12,9 +12,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 
 import managed_resources as resources
@@ -292,6 +294,32 @@ def workflow_run(workflow, **inputs):
     for k, v in inputs.items():
         args += ["-f", "%s=%s" % (k, v)]
     gh(*args, check=False)
+
+
+def run_tokenless(bundle, timeout_minutes, poll=15):
+    """Run `bundle/run.sh` in the tokenless job (tokenless.yml, `permissions: {}`) and return the directory of its
+    outputs (`stdout.txt`, `stderr.txt`, `exit-code`), or None when the job left none. The bundle is a directory the
+    caller staged; it travels on a throwaway branch, which is data for the job, and is deleted afterwards."""
+    key = uuid.uuid4().hex[:12]
+    branch = "tokenless/%s" % key
+    git(bundle, "init", "-q", "-b", "bundle")
+    git(bundle, "add", "-A")
+    git(bundle, "commit", "-q", "-m", "bundle")
+    url = "https://github.com/%s.git" % REPO
+    git(bundle, "push", "-q", url, "HEAD:refs/heads/%s" % branch, remote=True)
+    out = os.path.join(bundle, "..", "tokenless-out-" + key)
+    try:
+        workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes)
+        deadline = time.time() + (timeout_minutes + 15) * 60
+        while time.time() < deadline:
+            time.sleep(poll)
+            run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == "tokenless %s" % key), None)
+            if run and run["status"] == "completed":
+                gh("run", "download", str(run["databaseId"]), "-n", "result-%s" % key, "-D", out, check=False)
+                return out if os.path.isdir(out) else None
+        return None
+    finally:
+        git(bundle, "push", "-q", url, "--delete", branch, check=False, remote=True)
 
 
 def run_list(workflow):

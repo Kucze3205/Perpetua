@@ -29,6 +29,7 @@ STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
 HELD_MARK = "<!-- policymaker-held-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
+SEEN_MARK = "<!-- policymaker-audit-seen -->"
 HANDLED = "request:handled"
 
 
@@ -411,6 +412,8 @@ def policy_pass(n, it):
             for num in numbers:
                 c.launch(num)
             waiting = True
+        else:
+            store_state(p, {"audit_rev": audit_revision()}, SEEN_MARK)       # the audit it ordered and read is not new
     if not waiting:
         begin_work(n, it)
 
@@ -496,7 +499,7 @@ def policymaker_due(n):
         return "%s iterations without progress" % k
     sessions = c.list_issues(state="all", labels=("role:policymaker",))
     last = max(sessions, key=lambda x: x["number"], default=None)
-    state = (read_state(last["number"]) or {}) if last else {}
+    state = (read_state(last["number"], SEEN_MARK, last=True) or read_state(last["number"]) or {}) if last else {}
     audit = audit_revision()
     if audit and audit != state.get("audit_rev"):
         return "a new audit report"

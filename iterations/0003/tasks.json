@@ -14,5 +14,39 @@
   },
   "inputs": [],
   "issue": 117
+ },
+ {
+  "id": "greeting",
+  "title": "Write src/greeting.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate the file `src/greeting.txt` containing the single line `hello from perpetua`. Write only this file. Report, do not add anything else.\n## Acceptance\n- [ ] `src/greeting.txt` exists and its only line is `hello from perpetua`\n- [ ] no other file is created or changed\n## Verification\n`grep -qx \"hello from perpetua\" src/greeting.txt && [ \"$(wc -l < src/greeting.txt)\" -eq 1 ]`\n## Context\n- goal: the goal text in `.session/loop-state.json` (`goal.text`)\n## Budget\n- `src/greeting.txt` (new file)",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 15,
+   "max_turns": 20
+  },
+  "inputs": [],
+  "exports": [],
+  "issue": 119
+ },
+ {
+  "id": "farewell",
+  "title": "Write src/farewell.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate the file `src/farewell.txt` containing the single line `goodbye from perpetua`. Write only this file. Report, do not add anything else.\n## Acceptance\n- [ ] `src/farewell.txt` exists and its only line is `goodbye from perpetua`\n- [ ] no other file is created or changed\n## Verification\n`grep -qx \"goodbye from perpetua\" src/farewell.txt && [ \"$(wc -l < src/farewell.txt)\" -eq 1 ]`\n## Context\n- goal: the goal text in `.session/loop-state.json` (`goal.text`)\n## Budget\n- `src/farewell.txt` (new file)",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 15,
+   "max_turns": 20
+  },
+  "inputs": [],
+  "exports": [],
+  "issue": 120
  }
 ]

@@ -32,6 +32,10 @@ widest layer of the graph; it is computed, not a field. Tasks of the roles in `p
 Policymaker's orders, and the orders only of those roles: the engine refuses either the other way. Every task fits **one
 session**.
 
+`## Verification` is run by the session itself before it reports `done` and again by the engine afterwards, so it must be
+runnable with the role's tools. The default tools allow Bash only as `git …` or `python3 …`: write one such command, with no
+`$(…)`, pipes or `test`. Checking a file's content: `python3 -c "import sys; sys.exit(open('src/a.txt').read() != 'text\n')"`.
+
 To consume an artifact produced by another task in this graph, add
 `{"from": "producer-id", "name": "weights.bin"}` to `inputs` and the same
 `producer-id` to `blocked_by`. Define that producer in `tasks`; the dependency

@@ -281,5 +281,15 @@ class VerdictTest(unittest.TestCase):
         self.assertIsNone(it.parse_verdict("{broken"))
 
 
+class VerificationRulesTest(unittest.TestCase):
+    def test_the_session_may_run_its_own_one_line_verification(self):
+        body = '## Verification\n`test "$(cat a.txt)" = "x (1)"`\n## Context\n'
+        self.assertEqual(loop.verification_rules(body), [r'Bash(test "$\(cat a.txt\)" = "x \(1\)")'])
+
+    def test_no_rule_without_a_verification_or_for_a_multi_line_one(self):
+        self.assertEqual(loop.verification_rules("## Goal\nx"), [])
+        self.assertEqual(loop.verification_rules("## Verification\n```\na\nb\n```\n"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

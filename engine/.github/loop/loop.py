@@ -125,7 +125,7 @@ def session_options(i, role, p):
     fingerprint = {"profile": p, "limits": cfg["limits"], "cli_version": cfg["cli_version"], "gate": cfg["gate"],
                    "policymaker_session_ceilings": cfg.get("policymaker_session_ceilings")}
     return {"kind": "script" if p.get("agent") is False else "agent", "role": role,
-            "model": model, "effort": effort, "tools": ",".join(list(p.get("tools") or []) + ["Skill"]),
+            "model": model, "effort": effort, "tools": ",".join(list(p.get("tools") or []) + ["Skill"] + verification_rules(i["body"])),
             "max_turns": turns, "agent_timeout": timeout, "job_timeout": timeout + gate_min + 30,
             "iteration": "%04d" % (c.iteration_of(labels) or 0),
             "profile_digest": hashlib.sha256(json.dumps(fingerprint, sort_keys=True).encode()).hexdigest()}
@@ -442,11 +442,20 @@ def may_write(profile, path):
     return resources.may_write(profile, path)
 
 
+def verification_commands(body):
+    """Commands of `## Verification`: code blocks or backticked lines."""
+    text = c.section(body, "Verification")
+    return [x.strip() for x in re.findall(r"```[a-z]*\n(.*?)```", text, re.S)] or re.findall(r"`([^`\n]+)`", text)
+
+
+def verification_rules(body):
+    """Permission rules letting a session run its own verification exactly as the epilogue will (one-line commands)."""
+    return ["Bash(%s)" % re.sub(r"([\\()*])", r"\\\1", cmd) for cmd in verification_commands(body) if "\n" not in cmd]
+
+
 def run_verification(cand, body, role=None):
     """`## Verification` of the task: commands from code blocks or backticked lines. No secrets."""
-    text = c.section(body, "Verification")
-    cmds = [x.strip() for x in re.findall(r"```[a-z]*\n(.*?)```", text, re.S)] or re.findall(r"`([^`\n]+)`", text)
-    for cmd in cmds:
+    for cmd in verification_commands(body):
         r = (executor_boundary.run_candidate(cmd, cand) if role and session_inputs.restricted(role)
              else c.run_command(cmd, cand))
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))

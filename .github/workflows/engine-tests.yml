@@ -24,6 +24,12 @@ jobs:
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
+          # Ubuntu 26.04 confines nested bwrap through this profile even with
+          # the user-namespace sysctl disabled. This disposable test runner
+          # needs nesting for the real CLI sandbox test.
+          if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
+            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+          fi
           version=$(python3 -c "import yaml; print(yaml.safe_load(open('engine/engine.yml'))['cli_version'])")
           curl -fsSL https://claude.ai/install.sh | bash -s "$version"
           sudo install -m 755 "$(readlink -f "$HOME/.local/bin/claude")" /usr/local/bin/claude

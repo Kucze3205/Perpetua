@@ -1,0 +1,12 @@
+{
+ "diagnostics": [],
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/138\niteration: 5\nrunner: Linux\ncause: terminal_reason=completed\nturns: 16\npeak_context: 26776\ntokens_in: 20\ntokens_out: 6513\ncache_read: 186685\ncache_write: 21696\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":186685,\"cache_write\":21696,\"in\":20,\"out\":6513}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 40\ntotal_s: 65\ncommit: b592f1e\nmerged: true\nstatus: done\n```\nFirst environment audit (#138) written to `audit/latest.md` (copy of `audit/0001.md`).\n\nMeasured facts, with sources in `.session/startup.json`, `.session/history/manifest.json`, `iterations/0005/tasks.json` and `engine.yml`:\n- Three startup documents, 3,860 bytes total. Token measure is `unmeasured`: `ANTHROPIC_API_KEY` is not configured for trusted staging.\n- No exports, no history records, no staged streams, no `iterations/NNNN.json` record. Only `iterations/0005/tasks.json` exists.\n- Audit limits differ: profile 30 turns / 10 min (`policy/profiles.yml`) vs task 80 turns / 60 min (`iterations/0005/tasks.json`).\n\nNot measured: tokens per role and model, context fill, step wall time, loop waiting, parallelism. Reasons: no streams, no records, no API key.\n\nProposals for the Policymaker are in `audit/0001.md` under \"Proposals\": decide which audit limits govern, provide the API key for the startup measure, and stage streams for the next audit.\n\nNo managed definitions were changed. Only `audit/` was written. No scripts were added.\n\n## Discoveries\n- The audit profile and the task limits disagree on turns and timeout; see `audit/0001.md`.\n",
+  "comment": 6443084537,
+  "issue": 138,
+  "snapshot": "fc79082a043204759dceac25c9c076fa906b42128d78d477d6132602c985afb9",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/138#issuecomment-6443084537"
+ },
+ "schema_version": 1,
+ "suggestions": []
+}

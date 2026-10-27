@@ -54,5 +54,32 @@
     "sha256": "0cddcea1c9380cc513dd78f6893f32ed675f0b005f93614232fb4963e9d945c7"
    }
   ]
+ },
+ "audit": {
+  "status": "unmeasured",
+  "model": "claude-haiku-5-5",
+  "tokens": null,
+  "limit": 100000,
+  "detail": "ANTHROPIC_API_KEY is not configured for trusted staging",
+  "role": "audit",
+  "issue": 117,
+  "id": "startup-audit-117",
+  "largest_documents_by_bytes": [
+   {
+    "path": ".session/role/SKILL.md",
+    "bytes": 2980,
+    "sha256": "9abe6992a87c7246727567e26ca244dc2a151915cb9adb0d53db3bf373bdf7f0"
+   },
+   {
+    "path": ".session/exports/manifest.json",
+    "bytes": 2191,
+    "sha256": "faed8e1b96fa1f87f42bd156ccf604761397455cfc189665a35c3ca3b3e83c93"
+   },
+   {
+    "path": ".session/issue.md",
+    "bytes": 1179,
+    "sha256": "5bd2c34aec10fc3a071c8fb4494940fa7253b232feb56d5d82c5ba75fd51b813"
+   }
+  ]
  }
 }

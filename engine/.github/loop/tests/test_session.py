@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import sys
 import types
 import unittest
 from datetime import timedelta
@@ -365,6 +366,7 @@ class EpilogueTest(SessionCase):
         self.assertIsNone(self.w.origin_file("src/a.txt"))
         self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % n))
 
+    @unittest.skipUnless(sys.platform == "linux", "candidate verification requires Linux bubblewrap namespaces")
     def test_a_passing_verification_runs_in_the_candidate_tree(self):
         n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/a.txt`\n")
         self.w.session(n, files={"src/a.txt": "A"})

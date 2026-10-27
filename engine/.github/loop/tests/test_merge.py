@@ -1,4 +1,5 @@
 """The change gate and the merge, on real git repositories: what may enter the default branch and what may not."""
+import sys
 import unittest
 
 import fakes
@@ -76,6 +77,7 @@ class GateTest(MergeCase):
         finally:
             w2.close()
 
+    @unittest.skipUnless(sys.platform == "linux", "candidate check requires Linux bubblewrap namespaces")
     def test_a_passing_check_runs_in_the_candidate_tree(self):
         w2 = fakes.worker_world(SCRIPT_GATE + "check: 'test -f src/a.txt'\n")
         try:

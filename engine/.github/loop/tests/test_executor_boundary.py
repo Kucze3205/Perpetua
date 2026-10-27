@@ -338,9 +338,6 @@ class SandboxStubTest(sessions.SessionCase):
         work = self.work()
         trusted = os.path.join(self.w.tmp, "run", "trusted")
         os.environ["RUNNER_TEMP"] = os.path.dirname(trusted)
-        for root, _, names in os.walk(os.path.join(work, ".git")):  # Windows: prepare() removes the clone's read-only objects
-            for name in names:
-                os.chmod(os.path.join(root, name), 0o644)
         loop.stage(n, work, trusted)
         self.assertTrue(os.path.isfile(os.path.join(trusted, "executor-baseline.json")), "role is not executor-isolated")
         for name in self.STUBS:

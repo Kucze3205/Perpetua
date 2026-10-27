@@ -831,9 +831,9 @@ def hold_policymaker_output(n, work):
 
 
 def apply_policy():
-    """Before an iteration starts: merge the finished Policymaker sessions, oldest first, and return the orders of those
+    """Before an iteration starts: merge the finished Policymaker sessions, oldest first, and return the numbers of those
     that merged. An unmerged one counts as a failed Policymaker session."""
-    orders = []
+    merged = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
         fields = c.report_fields(x["number"])
         verified = resources.layered() and fields.get("verifier_passed") == "true"
@@ -867,12 +867,12 @@ def apply_policy():
             continue
         st, upd, pr = merge_outcome(r)
         if st == "done":
-            orders += it.read_orders(x["number"])
+            merged.append(x["number"])
             session_reports.apply_decisions(x["number"])
         else:
             tag_unmerged(x["number"], c.iteration_of(c.label_names(x)) or 0, {"commit": "x"})
         close_out(x["number"], x, st, upd, pr)
-    return orders
+    return merged
 
 
 def proposals(work, k, source=None):

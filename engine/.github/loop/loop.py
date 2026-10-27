@@ -38,6 +38,7 @@ MAX_SLEEP_S = 340 * 60          # resume.yml: a job is limited to 360 min; a lon
 GRACE_MIN = 30                  # covers dispatch latency, never working time
 MAX_GEN = 3                     # successor generations
 MAX_CONFLICTS = 3
+MAX_FIXES = 2                   # correction rounds after a failed `## Verification` or `check`
 PUSH_TRIES = 3
 JOB_MAX_MIN = 355               # GitHub kills a job at 360 min; the epilogue must fit
 
@@ -464,6 +465,18 @@ def run_verification(cand, body, role=None):
     return True, ""
 
 
+def fix_round(n, f, upd, why):
+    """A failed `## Verification` or `check` is an error the agent can fix: run the same issue again, its report carrying
+    the error, up to MAX_FIXES times. False when the rounds are spent."""
+    kk = int(f.get("fixes", 0)) + 1
+    if kk > MAX_FIXES:
+        return False
+    upd["fixes"] = kk
+    c.update_report(n, dict(upd, status="partial"), "%s\nCorrection round %s of %s." % (why, kk, MAX_FIXES))
+    c.launch(n)
+    return True
+
+
 def merge_branch(n, role, i, override=None, verified=False, checked_commit=None, checked_evaluator_rev=None, verifier=None, boundary=False):
     """Rebase `task/N` on the default branch, run the checks, get the change gate's verdict, push.
     Returns {"result", "detail", "verdict", "gate_s", "changed"}. Git orders competitors: a rejected push is retried."""
@@ -748,6 +761,8 @@ def finalize(n, work):
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"
+            if fix_round(n, f, upd, prose):
+                return
     pending = None
     if status == "done" and sha and role == "policymaker":
         pending = "pending-iteration"            # its changes and orders take effect when the iteration it opened continues
@@ -784,6 +799,8 @@ def finalize(n, work):
         else:
             status, more, prose = merge_outcome(r)
             upd.update(more)
+            if r["result"] == "check" and fix_round(n, f, upd, prose):
+                return
     elif status not in ("done", "paused") and sha and role != "policymaker":
         merge_notes(n, role)
     if status == "paused":

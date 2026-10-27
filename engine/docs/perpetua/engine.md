@@ -127,7 +127,7 @@ setup), `stage`, the agent, the epilogue.
   `.session/streams/`. See [session data exports](session-exports.md) for the catalogue, scopes, manifest and Policymaker
   session tuning contract.
 
-See [session instructions and network access](session-contract.md) for the contract's precedence, editable policy
+See [session instructions and network access](session-sandbox.md) for the contract's precedence, editable policy
 rules and starting prompts, and enforcement of `internet: false` for tools and script roles.
 
 ## The change gate
@@ -136,6 +136,8 @@ Work enters the default branch after a verdict "not worse than what is accepted"
 epilogue, in a throwaway worktree: checks the paths (protected, role `write`, file size), rebases on the default branch,
 runs `## Verification` and `check`, then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
 work and skip the check and the gate. A rejected push is retried from the new tip, up to three times.
+A failed `## Verification` or `check` is an error the agent can fix: the epilogue runs the same issue again, its
+report carrying the error, up to two times (`fixes`). A gate verdict is not retried: `rejected` and `inconclusive` go to the Policymaker.
 
 `gate.kind` in `engine.yml`:
 
@@ -194,7 +196,7 @@ internet with writes outside `internet_write`) gets a `consent` request that blo
 starts the session only when that request is closed as completed, and then only that one session runs with the profile.
 The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
 secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with
-`secret-missing:NAME` (see [session secrets](session-contract.md#session-secrets)). There is no other path for a secret
+`secret-missing:NAME` (see [session secrets](session-sandbox.md#session-secrets)). There is no other path for a secret
 to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command.
 
 ## The watchdog
@@ -265,7 +267,7 @@ types and dependencies; arming is a separate final ticket after coverage is veri
 
 The default test suite runs the engine against an in-memory GitHub and real git repositories. It does not validate
 live GitHub workflow execution, release operations, assignment or cancellation. Linux kernel isolation and the real
-model/network boundary have separate checks described in [session instructions and network access](session-contract.md);
+model/network boundary have separate checks described in [session instructions and network access](session-sandbox.md);
 the provider check requires explicit opt-in and credentials. Exercise the deployed workflows in the trial loop.
 
 ## Tests

@@ -357,12 +357,25 @@ class EpilogueTest(SessionCase):
         f = self.hub.report(n)
         self.assertEqual((f["verdict"], f["merged"]), ("rejected", "false"))
 
-    def test_a_failed_verification_makes_the_work_partial(self):
-        n = self.issue(body="## Goal\nx\n## Verification\n`exit 3`\n")
+    def test_a_failed_verification_runs_the_issue_again_and_a_fix_is_done(self):
+        n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/b.txt`\n")
         self.w.session(n, files={"src/a.txt": "A"})
         f = self.hub.report(n)
-        self.assertEqual((f["status"], f["verification"]), ("partial", "fail"))
-        self.assertIsNone(self.w.origin_file("src/a.txt"))
+        self.assertEqual((f["status"], f["verification"], f["fixes"], self.hub.issues[n]["state"]), ("partial", "fail", "1", "open"))
+        self.assertIn("Correction round 1 of 2", self.hub.prose(n))
+        self.assertEqual([i["issue"] for w, i in self.hub.dispatched if w == "session.yml"].count(n), 1)
+        self.w.session(n, files={"src/b.txt": "B"})
+        self.assertEqual(self.hub.report(n)["status"], "done")
+
+    def test_a_verification_that_keeps_failing_ends_partial_after_two_correction_rounds(self):
+        n = self.issue(body="## Goal\nx\n## Verification\n`exit 3`\n")
+        rounds = []
+        for k in (1, 2, 3):
+            self.w.session(n, files={"src/a%s.txt" % k: "A"})
+            f = self.hub.report(n)
+            rounds.append((self.hub.issues[n]["state"], f.get("fixes"), f["status"], f["verification"]))
+        self.assertEqual(rounds, [("open", "1", "partial", "fail"), ("open", "2", "partial", "fail"), ("closed", "2", "partial", "fail")])
+        self.assertIsNone(self.w.origin_file("src/a1.txt"))
         self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % n))
 
     def test_a_passing_verification_runs_in_the_candidate_tree(self):

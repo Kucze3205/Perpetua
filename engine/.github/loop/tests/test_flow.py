@@ -437,6 +437,19 @@ class PolicyPhaseTest(Flow):
         self.w.session(pol)
         self.assertEqual(self.phase(), "shape")
 
+    def test_an_audit_ordered_and_read_in_the_iteration_does_not_call_the_policymaker_in_the_next(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, session_files={"orders.json": self.A})
+        self.w.session(self.task_issue("order-%s-a" % pol), files={"audit/latest.md": "numbers"})
+        self.w.session(pol)                                                      # reads the report, orders nothing
+        self.finish(0)
+        self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
+        self.assertEqual(len(self.hub.role_issues("policymaker", "all")), 1)     # iteration 1: no session for the report
+        self.w.push_main({"audit/latest.md": "changed"}, "a later audit")
+        c.sync_main()
+        self.assertEqual(it.policymaker_due(2), "a new audit report")
+
     def test_implementation_layer_orders_wait_for_the_execution_phase(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()

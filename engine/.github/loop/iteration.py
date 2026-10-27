@@ -315,12 +315,6 @@ def cadence_ok():
     return True
 
 
-def apply_policy():
-    """Merge the Policymaker sessions that finished since the last start and return their orders. loop.py, where the merge
-    lives, puts its own in place."""
-    return []
-
-
 def start_iteration():
     """Begin the next iteration if none is open. The policy layer goes first: a due Policymaker session opens the
     iteration and the iteration waits for it; its changes and orders hold from this iteration on. Serial by
@@ -358,6 +352,8 @@ def start_iteration():
 def begin_work(n, it):
     """The policy layer is settled: merge what the Policymaker finished, then the shaper and the Policymaker's orders
     make the tasks. A Policymaker that failed twice in a row is reverted: the iteration runs on the last good policy."""
+    from loop import apply_policy
+
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
     orders = apply_policy()
     if policymaker_failures() >= 2:

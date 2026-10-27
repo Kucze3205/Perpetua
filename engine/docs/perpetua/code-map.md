@@ -60,9 +60,9 @@ See `engine.md` for prerequisites and limits of this verification.
 
 ## Details that are easy to misread
 
-- `loop.py` currently installs `iteration.apply_policy` during import. Reading
-  `iteration.start_iteration` alone hides the merge implementation. Production
-  enters through `loop.py`; calling `iteration` alone does not install that hook.
+- `iteration.begin_work` imports and calls `loop.apply_policy` when work begins.
+  This local import keeps the dependency explicit without requiring callers to
+  import `loop.py` first; the two modules still depend on each other.
 - A Policymaker session's iteration label identifies its trigger. Accepted orders
   and policy changes take effect at a later iteration start. Completion and
   application are distinct events.

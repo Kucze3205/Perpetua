@@ -2,6 +2,8 @@
 triggers, at the start of an iteration."""
 import json
 import os
+import runpy
+import sys
 import unittest
 from unittest import mock
 from datetime import timedelta
@@ -62,6 +64,15 @@ class Flow(unittest.TestCase):
 
 
 class FirstIterationTest(Flow):
+    def test_script_entry_begins_work_without_a_due_policymaker(self):
+        with mock.patch.object(sys, "argv", [loop.__file__, "start"]):
+            with self.assertRaises(SystemExit) as result:
+                runpy.run_path(loop.__file__, run_name="__main__")
+        self.assertEqual(result.exception.code, 0)
+        cur = self.open_iteration()
+        self.assertEqual(c.report_fields(cur["number"])["phase"], "shape")
+        self.assertEqual(len(self.hub.role_issues("orchestrator")), 1)
+
     def test_an_iteration_from_the_shaper_to_its_record_and_the_next_iteration(self):
         k = it.start_iteration()
         self.assertEqual(k, 0)

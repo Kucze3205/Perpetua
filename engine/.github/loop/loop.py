@@ -849,9 +849,6 @@ def apply_policy():
     return orders
 
 
-it.apply_policy = apply_policy
-
-
 def proposals(work, k, source=None):
     text = c.safe_read(work, ".session/requests.json")
     if text:

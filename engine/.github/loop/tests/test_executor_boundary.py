@@ -1,4 +1,4 @@
-"""Actual staged script/process → epilogue admission, without a model/provider."""
+"""Actual staged script/process â†’ epilogue admission, without a model/provider."""
 import json
 import os
 from pathlib import Path
@@ -67,8 +67,12 @@ class OfflineExecutorTest(sessions.SessionCase):
                           ("/usr/local/share", "/usr/bin", "/bin", "/lib", "/lib64",
                            str(Path(os.__file__).parent)) if Path(parent).is_dir()]
         for copy in runtime_copies:
+            if copy.exists():
+                original = copy.read_bytes()
+                self.addCleanup(copy.write_bytes, original)
+            else:
+                self.addCleanup(copy.unlink, missing_ok=True)
             copy.write_text("POLICY_SECRET_NEVER_VISIBLE")
-            self.addCleanup(copy.unlink, missing_ok=True)
         command = r'''set -eu
 test "$(cat src/input.txt)" = "allowed work"
 test "$(git show HEAD:src/input.txt)" = "allowed work"

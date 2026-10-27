@@ -29,6 +29,8 @@ jobs:
               sudo chown "$(id -u):$(id -g)" "$dir/perpetua-policy-canary.txt"
             fi
           done
+          git config --global gc.auto 0
+          git config --global maintenance.auto false
       - name: Run engine tests
         run: python3 -m unittest discover -s engine/.github/loop/tests -v
       - name: Run update tests

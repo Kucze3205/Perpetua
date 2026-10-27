@@ -248,7 +248,7 @@ class FirstPolicymakerTest(Flow):
     FIRST = True
     ORDER = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
 
-    def test_the_first_iteration_starts_with_the_policymaker_and_a_policy_layer_order_starts_in_its_phase(self):
+    def test_the_first_iteration_starts_with_the_policymaker_and_its_orders_become_its_tasks(self):
         self.assertEqual(it.start_iteration(), 0)
         cur = self.open_iteration()
         pol = self.session_issue("policymaker")

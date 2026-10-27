@@ -42,6 +42,7 @@ sys.dont_write_bytecode = True        # build runs the engine's code inside the 
 HERE = Path(__file__).resolve().parent
 PLUGIN = HERE.parent
 ENGINE = PLUGIN / "engine"
+SHIFT = 0                       # which of the started iterations `collect` reads (0 = the first)
 STATE = HERE / ".state"             # when `start` and `wait` ran: report.json records it
 BRANCH, TAG = "e2e-loop", "setup-baseline"
 HAIKU = "claude-haiku-5-5"
@@ -160,10 +161,20 @@ def iso(moment=None):
 
 # ---------------------------------------------------------------- build: the test branch
 
+def check_not_behind():
+    """The engine is copied from this checkout, not from origin/main: a checkout behind main would test an old engine."""
+    run(["git", "fetch", "origin", "main"], cwd=PLUGIN)
+    if run(["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"], cwd=PLUGIN, check=False).returncode:
+        behind = run(["git", "rev-list", "--count", "HEAD..origin/main"], cwd=PLUGIN).stdout.strip()
+        raise SystemExit("this checkout is %s commit(s) behind origin/main: its engine/ is not the current one. "
+                         "Merge or rebase origin/main (`git merge origin/main`), then run `build` again." % behind)
+
+
 def build(args):
     """A fresh loop repository as after setup and arming prerequisites, as the branch `e2e-loop`: the real engine at the
     root, every role on Haiku 5.5, one trivial goal, one worker role with a planted wasteful step, cadence that allows
     exactly one iteration. Pushes the branch and the tag `setup-baseline`; touches nothing else."""
+    check_not_behind()
     if default_branch() == BRANCH:
         raise SystemExit("`%s` is the default branch: a running test must not be rebuilt under itself" % BRANCH)
     url = run(["git", "remote", "get-url", "origin"], cwd=PLUGIN).stdout.strip()
@@ -196,7 +207,8 @@ def build(args):
     (work / "execution/roles/worker").mkdir(parents=True)
     (work / "execution/roles/worker/SKILL.md").write_text(WORKER_SKILL, encoding="utf-8", newline="\n")
     setup_roles.install(work, "worker", "execution", dict(
-        light, tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash(git:*)", "Bash(python3:*)"], write=["src/**"]))
+        light, tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash(git:*)", "Bash(python3:*)", "Bash(echo:*)", "Bash(printf:*)", "Bash(mkdir:*)"],
+        write=["src/**"]))
     params = c.load_yaml(work / "policy/params.yml")
     params.update(shaper="orchestrator", models={"default": HAIKU, "opus": HAIKU},
                   policymaker_triggers={"every_iterations": 1, "no_progress": None},
@@ -207,7 +219,8 @@ def build(args):
     config["cli_version"] = CLI_VERSION
     config["gate"] = {"kind": "script", "command": "bash policy/evaluator/gate.sh"}
     config["policymaker_session_ceilings"] = {"models": [HAIKU], "efforts": ["low"], "max_turns": MAX_TURNS, "timeout_minutes": MINUTES}
-    config["cadence"] = {"min_interval_minutes": 10 ** 6, "daily_iterations": None}     # one iteration, not two
+    config["cadence"] = {"min_interval_minutes": None, "daily_iterations": args.iterations} if args.iterations > 1 else {
+        "min_interval_minutes": 10 ** 6, "daily_iterations": None}        # exactly N iterations (default one)
     write_yaml(work / "engine.yml", config)
     (work / "policy/evaluator").mkdir(parents=True, exist_ok=True)
     (work / "policy/evaluator/gate.sh").write_text(GATE, encoding="utf-8", newline="\n")
@@ -220,6 +233,8 @@ def build(args):
     git("tag", "-f", TAG)
     run([sys.executable, ".github/loop/setup_roles.py", "validate", "--baseline", TAG], cwd=work)
     sha = git("rev-parse", "HEAD")
+    write_json(STATE / "built.json", {"plugin_commit": run(["git", "rev-parse", "HEAD"], cwd=PLUGIN).stdout.strip(),
+                                      "engine_dirty": bool(run(["git", "status", "--porcelain", "--", "engine"], cwd=PLUGIN).stdout.strip())})
     say("built %s at %s (tag %s); tree %s" % (BRANCH, sha, TAG, work))
     if args.no_push:
         return
@@ -252,14 +267,19 @@ def start(args):
     set_var("AUTOPILOT", "on")
     gh("workflow", "run", "watchdog.yml")
     commit = api("repos/%s/commits/%s" % (repo(), BRANCH))["sha"]
-    write_json(STATE / "started.json", {"at": iso(), "commit": commit, "repo": repo(), "iteration": number})
+    write_json(STATE / "started.json", {"at": iso(), "commit": commit, "repo": repo(), "iteration": number, "iterations": args.iterations})
     say("started at %s, commit %s: iteration %d begins with the watchdog run" % (iso(), commit, number))
 
 
 def target():
-    """The iteration the test measures: the number the loop gives its next iteration, fixed by `start`."""
+    """The iteration the test measures: the number the loop gives its next iteration, fixed by `start` (+ SHIFT: collect of a later one)."""
     f = STATE / "started.json"
-    return json.loads(read(f)).get("iteration", 0) if f.is_file() else 0
+    return (json.loads(read(f)).get("iteration", 0) if f.is_file() else 0) + SHIFT
+
+
+def iterations():
+    f = STATE / "started.json"
+    return json.loads(read(f)).get("iterations", 1) if f.is_file() else 1
 
 
 def loop_issues(state="all"):
@@ -287,8 +307,8 @@ def wait(args):
             if outage:
                 why = "outage opened: #%s %s" % (outage[0]["number"], outage[0]["title"])
                 break
-            if record_exists(target()) and not open_issues and not any(t.startswith("session #") for t in live):
-                why = "iteration record iterations/%04d.json exists and nothing is running" % target()
+            if record_exists(target() + iterations() - 1) and not open_issues and not any(t.startswith("session #") for t in live):
+                why = "iteration record iterations/%04d.json exists and nothing is running" % (target() + iterations() - 1)
                 break
     finally:
         set_var("AUTOPILOT", "off")
@@ -418,7 +438,7 @@ def collect(args):
                          harness_dirty=bool(run(["git", "status", "--porcelain"], cwd=PLUGIN, check=False).stdout.strip()),
                          collected_at=iso(), collector_platform=platform.platform(), command=" ".join(sys.argv),
                          model=HAIKU, scale=SCALE, context_tokens=CONTEXT_TOKENS, limits={"max_turns": MAX_TURNS, "minutes": MINUTES})
-    for name in ("started", "waited"):
+    for name in ("built", "started", "waited"):
         if (STATE / (name + ".json")).is_file():
             report["run"][name] = json.loads(read(STATE / (name + ".json")))
     write_json(out / "report.json", report)
@@ -870,10 +890,14 @@ context the CLI really reported on its first model call.
 
 
 def run_all(args):
+    global SHIFT
     start(args)
     wait(args)
     probe(args)
-    collect(args)
+    n, out = iterations(), args.out
+    for k in range(n):                          # one directory per iteration: OUT, or OUT-1, OUT-2... when there are several
+        SHIFT, args.out = k, out if n == 1 else "%s-%d" % (out, k + 1)
+        collect(args)
 
 
 def main():
@@ -881,13 +905,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="action", required=True)
     for name, fn in (("start", start), ("wait", wait), ("probe", probe), ("finish", finish)):
-        sub.add_parser(name).set_defaults(fn=fn)
+        q = sub.add_parser(name)
+        if name == "start":
+            q.add_argument("--iterations", type=int, default=1)
+        q.set_defaults(fn=fn)
     b = sub.add_parser("build")
+    b.add_argument("--iterations", type=int, default=1, help="how many iterations the cadence allows (the Policymaker of the 2nd sees the 1st)")
     b.add_argument("--no-push", action="store_true", help="build the tree and commit locally, push nothing")
     b.set_defaults(fn=build)
     for name, fn in (("collect", collect), ("run", run_all)):
         p = sub.add_parser(name)
         p.add_argument("out")
+        if name == "run":
+            p.add_argument("--iterations", type=int, default=1)
         p.set_defaults(fn=fn)
     args = parser.parse_args()
     args.fn(args)

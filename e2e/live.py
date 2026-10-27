@@ -161,10 +161,20 @@ def iso(moment=None):
 
 # ---------------------------------------------------------------- build: the test branch
 
+def check_not_behind():
+    """The engine is copied from this checkout, not from origin/main: a checkout behind main would test an old engine."""
+    run(["git", "fetch", "origin", "main"], cwd=PLUGIN)
+    if run(["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"], cwd=PLUGIN, check=False).returncode:
+        behind = run(["git", "rev-list", "--count", "HEAD..origin/main"], cwd=PLUGIN).stdout.strip()
+        raise SystemExit("this checkout is %s commit(s) behind origin/main: its engine/ is not the current one. "
+                         "Merge or rebase origin/main (`git merge origin/main`), then run `build` again." % behind)
+
+
 def build(args):
     """A fresh loop repository as after setup and arming prerequisites, as the branch `e2e-loop`: the real engine at the
     root, every role on Haiku 5.5, one trivial goal, one worker role with a planted wasteful step, cadence that allows
     exactly one iteration. Pushes the branch and the tag `setup-baseline`; touches nothing else."""
+    check_not_behind()
     if default_branch() == BRANCH:
         raise SystemExit("`%s` is the default branch: a running test must not be rebuilt under itself" % BRANCH)
     url = run(["git", "remote", "get-url", "origin"], cwd=PLUGIN).stdout.strip()
@@ -223,6 +233,8 @@ def build(args):
     git("tag", "-f", TAG)
     run([sys.executable, ".github/loop/setup_roles.py", "validate", "--baseline", TAG], cwd=work)
     sha = git("rev-parse", "HEAD")
+    write_json(STATE / "built.json", {"plugin_commit": run(["git", "rev-parse", "HEAD"], cwd=PLUGIN).stdout.strip(),
+                                      "engine_dirty": bool(run(["git", "status", "--porcelain", "--", "engine"], cwd=PLUGIN).stdout.strip())})
     say("built %s at %s (tag %s); tree %s" % (BRANCH, sha, TAG, work))
     if args.no_push:
         return
@@ -426,7 +438,7 @@ def collect(args):
                          harness_dirty=bool(run(["git", "status", "--porcelain"], cwd=PLUGIN, check=False).stdout.strip()),
                          collected_at=iso(), collector_platform=platform.platform(), command=" ".join(sys.argv),
                          model=HAIKU, scale=SCALE, context_tokens=CONTEXT_TOKENS, limits={"max_turns": MAX_TURNS, "minutes": MINUTES})
-    for name in ("started", "waited"):
+    for name in ("built", "started", "waited"):
         if (STATE / (name + ".json")).is_file():
             report["run"][name] = json.loads(read(STATE / (name + ".json")))
     write_json(out / "report.json", report)

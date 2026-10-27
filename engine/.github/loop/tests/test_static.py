@@ -218,7 +218,7 @@ class ConfigTest(unittest.TestCase):
     def test_the_protocol_names_the_fields_the_engine_owns(self):
         with open(os.path.join(ENGINE, ".github", "loop", "session-protocol.md"), encoding="utf-8") as fh:
             text = fh.read()
-        for field in ("attempts", "resume_after", "kicks", "conflicts", "cause", "verdict", "merged", "branch", "artifacts"):
+        for field in ("attempts", "resume_after", "kicks", "conflicts", "fixes", "cause", "verdict", "merged", "branch", "artifacts"):
             self.assertIn(field, text)
             self.assertIn(field, c.OWNED)
 

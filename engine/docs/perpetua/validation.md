@@ -19,7 +19,7 @@ Run the full suite on supported Linux hosts with bubblewrap and namespace/seccom
 support. Windows checks do not prove kernel isolation. The script and model boundary
 tests must execute on Linux; an environment skip is an outstanding check, not proof.
 Use the prerequisites and opt-in live provider procedure in
-[session contracts](session-contract.md). A passing fake CLI or a live API error
+[session sandbox](session-sandbox.md). A passing fake CLI or a live API error
 does not establish the real provider guarantee: the pinned CLI must successfully
 call its model while subprocess probes demonstrate denied policy/history/host
 reads and the appropriate network restrictions.

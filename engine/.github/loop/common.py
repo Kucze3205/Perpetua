@@ -27,7 +27,7 @@ ITER = "loop:iteration "                 # label `loop:iteration N`: the loop's 
 ROLE = "role:"
 AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 # Report fields written only by the engine. An agent's value for them is dropped when its report is published.
-OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "cause", "verification", "verdict", "improved",
+OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "fixes", "cause", "verification", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
          "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit")

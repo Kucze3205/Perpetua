@@ -45,6 +45,9 @@ The role's work rules decide how to investigate them; their required outputs rem
 The epilogue runs `## Verification` after you and compares the result with your status.
 Follow the session-specific verification instructions below.
 
+If the epilogue's verification or `check` fails, the engine runs the issue again, up to twice, with the error in the
+report comment of `.session/issue.md`: fix that error and report again. Do not change the verification command.
+
 If the task says "report, do not fix", that is binding even when you can see the obvious fix: fixing it would bypass
 the measurement.
 
@@ -78,7 +81,7 @@ status: done
 Report prose follows the parsed YAML. Its structure is defined by policy work rules.
 ````
 
-Only scalars in the YAML block. The fields `attempts`, `resume_after`, `kicks`, `kicked`, `conflicts`, `cause`,
+Only scalars in the YAML block. The fields `attempts`, `resume_after`, `kicks`, `kicked`, `conflicts`, `fixes`, `cause`,
 `verification`, `verdict`, `improved`, `merged`, `detail`, `model`, `effort`, `turns`, `tokens_*`, `cache_*`, `*_s`,
 `runner`, `branch`, `iteration`, `artifacts` belong to the engine: do not write them (they are dropped).
 Include resume instructions for every status except `done`; policy defines their wording.

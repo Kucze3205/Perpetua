@@ -18,7 +18,7 @@ or preparing an engine-change proposal. The engine remains owner-controlled.
 | Which settings are owner-controlled? | `engine.yml`; omitted values fall back to `common.DEFAULTS` |
 | Which settings may the Policymaker tune? | `policy/params.yml`, both layers' `profiles.yml` |
 | Why did a session or change get this outcome? | Its staged report; `session-reports.md` and `policy-changes.md` explain provenance |
-| How are instructions staged and network access enforced? | `session-contract.md` |
+| How are instructions staged and network access enforced? | `session-sandbox.md` |
 | Which historical data can a role request? | `session-exports.md` |
 | How do startup inputs, working memory and historical discovery fit together? | `session-context.md` |
 

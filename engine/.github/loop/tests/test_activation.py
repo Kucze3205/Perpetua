@@ -206,8 +206,3 @@ class ActivationTest(LayeredSessionCase):
         loop.apply_policy()
         self.assert_a()
         self.assertEqual(self.hub.report(n)['status'], 'blocked')
-
-
-def load_tests(loader, tests, pattern):
-    import unittest
-    return unittest.TestSuite(ActivationTest(name) for name in ActivationTest.__dict__ if name.startswith("test_"))

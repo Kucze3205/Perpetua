@@ -17,7 +17,6 @@ import session_fixtures as sessions
 
 @unittest.skipUnless(sys.platform == "linux" and shutil.which("bwrap"), "requires Linux bubblewrap namespaces")
 class OfflineExecutorTest(sessions.SessionCase):
-
     def setUp(self):
         super().setUp()
         for path, text in {

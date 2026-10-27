@@ -6,8 +6,7 @@ import fakes
 from fakes import common as c, iteration as it, loop, task
 import session_reports as reports
 from proposal_fixtures import PROPOSAL
-from session_fixtures import LayeredSessionCase
-from session_fixtures import read
+from session_fixtures import LayeredSessionCase, read
 
 
 class InputBoundaryTest(LayeredSessionCase):

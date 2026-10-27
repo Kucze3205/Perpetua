@@ -14,7 +14,6 @@ read = sessions.read
 
 
 class ContextTest(sessions.SessionCase):
-
     def stage(self, role="policymaker", state=None, labels=(), body="## Goal\nx\n"):
         n = self.issue(role, labels=labels, body=body)
         if state is not None:

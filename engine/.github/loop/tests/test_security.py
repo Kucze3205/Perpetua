@@ -83,7 +83,9 @@ class CompositionTest(SessionCase):
                     contract = read(os.path.join(trusted, "contract.md"))
                     prompt = read(os.path.join(trusted, "prompt.md"))
                     if role == "policymaker":
-                        self.assertIn("Read .session/policymaker.md", prompt)
+                        startup = json.loads(read(os.path.join(work, ".session/startup.json")))
+                        self.assertIn(".session/policymaker.md", [doc["path"] for doc in startup["documents"]])
+                        self.assertIn(".session/policymaker.md", prompt)
                         self.assertNotIn("Prompt " + revision, prompt)
                         prompt += read(os.path.join(work, ".session", "policymaker.md"))
                     self.assertIn("Required files, formats, field ownership", contract)

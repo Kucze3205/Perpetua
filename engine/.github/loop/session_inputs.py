@@ -96,19 +96,20 @@ def state(value):
     return out
 
 
-def record(value):
+def record(value, can_read=None):
+    can_read = can_read or visible
     out = {key: value[key] for key in ('schema_version', 'iteration', 'status',
            'started', 'ended', 'engine_version') if key in value}
     out['input_state'] = state(value.get('input_state', {}))
     # Tasks can contain arbitrary export/input references. Only public task data
     # from execution sessions belongs in this view.
     out['tasks'] = [{key: task[key] for key in ('id', 'issue', 'title', 'role', 'body', 'blocked_by') if key in task}
-                    for task in value.get('tasks', []) if visible(task.get('issue'))]
+                    for task in value.get('tasks', []) if can_read(task.get('issue'))]
     outcome = value.get('outcome', {})
     out['outcome'] = {'sessions': [summary(session) for session in outcome.get('sessions', [])
-                                   if visible(session.get('issue'))]}
+                                   if can_read(session.get('issue'))]}
     shaper = outcome.get('shaper')
-    if shaper and visible(shaper.get('issue')):
+    if shaper and can_read(shaper.get('issue')):
         out['outcome']['shaper'] = summary(shaper)
     return out
 
@@ -120,4 +121,8 @@ def summary(value):
               'merged', 'branch', 'commit', 'tokens', 'models', 'turns',
               'peak_context', 'attempts', 'agent_s', 'gate_s', 'total_s',
               'parked_s', 'runner', 'artifacts', 'stream')
-    return {key: value[key] for key in fields if key in value}
+    out = {key: value[key] for key in fields if key in value}
+    if isinstance(value.get('startup'), dict):
+        out['startup'] = {key: value['startup'][key] for key in ('status', 'model', 'tokens', 'limit')
+                          if key in value['startup']}
+    return out

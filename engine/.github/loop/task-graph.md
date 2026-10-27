@@ -1,7 +1,9 @@
 ## Historical reports
 
-Policymaker and shaper sessions receive actual trusted marked reports in `.session/reports/`;
-start with `index.json`. Each report JSON has `issue`, `source` (comment URL), `snapshot`
+Policymaker and shaper sessions receive actual trusted marked reports in `.session/reports/`.
+Find relevant work through `.session/history/manifest.json`; read selected reports.
+Use `reports/index.json` to distinguish current reports from pinned evidence when needed.
+Each report JSON has `issue`, `source` (comment URL), `snapshot`
 (SHA-256 of `body`) and the full `body`. An untrusted author's marker does not qualify.
 
 

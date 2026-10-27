@@ -27,6 +27,8 @@ import session_reports
 import policymaker_session
 import policy_changes
 import executor_boundary
+import session_context
+import session_startup
 
 BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
 MAX_AGE_DAYS = 30
@@ -242,12 +244,17 @@ def stage(n, work, trusted):
     with open(os.path.join(work, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
         fh.write("\n.session/\n")
     c.export_issue(n, os.path.join(sess, "issue.md"),
-                   omit_markers=(it.STATE_MARK, it.ORDERS_MARK, session_reports.DECISIONS_MARK, session_inputs.ORIGIN_MARK)
-                   if session_inputs.restricted(role) else ())
-    if role == "policymaker" or "loop:shaper" in labels:
-        it.export_state(n, sess, role=role)
+                   omit_markers=(it.STATE_MARK, session_startup.MARK) +
+                   ((it.ORDERS_MARK, session_reports.DECISIONS_MARK, session_inputs.ORIGIN_MARK)
+                    if session_inputs.restricted(role) else ()))
+    metadata = it.frontmatter(c.safe_read(".", resources.role_directory(role) + "/SKILL.md"))[0]
     fetch_inputs(i["body"], os.path.join(sess, "inputs"), role=role)
-    session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess)
+    session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess, defaults=metadata.get("exports"))
+    if role == "policymaker" or "loop:shaper" in labels:
+        full = c.marker(i["body"], "exports") is None and "exports" not in metadata
+        it.export_state(n, sess, role=role, full_history=full)
+    else:
+        session_context.history(sess, role)
     if "loop:shaper" in labels and session_inputs.restricted(role):
         with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
             json.dump(session_inputs.capabilities(), fh, indent=1)
@@ -257,20 +264,10 @@ def stage(n, work, trusted):
     # Only the engine contract is a system instruction; accepted policy stays user-level.
     with open(os.path.join(trusted, "contract.md"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(contract)
-    bootstrap = ("You are the Policymaker" if role == "policymaker" else "You are role `%s`" % role)
-    bootstrap += " of this loop. Read .session/issue.md. "
-    if resources.layered() and p.get("agent") is not False:
-        bootstrap += "Read your staged role skill .session/role/SKILL.md and its relevant references. "
-    if role == "policymaker":
-        bootstrap += "Read .session/policymaker.md and .session/loop-state.json. "
-    if "loop:shaper" in labels and session_inputs.restricted(role):
-        bootstrap += "Plan using .session/capabilities.json and .session/loop-state.json. "
-    bootstrap += "Write .session/report.md."
-    bootstrap += "\n\n"
     with open(os.path.join(trusted, "prompt.md"), "w", encoding="utf-8", newline="\n") as fh:
         # The Policymaker reads its template from the staged file named in bootstrap.
         # Include it once, rather than loading the same instructions again through that pointer.
-        fh.write(bootstrap + "# Policy work rules (subordinate to the engine contract)\n\n"
+        fh.write("# Policy work rules (subordinate to the engine contract)\n\n"
                  + rules + "\n\n" + ("" if role == "policymaker" else template))
     with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("online\n" if p.get("internet", False) else "offline\n")
@@ -305,6 +302,9 @@ def stage(n, work, trusted):
     if session_inputs.restricted(role):
         shutil.copy(".github/loop/executor_boundary.py", trusted)
         executor_boundary.prepare(work, trusted)
+    if p.get("agent") is not False:
+        session_startup.prepare(n, role, session_options(i, role, p)["model"], work, trusted,
+                                shaper="loop:shaper" in labels)
 
 
 # ---------------------------------------------------------------- artifacts: large outputs live in release assets
@@ -1000,6 +1000,11 @@ def spawn_successor(n, i, report_body):
 def close_out(n, i, status, upd, prose, work=None):
     body = c.update_report(n, dict(upd, status=status), prose)
     session_reports.capture(n, work)
+    if status == "done" and "role:policymaker" in c.label_names(i):
+        try:
+            session_startup.acknowledge(n)
+        except (Exception, SystemExit):
+            c.say("session #%s: startup notices remain pending" % n)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration"])
     succ = spawn_successor(n, i, body) if status == "partial" else None
     c.close_issue(n, "completed" if status == "done" else "not planned")

@@ -59,7 +59,7 @@ def _issues(request):
             and (not request.get("iterations") or c.iteration_of(c.label_names(i)) in request["iterations"])]
 
 
-def stage(body, role, iteration, sess):
+def stage(body, role, iteration, sess, defaults=None):
     """Write exports/manifest.json even for unavailable, invalid or unknown inputs.
 
     Omitted selectors preserve the existing audit stream window; explicit [] opts out.
@@ -80,7 +80,7 @@ def stage(body, role, iteration, sess):
     manifest = {"schema_version": 1, "results": []}
     results = manifest["results"]
     try:
-        requests = json.loads(raw) if raw is not None else ([{
+        requests = json.loads(raw) if raw is not None else defaults if defaults is not None else ([{
             "source": "streams", "iterations": list(range(max(0, iteration - 3), iteration + 1))
         }] if role == "audit" else [])
         errors = validate(requests)

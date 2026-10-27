@@ -20,6 +20,7 @@ or preparing an engine-change proposal. The engine remains owner-controlled.
 | Why did a session or change get this outcome? | Its staged report; `session-reports.md` and `policy-changes.md` explain provenance |
 | How are instructions staged and network access enforced? | `session-contract.md` |
 | Which historical data can a role request? | `session-exports.md` |
+| How do startup inputs, working memory and historical discovery fit together? | `session-context.md` |
 
 The engine contract defines formats and ownership. Policy defines methods. Keep
 format changes in the contract and implementation together; link to the contract
@@ -43,6 +44,7 @@ The engine uses the accepted checkout; agent commits enter through `fetch_candid
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
 | Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
+| Startup packages, token notices and offline history | `session_context.py`, `session_startup.py` | `test_context.py` |
 | Isolation, credentials and data-only admission | `session_security.py`, `executor_boundary.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_executor_boundary.py`, `test_model_boundary.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | `test_watchdog.py`, `test_stream.py` |
 

@@ -31,7 +31,7 @@ OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", 
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
          "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit")
-SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
+SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
 
 DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)"]
 DEFAULTS = {
@@ -40,6 +40,7 @@ DEFAULTS = {
     "author": {"name": "", "email": ""},
     "owner": "",
     "idle_resumes": 3,
+    "startup_token_warning": 100000,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],

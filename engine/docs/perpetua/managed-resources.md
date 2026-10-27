@@ -18,6 +18,11 @@ bootstrap template. Shared managed parameters remain in `policy/params.yml`;
 the engine-invoked measurement remains in `policy/evaluator/` (or the accepted
 `evaluator_paths`). The measurement is separate from its maintaining role.
 
+Role skills may declare `startup` reads and default `exports` in their frontmatter.
+The Policymaker controls these declarations, including its own. See
+[Session context](session-context.md) for working memory, historical discovery and
+the nonblocking startup budget.
+
 A profile file maps role names to permission profiles, with the same tool,
 network, write and session tuning fields as before. Its location assigns the
 execution layer; profiles must not provide a `layer` field. For example:

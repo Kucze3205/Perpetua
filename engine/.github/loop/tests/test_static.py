@@ -123,7 +123,17 @@ class WorkflowTest(unittest.TestCase):
     def test_no_workflow_uses_the_dangerous_inputs(self):
         for f, text, doc in self.workflows():
             self.assertNotIn("pull_request_target", text, f)
-            self.assertNotIn("ANTHROPIC_API_KEY", text, f)
+            self.assertNotIn("ANTHROPIC_API_KEY", str(doc.get("env", {})), f)
+            counter_steps = []
+            for job in doc.get("jobs", {}).values():
+                self.assertNotIn("ANTHROPIC_API_KEY", str(job.get("env", {})), f)
+                for step in job.get("steps", []):
+                    if "ANTHROPIC_API_KEY" in str(step):
+                        counter_steps.append(step)
+                        self.assertEqual((f, step.get("name"), step.get("working-directory")),
+                                         ("session.yml", "Stage the session", "loop"))
+                        self.assertEqual(step["env"]["ANTHROPIC_API_KEY"], "${{ secrets.ANTHROPIC_API_KEY }}")
+            self.assertEqual(len(counter_steps), 1 if f == "session.yml" else 0)
             lines = text.splitlines()
             for i, line in enumerate(lines):
                 if "uses: actions/checkout@v4" in line:
@@ -152,9 +162,11 @@ class WorkflowTest(unittest.TestCase):
     def test_the_agent_never_gets_the_github_token(self):
         with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
             text = fh.read()
-        step = text[text.index("- name: Session"):text.index("- uses: actions/checkout@v4\n        if: always()")]
+        workflow = yaml.safe_load(text)
+        step = str(next(step for step in workflow["jobs"]["session"]["steps"] if step.get("name") == "Session"))
         self.assertNotIn("github.token", step)
         self.assertNotIn("GH_TOKEN", step)
+        self.assertNotIn("ANTHROPIC_API_KEY", step)
         with open(os.path.join(ENGINE, ".github", "loop", "agent.sh"), encoding="utf-8") as fh:
             sh = fh.read()
         self.assertIn("unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN", sh)

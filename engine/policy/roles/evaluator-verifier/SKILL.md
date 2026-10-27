@@ -1,6 +1,7 @@
 ---
 name: evaluator-verifier
 description: "Independent check of an evaluator change: does the changed evaluator still measure progress toward the goal? Started by the engine right after every evaluator change. Loaded when a task has the label `role:evaluator-verifier`."
+startup: [goal/goal.md]
 ---
 
 # Evaluator verifier
@@ -12,7 +13,7 @@ This is the engine's first version of the checks; the Policymaker may extend thi
 
 ## Checks
 
-1. **It still measures the goal.** Read the goal in `goal/goal.md`. Say in your own words what the new evaluator
+1. **It still measures the goal.** Use the accepted goal in `goal/goal.md`. Say in your own words what the new evaluator
    measures and how that tracks the goal.
 2. **It agrees with the old one where it should.** Run both on the accepted state (the default branch checkout). The
    re-measurement of the accepted state must come out as the change claims; a surprise is a finding.

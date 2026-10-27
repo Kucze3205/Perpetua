@@ -10,6 +10,7 @@ author:                          # git author of the loop's commits (the bot sta
   name: ""
   email: ""
 idle_resumes: 3                 # consecutive resumes of a parked session that used the agent without progress: outage, no more resumes
+startup_token_warning: 100000   # initial documents of any model Session; diagnostics never block execution
 owner: ""                        # GitHub login owner requests are assigned to; empty = the repository owner
 
 # --- the change gate -------------------------------------------------------------------------------------------

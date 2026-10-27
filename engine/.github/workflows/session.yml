@@ -130,6 +130,8 @@ jobs:
         working-directory: loop
         env:
           GH_TOKEN: ${{ github.token }}
+          # Optional provider counter, available only to trusted staging, never to the Session step.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python3 .github/loop/loop.py stage "$ISSUE" "$WORK" "$RUNNER_TEMP/trusted"
       # the engine code is not on the disk while the agent works: it cannot change what watches it
       - if: steps.guard.outputs.go == 'true'

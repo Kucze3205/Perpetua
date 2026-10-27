@@ -1,6 +1,7 @@
 ---
 name: audit
 description: "Learns and monitors the loop's whole environment, every session included: what the loop consumes, where it waits, what the substrate offers that it leaves unused. Ordered only by the Policymaker. Loaded when a task has the label `role:audit`."
+startup: [.session/exports/manifest.json]
 ---
 
 # Audit
@@ -17,7 +18,7 @@ parallelism actually used; what the substrate offers and the loop leaves unused 
 ## Where the data is
 
 - `iterations/NNNN.json`: the records (sessions with tokens per model, turns, wall times, statuses, verdicts).
-- Read `.session/exports/manifest.json` first: it names the selected data and says which inputs were downloaded,
+- `.session/exports/manifest.json` names the selected data and says which inputs were downloaded,
   unavailable, expired, failed or unknown. The order can explicitly select streams, Actions metadata, iteration
   records and trusted session reports for iteration numbers or session issue numbers.
 - Raw streams are staged in `.session/streams/` (a directory per `stream-NNNN-<issue>` artifact): `result`, `usage`,

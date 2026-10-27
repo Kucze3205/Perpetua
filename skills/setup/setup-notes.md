@@ -93,3 +93,12 @@ Use this procedure in the starting-roles ticket after the accepted goal and appr
 5. Before arming, commit the final setup and validate the actual accepted `setup-baseline` commit with `python3 .github/loop/setup_roles.py validate --baseline setup-baseline`. A missing required role, invalid profile, dirty configuration or mismatched baseline blocks arming; fix and revalidate before enabling the switch. This validates preparation only and does not start a loop. Keep arming blocked by all other unfinished setup outcomes as well.
 
 This procedure prepares new loops only. Migration, automatic updates, setup review and reconfiguration are separate future work.
+
+For model roles, declare initial file reads once through SKILL frontmatter `startup`
+as described in `docs/perpetua/session-context.md`. Keep other references conditional.
+The initial memory organization lets the selected shaper maintain
+`journal/working-memory.md` and the Policymaker maintain `policy/working-memory.md`;
+the Policymaker may revise that organization and each role's default `exports`.
+The provider counter uses an optional repository `ANTHROPIC_API_KEY` in trusted
+staging only. An unavailable counter or a startup package over 100k tokens notifies
+the Session and Policymaker; it does not block arming or execution.

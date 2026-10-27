@@ -13,13 +13,13 @@ iteration waits for you. What you
 change and order takes effect in that same iteration.
 
 This contract belongs to the engine: only the owner changes it. Follow the engine contract supplied in system instructions.
-Your editable work instructions are staged in `.session/policymaker.md`.
+Your editable work instructions are staged in `.session/role/SKILL.md`.
 
 ## Input
 
 - `.session/loop-state.json`: why you were called (`trigger`), the goal (and its accepted gate, if any), parameters and
-  limits, open and recently closed owner requests, the iteration index (one line per iteration: status, verdict,
-  whether it improved, tasks, tokens, wall time), how your previous sessions ended (`policymaker_sessions`), the policy and
+  limits, open and recently closed owner requests, the previous iteration outcome and a history pointer,
+  how your previous sessions ended (`policymaker_sessions`), startup notices, the policy and
   evaluator revisions, `no_progress`.
 - The records in `iterations/NNNN.json` (read-only), the audit report (`audit/latest.md`) if there is one, and the
   files in both `execution/` and `policy/`.

@@ -185,14 +185,15 @@ def stage(state, directory, role=None):
               for item in state.get("suggestions", [])}
     for _, record in source_records():
         report = record["report"]
+        if (report["issue"], report["snapshot"]) not in wanted:
+            continue
         if (role and session_inputs.restricted(role) and not session_inputs.visible(report["issue"])):
             continue
-        if (report["issue"], report["snapshot"]) in wanted:
-            rel = "%s-%s.json" % (report["issue"], report["snapshot"])
-            with open(os.path.join(out, rel), "w", encoding="utf-8") as fh:
-                fh.write(encoded(report))
-            if not any(item["path"] == rel for item in index):
-                index.append({"issue": report["issue"], "path": rel, "source": report["source"],
-                              "snapshot": report["snapshot"], "frozen": True})
+        rel = "%s-%s.json" % (report["issue"], report["snapshot"])
+        with open(os.path.join(out, rel), "w", encoding="utf-8") as fh:
+            fh.write(encoded(report))
+        if not any(item["path"] == rel for item in index):
+            index.append({"issue": report["issue"], "path": rel, "source": report["source"],
+                          "snapshot": report["snapshot"], "frozen": True})
     with open(os.path.join(out, "index.json"), "w", encoding="utf-8") as fh:
         fh.write(encoded(index))

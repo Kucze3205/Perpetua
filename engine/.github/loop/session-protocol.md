@@ -18,6 +18,17 @@ reach for the issue yourself. `.session/` is never committed.
 Other files the engine may put in `.session/`: `loop-state.json` (the Policymaker and the shaper), `policymaker.md` (the
 Policymaker), `inputs/` (artifacts the task lists), `streams/` (the audit).
 
+The bootstrap lists the declared startup reads once. `.session/startup.json` records
+the provider estimate for that document package; an over-budget or unavailable
+measurement is a notice, and your Session continues. The engine notifies the
+Policymaker. Later reads and the CLI's internal context are outside this estimate.
+
+For history, `.session/history/manifest.json` states scope and availability. Search
+Session task metadata and report text, then read selected records or exact snapshots.
+Working memory carries the current interpretation and links; immutable sources
+remain available to check missing detail, contradictions or reconsidered decisions.
+No match in the available history establishes no more than no matching evidence.
+
 ## Trust: what you do not read
 
 The repository may be public: anyone can paste a comment under an issue.

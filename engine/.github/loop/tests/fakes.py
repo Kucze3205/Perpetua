@@ -16,6 +16,7 @@ sys.path.insert(0, LOOP_DIR)
 import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
+import session_startup  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
@@ -199,6 +200,8 @@ class World:
         os.environ.pop("LOOP_SANDBOX", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
+        self.counter_saved = session_startup.count_tokens
+        session_startup.count_tokens = lambda model, system, content: 1000
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
@@ -233,6 +236,7 @@ class World:
             common.update_report(0, {"status": "done"}, "seed")
 
     def close(self):
+        session_startup.count_tokens = self.counter_saved
         self.hub.uninstall()
         os.chdir(self.cwd_saved)
         os.environ.clear()

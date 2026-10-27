@@ -18,6 +18,7 @@ import managed_resources as resources
 import owner_requests as requests
 import session_exports
 import session_reports
+import session_startup
 import policy_changes
 
 MAP = "loop:map"
@@ -242,6 +243,7 @@ def build_state(n):
         "audit_report": "audit/latest.md" if os.path.exists("audit/latest.md") else None,
         "audit_rev": audit_revision(),
         "iterations": idx,
+        "startup_notices": list(session_startup.notices().values()),
     }
 
 
@@ -271,7 +273,7 @@ def read_state(it, mark=STATE_MARK):
     return None
 
 
-def export_state(n, directory, role=None):
+def export_state(n, directory, role=None, full_history=True):
     """`.session/loop-state.json`: the snapshot taken when the Policymaker session was opened, or, for the shaper, when
     its iteration began."""
     state = read_state(n)
@@ -285,6 +287,8 @@ def export_state(n, directory, role=None):
         if role and session_inputs.restricted(role):
             state = dict(session_inputs.state(state), task_options=session_inputs.task_options())
         session_reports.stage(state, directory, role=role)
+        import session_context
+        state = session_context.startup_state(state, directory, role, full=full_history)
         with open(os.path.join(directory, "loop-state.json"), "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=1, ensure_ascii=False)
 
@@ -431,6 +435,8 @@ def policymaker_due(n):
             (read_state(session["number"]) or {}).get("suggestions", [])}
     if any(item["id"] not in seen for item in session_reports.pending()):
         return "new session suggestions"
+    if session_startup.pending():
+        return "startup budget needs attention"
     return None
 
 
@@ -730,6 +736,7 @@ def session_summary(x, streams=()):
     def num(k):
         return int(float(f[k])) if f.get(k, "").replace(".", "", 1).isdigit() else 0
     return {"issue": x["number"], "role": (c.roles_of(names) or [""])[0], "model": f.get("model"), "effort": f.get("effort"),
+            "startup": session_startup.summary(x["number"]),
             **session_reports.references(x["number"]),
             "status": f.get("status"), "verdict": f.get("verdict"), "improved": f.get("improved") == "true",
             "merged": f.get("merged") == "true", "branch": f.get("branch"), "commit": f.get("commit"),

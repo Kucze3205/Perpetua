@@ -59,6 +59,15 @@ One agent run in one job, working one issue under one role. An iteration is
 made of sessions.
 _Avoid_: run
 
+**Startup package**:
+The engine instructions and declared documents a model Session reads before its
+work. Its size is estimated separately from later reads and active context.
+
+**Working memory**:
+A role-maintained account of the loop's current approach, open threads and reasons
+for decisions, linked to historical sources. Its organization belongs to the
+Policymaker; immutable Iteration records remain the source of what happened.
+
 **Iteration core**:
 The part of an iteration that actually moves the loop toward the goal: the
 work done by the roles (building, researching, verifying, exploring).

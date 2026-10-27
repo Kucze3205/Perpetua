@@ -187,6 +187,12 @@ class World:
         self.tmp = tempfile.mkdtemp(prefix="perpetua-test-")
         self.env_saved = dict(os.environ)
         self.cwd_saved = os.getcwd()
+        # Do not inspect or inherit the invoking user's global skills or Git config.
+        home = os.path.join(self.tmp, "fixture-home")
+        os.mkdir(home)
+        os.environ["HOME"] = home
+        if os.name == "nt":
+            os.environ["USERPROFILE"] = home
         for k, v in dict(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
                          DEFAULT_BRANCH="main", GITHUB_REPOSITORY="o/r", GITHUB_REPOSITORY_OWNER="ow").items():
             os.environ[k] = v

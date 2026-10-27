@@ -1,0 +1,12 @@
+{
+ "diagnostics": [],
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/118\niteration: 3\nrunner: Linux\ncause: terminal_reason=completed\nturns: 13\npeak_context: 18798\ntokens_in: 12\ntokens_out: 3397\ncache_read: 82677\ncache_write: 14980\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":82677,\"cache_write\":14980,\"in\":12,\"out\":3397}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 20\ntotal_s: 51\ncommit: 0b54eb3\nmerged: true\nstatus: done\n```\nShaped iteration 0003 for the goal (two files: `src/greeting.txt`, `src/farewell.txt`).\n\n- `.session/tasks.json`: two `worker` tasks, `greeting` and `farewell`. Each writes one file, has no `blocked_by`, and shares no files with the other, so they run in parallel.\n- Each task has a `## Verification` `grep` check that the file's only line matches the required text.\n- Model `default`, effort `low`, limits 15 min / 20 turns, well under the ceilings.\n- Evidence read: `.session/issue.md`, `.session/role/SKILL.md`, `.session/loop-state.json`, `.session/capabilities.json`, `journal/working-memory.md`, `.session/startup.json`, `.session/history/manifest.json` (no history records or snapshots). `src/` does not exist yet.\n- Journal: `journal/0003.md` with the five sections.\n- Startup budget measurement was unmeasured (`ANTHROPIC_API_KEY` not configured for trusted staging); the session continued.\n- No suggestions and no requests to the owner.\n",
+  "comment": 6440959699,
+  "issue": 118,
+  "snapshot": "3b5c5fc4c7e3fc0f0a0b70b06b15c73f17fc4321bb356ea54374a306c5d6a99b",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/118#issuecomment-6440959699"
+ },
+ "schema_version": 1,
+ "suggestions": []
+}

@@ -1,0 +1,30 @@
+{
+ "policymaker": {
+  "status": "unmeasured",
+  "model": "claude-haiku-5-5",
+  "tokens": null,
+  "limit": 100000,
+  "detail": "ANTHROPIC_API_KEY is not configured for trusted staging",
+  "role": "policymaker",
+  "issue": 116,
+  "id": "startup-policymaker-116",
+  "largest_documents_by_bytes": [
+   {
+    "path": ".session/role/SKILL.md",
+    "bytes": 4301,
+    "sha256": "74a4c3ba63317ed30bffdea72756bf947ad0d70af50abc5ea92737d79b9959f0"
+   },
+   {
+    "path": ".session/loop-state.json",
+    "bytes": 2129,
+    "sha256": "46f5ce6b511743094173f275b15357ca947cca50c743cd3ad64bbab8df7fa767"
+   },
+   {
+    "path": ".session/issue.md",
+    "bytes": 464,
+    "sha256": "74beb20a106b112d9e23a0f9085a64d1cc9902fea9de54dc10ef98d236e56a62"
+   }
+  ],
+  "presented_to": 116
+ }
+}

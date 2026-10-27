@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
@@ -34,7 +35,10 @@ jobs:
           done
           git config --global gc.auto 0
           git config --global maintenance.auto false
+      - name: Verify system Python 3.14
+        if: matrix.os == 'ubuntu-26.04'
+        run: /usr/bin/python3 -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
       - name: Run engine tests
-        run: PYTHONPATH=engine/.github/loop:engine/.github/loop/tests python3 -m unittest test_executor_boundary.OfflineExecutorTest.test_offline_guard_runs_with_only_admitted_runtime_files -v
+        run: /usr/bin/python3 -m unittest discover -s engine/.github/loop/tests -v
       - name: Run update tests
         run: python3 -m unittest discover -s skills/update -p test_engine_update.py -v

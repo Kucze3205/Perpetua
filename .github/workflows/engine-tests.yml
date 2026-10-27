@@ -1,4 +1,4 @@
-﻿name: Engine tests
+name: Engine tests
 
 on:
   pull_request:
@@ -22,7 +22,13 @@ jobs:
           fi
           version=$(python3 -c "import yaml; print(yaml.safe_load(open('engine/engine.yml'))['cli_version'])")
           curl -fsSL https://claude.ai/install.sh | bash -s "$version"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo install -m 755 "$(readlink -f "$HOME/.local/bin/claude")" /usr/local/bin/claude
+          for dir in /usr/local/share /usr/bin /bin /lib /lib64 "$(python3 -c 'import os; print(os.path.dirname(os.__file__))')"; do
+            if [ -d "$dir" ]; then
+              sudo touch "$dir/perpetua-policy-canary.txt"
+              sudo chown "$(id -u):$(id -g)" "$dir/perpetua-policy-canary.txt"
+            fi
+          done
       - name: Run engine tests
         run: python3 -m unittest discover -s engine/.github/loop/tests -v
       - name: Run update tests

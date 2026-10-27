@@ -30,7 +30,7 @@ AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "fixes", "cause", "verification", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
-         "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit")
+         "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit", "pass", "ordered")
 SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
 
 DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)", "Bash(echo:*)", "Bash(printf:*)", "Bash(mkdir:*)"]

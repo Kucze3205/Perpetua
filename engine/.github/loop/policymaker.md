@@ -8,9 +8,9 @@ deterministic rule, or remove it), the roles and the parameters.
 
 You do not run every iteration. The engine calls you at the start of an iteration when a trigger fires (the reason is
 in `trigger` in the state; until one of your sessions has ended `done`, you run at the start of every iteration); that
-iteration waits for you. A finished session is not an applied change: the engine applies accepted changes
-and orders together at an iteration boundary, before starting that iteration's work. Normally this is the
-iteration waiting for you; pending acceptance or evaluator verification can defer application to a later boundary.
+iteration waits for you. A finished pass is not an applied change: the engine applies accepted changes
+when the pass ends, before it starts what you ordered. Pending acceptance or evaluator verification can defer
+application to a later boundary.
 
 This contract belongs to the engine: only the owner changes it. Follow the engine contract supplied in system instructions.
 Your editable work instructions are staged in `.session/role/SKILL.md`.
@@ -37,9 +37,13 @@ Your editable work instructions are staged in `.session/role/SKILL.md`.
 
 **Orders** go in `.session/orders.json`, in the task-graph format of the protocol (`{"tasks": [...]}`).
 With a shaper, you order only roles in `policymaker_only_roles` (the evaluator, the audit); the shaper plans
-the iteration's other work. Your orders run beside it. With `shaper: null`, you plan the iteration through
-orders of any registered role except yourself; these are the iteration's only tasks. No shaper and no valid
-orders fails the iteration.
+the iteration's other work. Orders of those roles start when your pass ends. The shaper starts after they have
+all ended, and you run again on the same issue and branch, with a fresh context, to see how they ended
+(`policy_pass` in the state, the merged files in the repository) and decide: order more of them, or finish.
+A pass that orders none of them ends the policy phase. Orders of other roles wait for the iteration's work and
+run beside the shaper's graph. With `shaper: null`, you plan the iteration through orders of any registered
+role except yourself; the orders of other roles are the iteration's only tasks. No shaper and no valid orders
+fails the iteration.
 
 You may tune `policy/params.yml` `policymaker_session` within the owner's `engine.yml`
 `policymaker_session_ceilings`. Engine permissions, tools and safeguards remain owner configuration.

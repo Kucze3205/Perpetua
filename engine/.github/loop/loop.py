@@ -487,10 +487,11 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
     prof = profile_of(role) or {}
     br = "task/%s" % n
     res = {"result": "conflict", "detail": "", "verdict": None, "gate_s": 0, "changed": []}
+    k = it.policy_pass_of(n) if role == "policymaker" else 1
     for _ in range(PUSH_TRIES):
         c.sync_main()
         c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
-        existing = policy_changes.read(policy_changes.path(n))
+        existing = policy_changes.read(policy_changes.path(n, k))
         if existing:
             return dict(res, result="merged", change=existing)
         branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
@@ -556,7 +557,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                     return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
             if resources.layered() and role == "policymaker" and not boundary:
                 return dict(res, result="awaiting-iteration")
-            change = policy_changes.receipt(cand, n, role, i, session_base, baseline, c.head(cand), changed, verifier)
+            change = policy_changes.receipt(cand, n, role, i, session_base, baseline, c.head(cand), changed, verifier, k)
             if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
                 return dict(res, result="merged", change=change)
     return dict(res, result="conflict")
@@ -820,22 +821,27 @@ def finalize(n, work):
 
 
 def hold_policymaker_output(n, work):
-    """Keep a finished Policymaker session's orders on its issue until the iteration it opened continues. Returns the report prose."""
+    """Keep a finished Policymaker pass's orders on its issue until the iteration continues; a pass without orders keeps
+    an empty entry, so the orders of an earlier pass are never read again. Returns the report prose."""
     session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
     text = c.safe_read(work, ".session/orders.json")
-    if not text:
-        return "Waiting for the iteration to continue: then `policy/` merges."
     try:
-        doc = json.loads(text)
+        doc = json.loads(text) if text else {}
     except ValueError:
-        return "`.session/orders.json` is not JSON: no orders. Waiting for the iteration to continue: then `policy/` merges."
-    it.store_state(n, doc, it.ORDERS_MARK)
-    return "Waiting for the iteration to continue: then `policy/` merges and the orders start."
+        doc = {}
+        text = None
+        prose = "`.session/orders.json` is not JSON: no orders. "
+    else:
+        prose = ""
+    tasks = doc.get("tasks") if isinstance(doc, dict) else None
+    it.store_state(n, {"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else []}, it.ORDERS_MARK)
+    return prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
 
 
-def apply_policy():
-    """Before an iteration starts: merge the finished Policymaker sessions, oldest first, and return the numbers of those
-    that merged. An unmerged one counts as a failed Policymaker session."""
+def apply_policy(keeps_open=lambda number: False):
+    """Merge the finished Policymaker sessions, oldest first, and return the numbers of those that merged. An unmerged one
+    counts as a failed Policymaker session. A merged one is closed, unless `keeps_open(number)`: it is relaunched after
+    the sessions it ordered, so it waits (`awaiting:orders`)."""
     merged = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
         fields = c.report_fields(x["number"])
@@ -872,6 +878,10 @@ def apply_policy():
         if st == "done":
             merged.append(x["number"])
             session_reports.apply_decisions(x["number"])
+            if keeps_open(x["number"]):
+                c.update_report(x["number"], dict(upd, status="done"), pr)
+                c.edit_labels(x["number"], add=["awaiting:orders"], remove=["awaiting:iteration"])
+                continue
         else:
             tag_unmerged(x["number"], c.iteration_of(c.label_names(x)) or 0, {"commit": "x"})
         close_out(x["number"], x, st, upd, pr)
@@ -1031,7 +1041,7 @@ def close_out(n, i, status, upd, prose, work=None):
             session_startup.acknowledge(n)
         except (Exception, SystemExit):
             c.say("session #%s: startup notices remain pending" % n)
-    c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration"])
+    c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"])
     succ = spawn_successor(n, i, body) if status == "partial" else None
     c.close_issue(n, "completed" if status == "done" else "not planned")
     if status == "done":
@@ -1289,7 +1299,7 @@ def kick():
     if not it.open_iteration():
         it.start_iteration()
         return 0
-    ready = [x for x in loop_open() if c.is_unblocked(x["number"]) and not (c.label_names(x) & {"blocked:rate-limit", "awaiting:owner", "awaiting:verifier", "awaiting:iteration"})]
+    ready = [x for x in loop_open() if c.is_unblocked(x["number"]) and not (c.label_names(x) & {"blocked:rate-limit", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"})]
     if not ready:
         it.advance()
         return 0

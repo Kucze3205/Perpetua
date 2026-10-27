@@ -60,10 +60,16 @@ from pathlib import Path
 assert Path('input').read_text() == 'allowed'
 for path in [SECRET, '/engine/executor-baseline.json']:
     assert not Path(path).exists(), path
-for path in ['/proc/1/environ', '/proc/1/root/proc/1/environ', '/proc/1/mem']:
-    try: assert Path(path).read_bytes() == b'', path
-    except PermissionError: pass
-assert not list(Path('/proc/1/task').iterdir())
+import os, subprocess
+assert 'CLAUDE_CODE_OAUTH_TOKEN' not in os.environ
+for proc in Path('/proc').iterdir():
+    if proc.name.isdigit():
+        try: assert b'CREDENTIAL_CANARY' not in (proc / 'environ').read_bytes(), proc
+        except (PermissionError, ProcessLookupError, FileNotFoundError): pass
+assert os.read(int(os.environ['CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR']), 100) == b'CREDENTIAL_CANARY'
+# the CLI's own bwrap mounts a fresh procfs inside this boundary: nothing may be overmounted on /proc here
+assert not [l for l in Path('/proc/self/mountinfo').read_text().splitlines() if ' /proc/' in l.split(' - ')[0].split()[4] + ' ']
+subprocess.run(['bwrap', '--unshare-pid', '--unshare-user', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', 'python3', '-c', 'pass'], check=True)
 assert not Path('/run/secrets/claude-credentials.json').exists()
 libc = ctypes.CDLL(None, use_errno=True)
 calls = (101, 310, 311) if platform.machine() == 'x86_64' else (117, 270, 271)
@@ -78,7 +84,8 @@ Path('product').write_text('done')
             def which(name, **kwargs):
                 return original("bash" if name == "claude" else name, **kwargs)
             with patch.object(boundary.shutil, "which", side_effect=which):
-                result = boundary.launch_model(str(work), str(trusted), ["-c", "python3 probe.py"], capture=True)
+                with patch.dict(os.environ, {"CLAUDE_CODE_OAUTH_TOKEN": "CREDENTIAL_CANARY"}):
+                    result = boundary.launch_model(str(work), str(trusted), ["-c", "python3 probe.py"], capture=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((work / "product").read_text(), "done")
 

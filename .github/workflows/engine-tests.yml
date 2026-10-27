@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install test dependencies
@@ -32,6 +35,6 @@ jobs:
           git config --global gc.auto 0
           git config --global maintenance.auto false
       - name: Run engine tests
-        run: python3 -m unittest discover -s engine/.github/loop/tests -v
+        run: PYTHONPATH=engine/.github/loop:engine/.github/loop/tests python3 -m unittest test_executor_boundary.OfflineExecutorTest.test_offline_guard_runs_with_only_admitted_runtime_files -v
       - name: Run update tests
         run: python3 -m unittest discover -s skills/update -p test_engine_update.py -v

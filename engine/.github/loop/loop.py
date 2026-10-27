@@ -298,8 +298,7 @@ def stage(n, work, trusted):
         for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
             security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
-        json.dump(security.settings(p, "/engine" if session_inputs.restricted(role) else trusted,
-                                    nested=session_inputs.restricted(role)), fh)
+        json.dump(security.settings(p, "/engine" if session_inputs.restricted(role) else trusted), fh)
     if session_inputs.restricted(role):
         shutil.copy(".github/loop/executor_boundary.py", trusted)
         executor_boundary.prepare(work, trusted)

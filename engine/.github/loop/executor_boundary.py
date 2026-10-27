@@ -218,12 +218,10 @@ def model_command(work, trusted, arguments):
                  "/etc/ssl/certs/ca-certificates.crt"):
         if Path(path).is_file():
             command += ["--ro-bind", path, path]
-    # Private procfs needs real process maps for the native runtime. PID 1 is
-    # the CLI; mask credential-bearing process views, including self aliases.
+    # Private procfs needs real process maps for the native runtime. Nothing may be mounted over it: the CLI's own bwrap
+    # mounts a fresh procfs for its Bash, and the kernel refuses that ("Can't mount proc on /newroot/proc") when this one
+    # has locked overmounts. The credential is therefore not in any environ (see launch_model), not masked there.
     command += ["--as-pid-1", "--proc", "/proc",
-                "--ro-bind", "/dev/null", "/proc/1/environ",
-                "--ro-bind", "/dev/null", "/proc/1/mem",
-                "--tmpfs", "/proc/1/task",
                 "--dev", "/dev", "--tmpfs", "/tmp",
                 "--dir", "/home/executor", "--bind", os.path.abspath(work), "/work",
                 "--dir", "/engine"]
@@ -236,13 +234,24 @@ def model_command(work, trusted, arguments):
 
 def launch_model(work, trusted, arguments, capture=False):
     env = environment()
-    for key in ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS",
-                "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "CLAUDE_CODE_RETRY_WATCHDOG",
+    for key in ("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "CLAUDE_CODE_RETRY_WATCHDOG",
                 "BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS", "SESSION_END"):
         if key in os.environ:
             env[key] = os.environ[key]
-    return subprocess.run(model_command(work, trusted, arguments), env=env,
-                          capture_output=capture, text=capture, check=False)
+    # The credential goes through a pipe the CLI reads at start, never through an environ (readable via /proc).
+    token, pass_fds = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"), ()
+    if token:
+        reader, writer = os.pipe()
+        with os.fdopen(writer, "w") as stream:
+            stream.write(token)
+        env["CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"] = str(reader)
+        pass_fds = (reader,)
+    try:
+        return subprocess.run(model_command(work, trusted, arguments), env=env, pass_fds=pass_fds,
+                              capture_output=capture, text=capture, check=False)
+    finally:
+        for fd in pass_fds:
+            os.close(fd)
 
 
 def launch(work, trusted, online=False, capture=False):

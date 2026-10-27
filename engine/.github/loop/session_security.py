@@ -48,12 +48,8 @@ def profile_error(profile, cli_version):
     return None
 
 
-def settings(profile, trusted, nested=False):
-    """Bash children are isolated; the parent CLI retains its provider connection.
-
-    `nested`: the CLI itself runs inside the executor boundary (a bwrap). Its own bwrap then cannot mount a fresh procfs
-    there (`bwrap: Can't mount proc on /newroot/proc`), so it is told to bind the boundary's /proc, whose PID 1 environ,
-    mem and task views the boundary already masks."""
+def settings(profile, trusted):
+    """Bash children are isolated; the parent CLI retains its provider connection."""
     out = {"hooks": {"PostToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": "python3 " + shlex.quote(os.path.join(trusted, "remaining.py"))}]}]}}
     if not profile.get("internet", False):
@@ -66,8 +62,6 @@ def settings(profile, trusted, nested=False):
                         "allowUnixSockets": [], "allowLocalBinding": False},
             "filesystem": {"denyWrite": [trusted], "denyRead": ["/proc"]},
         }
-        if nested:
-            out["sandbox"]["enableWeakerNestedSandbox"] = True
         out["permissions"] = {"deny": ["WebFetch", "WebSearch", "Agent", "Task", "Monitor", "PowerShell", "Skill",
                                                "Read(/proc/**)", "Write(%s/**)" % trusted, "Edit(%s/**)" % trusted]}
     return out

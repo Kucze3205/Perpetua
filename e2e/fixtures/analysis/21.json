@@ -91,10 +91,10 @@
   "tokens_estimated": {
    "inputs": 18,
    "by_category": {
-    "history": 3,
+    "other": 2,
     "state": 1,
-    "role skill": 12,
-    "other": 2
+    "history": 3,
+    "role skill": 12
    }
   }
  },

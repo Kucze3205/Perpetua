@@ -29,6 +29,11 @@ def put(path, text):
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def put_json(path, value):
+    # The same fixture bytes on Windows and Linux: growth measures file sizes.
+    put(path, json.dumps(value, indent=1, ensure_ascii=False) + "\n")
+
+
 def dataset(out):
     """Two measured roles, excluded issues, stream fallback, probe, real git diff."""
     repo = out / "repository"
@@ -45,8 +50,8 @@ def dataset(out):
     record = {"schema_version": 1, "iteration": 8, "status": "closed",
               "tasks": [{"id": "order-a"}], "policy": {"orders_refused": []},
               "outcome": {"wall_s": 120}}
-    analysis.write_json(repo / "iterations" / "0008.json", record)
-    analysis.write_json(repo / "iterations" / "0007.json", dict(record, iteration=7))
+    put_json(repo / "iterations" / "0008.json", record)
+    put_json(repo / "iterations" / "0007.json", dict(record, iteration=7))
     put(repo / "journal" / "notes.md", "notes\n")
     put(repo / "policy" / "changes" / "receipt.json", "{}\n")
     put(repo / "execution" / "roles" / "worker.md", "worker\n")
@@ -98,12 +103,12 @@ def dataset(out):
         issues.append(dict(issues[0], number=n, title=title, created_at=created,
                            labels=[{"name": "role:worker"}, {"name": "loop:iteration %d" % iteration}]))
     for issue in issues:
-        analysis.write_json(out / "github" / "issues" / ("%d.json" % issue["number"]), issue)
+        put_json(out / "github" / "issues" / ("%d.json" % issue["number"]), issue)
     for r in runs:
         d = out / "github" / "runs" / str(r["id"])
         # Legacy run.json has neither jobs_list nor issue association.
-        analysis.write_json(d / "run.json", {k: v for k, v in r.items() if k not in ("jobs_list", "issue")})
-        analysis.write_json(d / "jobs.json", r["jobs_list"])
+        put_json(d / "run.json", {k: v for k, v in r.items() if k not in ("jobs_list", "issue")})
+        put_json(d / "jobs.json", r["jobs_list"])
         put(d / "log.txt", "ISSUE: %d\n" % r["issue"])
     for role in ("worker", "policymaker"):
         base = out / "artifacts" / "probe" / role
@@ -113,7 +118,7 @@ def dataset(out):
                            "exports/manifest.json": "{}"}.items():
             put(base / ".session" / name, text)
         put(base / "trusted" / "prompt.md", "fixed\n")
-    analysis.write_json(out / "artifacts" / "probe" / "probe.json", {"iteration": 9})
+    put_json(out / "artifacts" / "probe" / "probe.json", {"iteration": 9})
     return issues, runs
 
 
@@ -146,7 +151,7 @@ class OfflineAnalysis(unittest.TestCase):
             first = (self.out / "report.json").read_bytes()
             self.assertEqual(analysis.analyze(self.out), self.expected)
             self.assertEqual((self.out / "report.json").read_bytes(), first)
-        self.assertEqual((self.out / "README.md").read_bytes(), (FIXTURES / "README.md").read_bytes())
+        self.assertEqual((self.out / "README.md").read_text(), (FIXTURES / "README.md").read_text())
         for session in report["sessions"]:
             path = Path(session["analysis_file"])
             self.assertEqual(json.loads((self.out / path).read_text()),

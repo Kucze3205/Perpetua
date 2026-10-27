@@ -224,8 +224,8 @@
  "growth": {
   "accumulating": {
    "iterations/ directory, bytes": {
-    "this_iteration": 392,
-    "x50": 19600
+    "this_iteration": 360,
+    "x50": 18000
    },
    "journal/, bytes": {
     "this_iteration": 6,
@@ -253,7 +253,7 @@
    }
   },
   "per_iteration_not_scaled": {
-   "iteration record, bytes": 196,
+   "iteration record, bytes": 180,
    "loop-state.json as staged, bytes (largest)": 2,
    "issues of the iteration, count": 5,
    "tokens in + out of all sessions": 240,
@@ -464,10 +464,10 @@
     },
     "estimated_tokens": 29,
     "tokens_by_category": {
+     "other": 2,
      "history": 7,
      "state": 6,
-     "role skill": 12,
-     "other": 2
+     "role skill": 12
     },
     "fixed_tokens": {
      "prompt.md": 2
@@ -484,10 +484,10 @@
     },
     "estimated_tokens": 29,
     "tokens_by_category": {
+     "other": 2,
      "history": 7,
      "state": 6,
-     "role skill": 12,
-     "other": 2
+     "role skill": 12
     },
     "fixed_tokens": {
      "prompt.md": 2

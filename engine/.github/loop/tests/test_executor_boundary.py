@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -29,6 +30,17 @@ class OfflineExecutorTest(sessions.SessionCase):
             "policy/roles/policymaker/SKILL.md": "Policy role\n",
         }.items():
             self.w.write(self.w.loop, path, text)
+
+    def test_offline_guard_runs_with_only_admitted_runtime_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work, trusted = Path(tmp, "work"), Path(tmp, "trusted")
+            work.mkdir()
+            trusted.mkdir()
+            (trusted / "command.sh").write_text("printf guard-ok")
+            shutil.copy(Path(boundary.__file__).with_name("offline_exec.py"), trusted)
+            result = boundary.launch(str(work), str(trusted), capture=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "guard-ok")
 
     def configure(self, command, write="[src/**]", gate=None):
         self.w.write(self.w.loop, "execution/profiles.yml",

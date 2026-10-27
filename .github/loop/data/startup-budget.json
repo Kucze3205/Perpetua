@@ -25,6 +25,7 @@
     "sha256": "b3bee213bdf3374177022a34e80c14a8c94ec1dcb2dc3f193c2eec82534b4304"
    }
   ],
-  "presented_to": 99
+  "presented_to": 99,
+  "delivered_to": 99
  }
 }

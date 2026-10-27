@@ -5,12 +5,12 @@ import os
 import fakes
 from fakes import common as c, iteration as it, loop, task
 import session_reports as reports
-from test_reports import PROPOSAL
-from test_layered_resources import LayeredSessionTest
-from test_session import read
+from proposal_fixtures import PROPOSAL
+from session_fixtures import LayeredSessionCase
+from session_fixtures import read
 
 
-class InputBoundaryTest(LayeredSessionTest):
+class InputBoundaryTest(LayeredSessionCase):
     def started_issue(self, *args, **kwargs):
         n = self.issue(*args, **kwargs)
         loop.resolve(n)

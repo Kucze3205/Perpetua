@@ -6,10 +6,10 @@ import fakes
 from fakes import common as c, iteration as it, loop
 import managed_resources as resources
 import policy_changes
-from test_layered_resources import LayeredSessionTest
+from session_fixtures import LayeredSessionCase
 
 
-class ActivationTest(LayeredSessionTest):
+class ActivationTest(LayeredSessionCase):
     def setUp(self):
         super().setUp()
         self.guard = patch.object(loop, 'reconcile')

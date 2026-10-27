@@ -6,8 +6,8 @@ import unittest
 
 import fakes
 from fakes import common as c, iteration as it, loop
-from test_flow import Flow
-import test_session as sessions
+from flow_fixtures import Flow
+import session_fixtures as sessions
 
 MEMORY = {"policy/working-memory.md": "# Working memory\nthe interpretation\n"}
 

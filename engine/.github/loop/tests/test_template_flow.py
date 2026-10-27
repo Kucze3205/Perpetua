@@ -16,8 +16,8 @@ import managed_resources as resources
 import policy_changes
 import session_reports as reports
 import setup_roles
-from test_merge import GATE_SH
-from test_reports import PROPOSAL
+from gate_fixtures import GATE_SH
+from proposal_fixtures import PROPOSAL
 
 
 class TemplateFlowTest(unittest.TestCase):

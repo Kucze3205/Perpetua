@@ -1,30 +1,15 @@
+import json
 import os
 import shutil
 import unittest
 
 import fakes
-from fakes import common as c, loop
-import test_session as sessions
-from test_session import read
+from fakes import common as c, iteration as it, loop
+import managed_resources as resources
+from session_fixtures import LayeredSessionCase, SessionCase, read
 
 
-class LayeredSessionTest(sessions.SessionCase):
-    work = sessions.StageTest.work
-    def setUp(self):
-        super().setUp()
-        # A controlled owner-selected layout, leaving unrelated inactive skills.
-        self.w.write(self.w.loop, 'engine.yml', 'resources:\n  format: layered\n')
-        self.w.write(self.w.loop, 'policy/params.yml', fakes.POLICY_PARAMS.replace('orchestrator', 'worker'))
-        self.w.write(self.w.loop, 'execution/profiles.yml', 'worker:\n  tools: [Read, Write]\n  write: [src/**, execution/**, policy/**]\n')
-        self.w.write(self.w.loop, 'policy/profiles.yml', 'audit:\n  tools: [Read]\n  write: [audit/**]\n')
-        for layer, role in (('execution', 'worker'), ('policy', 'audit'), ('policy', 'policymaker')):
-            self.w.write(self.w.loop, '%s/roles/%s/SKILL.md' % (layer, role), '---\nname: %s\ndescription: fixture\n---\n%s role\n' % (role, layer))
-        self.w.write(self.w.loop, 'execution/prompts/role.md', 'Execution prompt')
-        self.w.write(self.w.loop, 'execution/protocol.md', 'Execution rules')
-        fakes.sh(self.w.loop, 'git', 'add', '-A')
-        fakes.sh(self.w.loop, 'git', 'commit', '-qm', 'layered setup')
-        fakes.sh(self.w.loop, 'git', 'push', '-q', 'origin', 'HEAD:main')
-
+class LayeredSessionTest(LayeredSessionCase):
     def test_layered_roles_resolve_stage_and_admit_their_work(self):
         for role, expected, files in (('worker', 'execution role', {'src/result.txt': 'work'}),
                                       ('audit', 'policy role', {'audit/result.txt': 'audit'})):
@@ -193,3 +178,46 @@ class LayeredSessionTest(sessions.SessionCase):
                     os.unlink(location)
                     if exists:
                         os.rename(backup, location)
+
+
+class ManagedResourcesRegressionTest(SessionCase):
+    def test_layered_role_admission_receipt_and_rollback_stay_consistent(self):
+        baseline = c.head()
+        initial_revision = resources.revision()
+        fakes.sh(self.w.loop, "git", "tag", "setup-baseline", baseline)
+        self.assertEqual(it.policy_rev(), initial_revision)
+
+        n = self.issue()
+        loop.resolve(n)
+        self.assertEqual(self.outputs()["tools"], "Read,Grep,Glob,Write,Edit,Skill")
+        work = self.work()
+        loop.stage(n, work, os.path.join(self.w.tmp, "trusted-regression"))
+        self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")),
+                         "---\nname: worker\ndescription: fixture\n---\nx\n")
+        self.w.branch(n, {"execution/roles/worker/SKILL.md": "forbidden"})
+        self.assertEqual(loop.merge_branch(n, "worker", self.hub.issue(n))["result"], "scope")
+
+        pol = self.issue("policymaker")
+        replacement = "---\nname: worker\ndescription: adapted\n---\nnew instructions\n"
+        self.w.branch(pol, {"execution/roles/worker/SKILL.md": replacement})
+        accepted = loop.merge_branch(pol, "policymaker", self.hub.issue(pol), boundary=True)
+        self.assertEqual((accepted["result"], accepted["verdict"]), ("merged", None))
+        receipt = accepted["change"]
+        self.assertEqual(receipt["schema_version"], 1)
+        self.assertEqual(receipt["policy_rev_before"], initial_revision)
+        self.assertEqual(receipt["changed_paths"], ["execution/roles/worker/SKILL.md"])
+        self.assertEqual(receipt["policy_rev_after"],
+                         resources.revision("main", self.w.origin))
+        c.sync_main()
+        self.assertEqual(it.policy_rev(), receipt["policy_rev_after"])
+        work = self.work()
+        loop.stage(n, work, os.path.join(self.w.tmp, "trusted-adapted"))
+        self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")), replacement)
+
+        self.w.push_main({"src/kept.txt": "product", "journal/kept.md": "report"})
+        self.assertTrue(it.revert_policy("layered regression"))
+        self.assertEqual(it.policy_rev(), initial_revision)
+        self.assertEqual(self.w.origin_file("src/kept.txt"), "product")
+        self.assertEqual(self.w.origin_file("journal/kept.md"), "report")
+        self.assertEqual(json.loads(self.w.origin_file("iterations/changes/change-%s.json" % pol)), receipt)
+        self.assertFalse(it.revert_policy("already restored"))

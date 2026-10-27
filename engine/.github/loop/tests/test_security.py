@@ -11,8 +11,7 @@ from pathlib import Path
 import fakes
 from fakes import loop
 import session_security as security
-import test_session
-from test_session import SessionCase, read
+from session_fixtures import SessionCase, read
 
 
 class SecurityTest(unittest.TestCase):
@@ -44,8 +43,6 @@ class SecurityTest(unittest.TestCase):
 
 
 class CompositionTest(SessionCase):
-    work = test_session.StageTest.work
-
     def test_staging_refuses_redirected_session_directories_before_writing(self):
         n = self.issue()
         for name in (".session", ".session/inputs"):

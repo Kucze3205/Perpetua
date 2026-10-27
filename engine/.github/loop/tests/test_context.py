@@ -8,13 +8,12 @@ from fakes import common as c, iteration as it, loop
 import session_reports as reports
 import session_startup as startup
 import session_inputs
-import test_session as sessions
+import session_fixtures as sessions
 
 read = sessions.read
 
 
 class ContextTest(sessions.SessionCase):
-    work = sessions.StageTest.work
 
     def stage(self, role="policymaker", state=None, labels=(), body="## Goal\nx\n"):
         n = self.issue(role, labels=labels, body=body)

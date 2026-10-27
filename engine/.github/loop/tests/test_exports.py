@@ -9,7 +9,7 @@ import fakes
 from fakes import common as c, iteration as it, loop
 import policymaker_session
 import session_exports as exports
-from test_session import SessionCase
+from session_fixtures import SessionCase
 
 
 class ExportsTest(unittest.TestCase):

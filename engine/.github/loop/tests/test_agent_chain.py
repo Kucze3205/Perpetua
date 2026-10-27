@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import fakes
 from fakes import common as c, loop
-import test_session as sessions
+import session_fixtures as sessions
 
 BIG = 200 * 1024                      # over the 128 KiB limit of one argv string on Linux
 RECORDER = r'''#!/bin/sh
@@ -57,7 +57,6 @@ print(json.dumps({"type": "result", "is_error": False, "num_turns": 1,
 
 
 class AgentChainCase(sessions.SessionCase):
-    work = sessions.StageTest.work
     layer = "policy"
 
     def setUp(self):

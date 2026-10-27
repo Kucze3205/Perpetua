@@ -5,9 +5,12 @@ report-reader and task-graph sections in `.github/loop/task-graph.md`,
 and the Policymaker's ownership/order contract in `.github/loop/policymaker.md`.
 `loop.session_contract` selects sections by the engine-selected role and shaper label,
 and adds verification/delivery instructions from shell access and execution isolation.
-Execution sessions deliver file bytes; policy sessions deliver committed repository
-changes. A policy role without a shell can publish session outputs, but must report
-blocked if its task requires repository edits.
+Both layers deliver file bytes, committed or not. A policy session is staged with a
+baseline; the epilogue builds one commit on it from the final files of the working tree
+(`executor_boundary.admit`, also used for execution sessions), without running the
+agent's git. New untracked files outside the role's write paths (CLI stubs, runner home
+files) are environment debris and are not admitted; symlinks, hard links and special files
+refuse the admission. Write-path, protected-path, size and receipt checks apply unchanged.
 All sessions retain trust, reporting and owner-request rules. Only the Policymaker
 receives suggestion-decision instructions; only it and the shaper receive graph and
 report-reader instructions. There is no role-configurable contract selector.
@@ -82,8 +85,9 @@ provider test does not prove that matrix. See [validation](validation.md).
 One contract serves every role; what differs is the tools. The starting prompt and the protocol do not
 assume a branch, a commit or a verification command. With `Bash` among its tools a session runs `## Verification`
 itself before `done`. Without it (the shaper) it cannot, and `done` means the files the task asks for are written.
-Execution-layer sessions get no `Work on branch task/<n>` line: the engine imports their files and never reads their
-commits (`executor_boundary.import_candidate`). The engine runs `## Verification` in the epilogue for everyone.
+Neither layer gets a `Work on branch task/<n>` line: the engine admits the files a session leaves and never reads its
+commits (`executor_boundary.import_candidate` for execution, `admit` with the write-path filter for policy). A policy
+contract says the epilogue publishes the files left in the write paths and no commit is needed. The engine runs `## Verification` in the epilogue for everyone.
 
 `partial` of a shaper stays the end of its iteration: the iteration fails, no retry, and `tasks.json` is not read
 (`after_session` loads the graph only on `done`). The old cause, a prompt demanding a shell the shaper lacks, is

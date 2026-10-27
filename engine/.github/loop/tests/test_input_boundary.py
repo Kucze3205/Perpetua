@@ -94,13 +94,16 @@ class InputBoundaryTest(LayeredSessionTest):
                 self.assertEqual('## Suggestion decisions' in contract, role == 'policymaker')
                 self.assertNotIn('# Session protocol', prompt)
 
-    def test_shellless_policy_does_not_promise_repository_file_import(self):
-        _, _, trusted = self.stage_inputs('audit')
-        contract = read(os.path.join(trusted, 'contract.md'))
-        self.assertIn('Your .session outputs are published', contract)
-        self.assertIn('report blocked', contract)
-        self.assertNotIn('the engine imports the files you wrote', contract)
-        self.assertNotIn('Work on branch', contract)
+    def test_policy_contract_publishes_files_and_asks_for_no_commit(self):
+        for role in ('audit', 'policymaker'):
+            with self.subTest(role=role):
+                _, _, trusted = self.stage_inputs(role)
+                contract = read(os.path.join(trusted, 'contract.md'))
+                self.assertIn('publishes the files you leave in your write paths', contract)
+                self.assertIn('No commit is needed', contract)
+                self.assertNotIn('Work on branch', contract)
+                self.assertNotIn('Commit before', contract)
+                self.assertNotIn('the engine imports the files you wrote', contract)
 
     def test_shell_verification_and_git_delivery_are_independent(self):
         self.w.write(self.w.loop, 'engine.yml', 'resources:\n  format: layered\nlimits:\n  tools: [Read, Write, Bash]\n')
@@ -111,7 +114,8 @@ class InputBoundaryTest(LayeredSessionTest):
                 _, _, trusted = self.stage_inputs(role)
                 contract = read(os.path.join(trusted, 'contract.md'))
                 self.assertIn("Run the task's verification command", contract)
-                self.assertEqual('publishes committed changes only' in contract, role == 'audit')
+                self.assertNotIn('Commit before', contract)
+                self.assertEqual('publishes the files you leave in your write paths' in contract, role == 'audit')
                 self.assertEqual('the engine imports the files you wrote' in contract, role == 'worker')
 
     def test_explicit_policy_exports_are_denied_without_downloading(self):

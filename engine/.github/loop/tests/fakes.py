@@ -285,8 +285,9 @@ class World:
         sh(d, "git", "push", "-q", "origin", "main")
 
     def session(self, n, files=None, status="done", report_extra="", session_files=None, exit_code="0", result=None,
-                commit=True, report=True, base=None, delete=(), yaml=""):
-        """Play the agent of issue `n` and run the epilogue on what it left. `files` are committed on `task/N`;
+                commit=True, report=True, base=None, delete=(), yaml="", links=None):
+        """Play the agent of issue `n` and run the epilogue on what it left. `files` are committed on `task/N`
+        (`commit=False`: left in the tree; `links`: name -> target of symlinks left there);
         `session_files` go to `.session/` (report extras, tasks.json, orders.json, requests.json, artifacts/...)."""
         self.n_work += 1
         work = os.path.join(self.tmp, "work%s" % self.n_work)
@@ -296,15 +297,15 @@ class World:
         rt = os.path.join(self.tmp, "rt%s" % self.n_work)
         os.makedirs(rt)
         os.environ["RUNNER_TEMP"] = rt
-        role = common.roles_of(common.label_names(self.hub.issue(n)))[0]
-        if loop.session_inputs.restricted(role):
-            # Model the real staging/admission handshake even when the session's
-            # output itself is supplied by the test rather than executed.
-            loop.stage(n, work, os.path.join(rt, "trusted"))
+        # Model the real staging/admission handshake (the baseline) even when the session's
+        # output itself is supplied by the test rather than executed.
+        loop.stage(n, work, os.path.join(rt, "trusted"))
         for p, t in (files or {}).items():
             self.write(work, p, t)
         for p in delete:
             os.remove(os.path.join(work, p))
+        for p, target in (links or {}).items():
+            os.symlink(target, os.path.join(work, p))
         if commit and (files or delete):
             sh(work, "git", "add", "-A")
             sh(work, "git", "commit", "-q", "--allow-empty", "-m", "work of #%s" % n)

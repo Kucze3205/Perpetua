@@ -1,0 +1,117 @@
+# Unattended build of a spec's tickets: each wave takes the open sub-issues whose blockers are all closed and
+# implements each in one Claude session on its own runner, merging into the integration branch. The next wave is
+# dispatched by this workflow itself until nothing is ready. Started by hand; see .github/build/README.md.
+name: build-spec
+run-name: "build #${{ inputs.parent }} wave ${{ inputs.wave }}${{ inputs.dry_run && ' (dry run)' || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      parent: {description: "Spec issue whose sub-issues are built", default: "211"}
+      branch: {description: "Integration branch", default: "engine-v2"}
+      wave: {description: "Wave counter (set by the workflow)", default: "1"}
+      dry_run: {description: "Only plan the wave", type: boolean, default: false}
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+  pull-requests: write
+
+concurrency:
+  group: build-spec-${{ inputs.parent }}
+
+env:
+  GH_REPO: ${{ github.repository }}
+  PARENT: ${{ inputs.parent }}
+  BRANCH: ${{ inputs.branch }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.plan.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WAVE: ${{ inputs.wave }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python3 .github/build/plan.py
+
+  work:
+    needs: plan
+    if: needs.plan.outputs.ready != '[]' && !inputs.dry_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        issue: ${{ fromJSON(needs.plan.outputs.ready) }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: ctl, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: work, ref: "${{ inputs.branch }}", fetch-depth: 0, persist-credentials: false}
+      - name: Host requirements of the engine tests and the agent CLI
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q bubblewrap socat build-essential python3-yaml
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
+            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+          fi
+          version=$(python3 -c "import yaml; print(yaml.safe_load(open('work/engine/engine.yml'))['cli_version'])")
+          curl -fsSL https://claude.ai/install.sh | bash -s "$version"
+          sudo install -m 755 "$(readlink -f "$HOME/.local/bin/claude")" /usr/local/bin/claude
+          for dir in /usr/local/share /usr/bin /bin /lib /lib64 "$(python3 -c 'import os; print(os.path.dirname(os.__file__))')"; do
+            if [ -d "$dir" ]; then
+              sudo touch "$dir/perpetua-policy-canary.txt"
+              sudo chown "$(id -u):$(id -g)" "$dir/perpetua-policy-canary.txt"
+            fi
+          done
+          git config --global gc.auto 0
+          git config --global maintenance.auto false
+          npm install -q --prefix "$RUNNER_TEMP/agent" @anthropic-ai/claude-code@2.1.303
+      - name: Build the ticket
+        timeout-minutes: 320
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ISSUE: ${{ matrix.issue }}
+          AGENT_CLI: ${{ runner.temp }}/agent/node_modules/.bin/claude
+        run: python3 ctl/.github/build/worker.py
+      - name: Report on the ticket
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ matrix.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 ctl/.github/build/report.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-${{ matrix.issue }}
+          path: ${{ runner.temp }}/out/
+          retention-days: 30
+
+  next:
+    needs: [plan, work]
+    if: always() && needs.plan.outputs.ready != '[]' && !inputs.dry_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with: {pattern: build-*, path: statuses}
+      - name: Wait out a usage limit, then dispatch the next wave
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WAVE: ${{ inputs.wave }}
+        run: python3 .github/build/next.py statuses

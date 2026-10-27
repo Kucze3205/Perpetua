@@ -82,7 +82,15 @@ def prepare(work, trusted):
             shutil.copytree(Path(work, ".session"), Path(tmp, ".session"))
         for entry in Path(work).iterdir():
             if entry.is_dir() and not entry.is_symlink():
-                shutil.rmtree(entry)
+                if os.name == "nt":
+                    def remove_readonly(func, path, exc):
+                        if not isinstance(exc[1], PermissionError):
+                            raise exc[1]
+                        os.chmod(path, stat.S_IWRITE)
+                        func(path)
+                    shutil.rmtree(entry, onerror=remove_readonly)
+                else:
+                    shutil.rmtree(entry)
             else:
                 entry.unlink()
         shutil.copytree(tmp, work, dirs_exist_ok=True)

@@ -1,0 +1,37 @@
+name: Engine tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap socat build-essential python3-yaml
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          version=$(python3 -c "import yaml; print(yaml.safe_load(open('engine/engine.yml'))['cli_version'])")
+          curl -fsSL https://claude.ai/install.sh | bash -s "$version"
+          sudo install -m 755 "$(readlink -f "$HOME/.local/bin/claude")" /usr/local/bin/claude
+          for dir in /usr/local/share /usr/bin /bin /lib /lib64 "$(python3 -c 'import os; print(os.path.dirname(os.__file__))')"; do
+            if [ -d "$dir" ]; then
+              sudo touch "$dir/perpetua-policy-canary.txt"
+              sudo chown "$(id -u):$(id -g)" "$dir/perpetua-policy-canary.txt"
+            fi
+          done
+          git config --global gc.auto 0
+          git config --global maintenance.auto false
+      - name: Run engine tests
+        run: python3 -m unittest discover -s engine/.github/loop/tests -v
+      - name: Run update tests
+        run: python3 -m unittest discover -s skills/update -p test_engine_update.py -v

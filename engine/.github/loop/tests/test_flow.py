@@ -470,6 +470,35 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.hub.report(pol)["status"], "crashed")
         self.assertEqual(self.phase(), "shape")
 
+    def test_the_watchdog_resumes_a_policymaker_whose_ordered_session_ended_without_an_event(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, session_files={"orders.json": self.E})
+        self.hub.close_issue(self.task_issue("order-%s-e" % pol))                # the end-of-session event is lost
+        self.hub.runs.clear()
+        c.LAUNCHED.clear()                                                       # the watchdog is a fresh process
+        self.assertEqual(len(self.runs_of(pol)), 1)
+        loop.drive()
+        self.assertEqual(len(self.runs_of(pol)), 2)
+        self.assertNotIn("awaiting:orders", self.hub.issue(pol)["_labels"])
+
+    def test_a_policymaker_waiting_for_orders_past_the_age_limit_ends_and_the_iteration_fails_open(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, session_files={"orders.json": self.E})
+        self.hub.runs.clear()
+        c.LAUNCHED.clear()
+        saved, base = c.now, c.now()
+        c.now = lambda: base + timedelta(days=loop.MAX_AGE_DAYS + 1)
+        try:
+            loop.drive()
+        finally:
+            c.now = saved
+        self.assertEqual(self.hub.report(pol)["status"], "crashed")
+        self.assertEqual(self.hub.report(pol)["cause"], "age-limit")
+        self.assertEqual(self.hub.issues[pol]["state"], "closed")
+        self.assertEqual(self.phase(), "shape")
+
     def test_a_failed_iteration_does_not_leave_the_waiting_policymaker_open(self):
         it.start_iteration()
         pol = self.session_issue("policymaker")
@@ -496,6 +525,25 @@ class PolicymakerFailureTest(Flow):
             self.assertEqual([s["status"] for s in it.policymaker_sessions()], ["crashed", "crashed"])
             self.assertEqual(len(calls), 1)
             self.assertIn("two Policymaker sessions", calls[0])
+        finally:
+            it.revert_policy = saved
+
+    def test_a_session_of_several_passes_counts_once_toward_the_rollback(self):
+        calls = []
+        saved = it.revert_policy
+        it.revert_policy = lambda why: calls.append(why) or True
+        try:
+            it.start_iteration()
+            pol = self.session_issue("policymaker")
+            for _ in range(2):
+                self.w.session(pol, session_files={"orders.json": tasks_json(task("e", role="evaluator"))})
+                self.w.session([x["number"] for x in self.hub.role_issues("evaluator", "open")][-1])
+            self.w.session(pol, report=False, exit_code="1")                    # the third pass crashes
+            self.assertEqual([s["status"] for s in it.policymaker_sessions()], ["crashed"])
+            self.finish(0)
+            self.assertEqual(calls, [])                                          # one failed session, not three
+            self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
+            self.assertEqual(len(calls), 1)
         finally:
             it.revert_policy = saved
 

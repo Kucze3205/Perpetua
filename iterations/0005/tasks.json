@@ -1,0 +1,17 @@
+[
+ {
+  "id": "order-137-first-audit",
+  "title": "First environment audit",
+  "role": "audit",
+  "body": "## Goal\nMeasure the loop environment and write the first audit report to `audit/latest.md`.\n## Acceptance\n- [ ] `audit/latest.md` exists and states the measured environment facts with evidence paths\n- [ ] No managed definitions are changed\n## Verification\n`test -f audit/latest.md`\n## Context\n- link: policy/roles/audit/SKILL.md - the audit role's work rules\n- link: policy/working-memory.md - no iteration has been considered yet, so this is the first audit\n## Budget\n- policy/ and execution/ read-only; no iteration records exist yet",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 60,
+   "max_turns": 80
+  },
+  "inputs": [],
+  "exports": [],
+  "issue": 138
+ }
+]

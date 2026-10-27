@@ -1,0 +1,25 @@
+{
+ "schema_version": 1,
+ "id": "change-116",
+ "issue": 116,
+ "role": "policymaker",
+ "base_commit": "b1e58494183eca3526a4ff90f8436e9c2d8318f0",
+ "applied_base_commit": "7fec62e4cea3d5b8d6874852e3ea9cbc204c4a92",
+ "accepted_commit": "ca800acc91394c519c242e405fdec55334710f35",
+ "policy_rev_before": "layered-v1:f8e458ca77628c4ff53dc2df0cdd2e1631b7cfdae5cef8d2f0452e349ff64ad6",
+ "policy_rev_after": "layered-v1:a59df9e17e4bf4d711e51bd083d46da062fde5cbcf4adf5d905a2bb019e82aa0",
+ "evaluator_rev_before": {
+  "policy/evaluator/": "259fff4de5ce599324a05ab829a6fb1e7954566a"
+ },
+ "evaluator_rev_after": {
+  "policy/evaluator/": "259fff4de5ce599324a05ab829a6fb1e7954566a"
+ },
+ "changed_paths": [
+  "policy/working-memory.md"
+ ],
+ "applied_at": "2026-10-27T11:37:20Z",
+ "verifier_issue": null,
+ "source_iteration": 3,
+ "applied_iteration": 3,
+ "effective_from_iteration": 3
+}

@@ -1,0 +1,29 @@
+﻿name: Engine tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap socat build-essential python3-yaml
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          version=$(python3 -c "import yaml; print(yaml.safe_load(open('engine/engine.yml'))['cli_version'])")
+          curl -fsSL https://claude.ai/install.sh | bash -s "$version"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run engine tests
+        run: python3 -m unittest discover -s engine/.github/loop/tests -v
+      - name: Run update tests
+        run: python3 -m unittest discover -s skills/update -p test_engine_update.py -v

@@ -18,7 +18,7 @@ independent evaluator verification and atomic activation of dependent definition
 Run the full suite from the repository root: `python -m unittest discover -s engine/.github/loop/tests`
 on Windows, `python3 -m unittest discover -s engine/.github/loop/tests` on Linux. The host requirements of the
 Linux tests (packages, kernel settings, the pinned CLI) are the install step of
-[`.github/workflows/engine-tests.yml`](../../../.github/workflows/engine-tests.yml); nothing else lists them.
+[`engine-tests.yml`](https://github.com/Kucze3205/Perpetua/blob/main/.github/workflows/engine-tests.yml); nothing else lists them.
 Windows skips the kernel-isolation tests (they need Linux and bubblewrap), the tests that need a POSIX shell,
 the symlink cases and the tests that need the native CLI, so a Windows run does not prove isolation. The script and
 model boundary tests must execute on Linux; an environment skip is an outstanding check, not proof.

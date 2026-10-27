@@ -1,6 +1,7 @@
 """Linux namespace evidence; surrogate CLI tests are NOT provider evidence.
 
-Host requirements: .github/workflows/engine-tests.yml. Run alone:
+Host requirements: https://github.com/Kucze3205/Perpetua/blob/main/.github/workflows/engine-tests.yml
+Run alone:
     python3 -m unittest discover -s engine/.github/loop/tests -p test_model_boundary.py -v
 The provider matrix opts in only with LOOP_NETWORK_INTEGRATION=1 and an existing
 CLAUDE_CODE_OAUTH_TOKEN supplied by the credential manager. It sends synthetic

@@ -406,6 +406,7 @@ def policy_pass(n, it):
         return bool(now)
     waiting = False
     for p in apply_policy(settle):
+        note_long_policy_phase(n, policy_pass_of(p))
         if placed.get(p):
             numbers = create_tasks(n, placed[p])
             c.update_report(p, {"ordered": " ".join(map(str, numbers))})
@@ -416,6 +417,18 @@ def policy_pass(n, it):
             store_state(p, {"audit_rev": audit_revision()}, SEEN_MARK)       # the audit it ordered and read is not new
     if not waiting:
         begin_work(n, it)
+
+
+def note_long_policy_phase(n, passes):
+    """Informational only: nothing waits on it, and the owner's answer changes nothing. Once per iteration, even if answered."""
+    k, ref = c.cfg()["policy_passes_notice"], "policy-passes-%s" % n
+    if not k or passes < k or any(c.marker(x["body"], "request-ref") == ref
+                                  for s in ("open", "closed") for x in c.list_issues(state=s, labels=(REQ + ":notice",))):
+        return
+    open_request("notice", "Policy phase of iteration %s: %s passes" % (n, passes),
+                 "The Policymaker has run %s passes in this iteration's policy phase; each pass is a session with its ordered sessions." % passes,
+                 "The engine caps nothing; a long policy phase costs time and quota, so you can see it.",
+                 "Nothing is blocked. The iteration continues; closing this request changes nothing.", ref=ref, iteration=n)
 
 
 def policy_pass_of(p):

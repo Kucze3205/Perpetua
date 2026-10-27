@@ -41,6 +41,7 @@ DEFAULTS = {
     "owner": "",
     "idle_resumes": 3,
     "startup_token_warning": 100000,
+    "policy_passes_notice": 10,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],

@@ -371,6 +371,7 @@ class PolicymakerTest(Flow):
 class PolicyPhaseTest(Flow):
     """The policy phase: the Policymaker's passes on one issue, the ordered policy-layer sessions between them."""
     FIRST = True
+    YML = SCRIPT_GATE + "policy_passes_notice: 3\n"
     E = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
     A = tasks_json(task("a", role="audit", title="Audit"))
 
@@ -449,6 +450,22 @@ class PolicyPhaseTest(Flow):
         self.w.push_main({"audit/latest.md": "changed"}, "a later audit")
         c.sync_main()
         self.assertEqual(it.policymaker_due(2), "a new audit report")
+
+    def test_a_long_policy_phase_opens_one_informational_notice_that_blocks_nothing(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        notices = lambda: self.hub.by_label("owner-request:notice", "all")
+        for k, (orders, tid) in enumerate([(self.E, "e"), (self.A, "a")] * 3, 1):
+            self.w.session(pol, session_files={"orders.json": orders})
+            self.assertEqual(len(notices()), 1 if k >= 3 else 0)                 # nothing below the threshold, once at it
+            if k == 3:
+                self.hub.close_issue(notices()[0]["number"])                      # answered: the iteration is unaffected
+            self.assertEqual(self.phase(), "policy")
+            self.w.session(self.task_issue("order-%s-%s%s" % (pol, "" if k == 1 else "%s-" % k, tid)))
+        self.assertEqual(len(notices()), 1)                                      # not opened again, not even after it was answered
+        self.w.session(pol)
+        self.assertEqual(self.phase(), "shape")
+        self.assertIsNotNone(self.session_issue("orchestrator"))
 
     def test_implementation_layer_orders_wait_for_the_execution_phase(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")

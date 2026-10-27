@@ -107,7 +107,7 @@ def validate(repo, baseline=None):
                 raise ValueError('setup baseline requires clean committed configuration')
             # Engine fixes under .github/loop/ move HEAD but not the managed definitions.
             if resources.revision('HEAD') != resources.revision(baseline) or git(
-                    'diff', '--name-only', baseline, 'HEAD', '--', 'engine.yml', 'goal', 'templates'):
+                    'diff', '--name-only', baseline, 'HEAD', '--', 'engine.yml', 'goal'):
                 raise ValueError('setup baseline does not match accepted setup commit')
             # Status omits ignored files and can hide skip-worktree changes. Compare
             # every local managed file (including skill references) with the commit.

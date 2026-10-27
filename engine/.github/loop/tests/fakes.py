@@ -241,7 +241,17 @@ class World:
         os.chdir(self.cwd_saved)
         os.environ.clear()
         os.environ.update(self.env_saved)
-        shutil.rmtree(self.tmp, onerror=lambda f, p, e: (os.chmod(p, 0o700), f(p)))
+        def remove_error(func, path, exc_info):
+            if isinstance(exc_info[1], FileNotFoundError):
+                return  # A Git background process removed the entry concurrently.
+            if not isinstance(exc_info[1], PermissionError):
+                raise exc_info[1]
+            try:
+                os.chmod(path, 0o700)
+                func(path)
+            except FileNotFoundError:
+                pass
+        shutil.rmtree(self.tmp, onerror=remove_error)
 
     @staticmethod
     def write(root, rel, text):

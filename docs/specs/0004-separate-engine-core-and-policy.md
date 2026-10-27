@@ -1,5 +1,22 @@
 # Rozdzielenie engine, warstwy wykonawczej i polityki
 
+## Status historyczny
+
+To zapis zakresu i ustaleń z czasu ADR-0004, a nie opis obecnej implementacji.
+[ADR-0005](../adr/0005-no-role-templates.md) zastąpił wybór nieaktywnych szablonów
+ról oraz ich kopiowanie/adaptowanie ze źródeł: role polityki są dostarczane jako
+aktywne definicje, a role wykonawcze pisane dla pętli z inspiracją z biblioteki
+skilli. Dotyczy to opisu Solution, User Stories 3–6, decyzji Setup i testów
+wyboru ról ze źródeł. Setup pozostawia `shaper: null`; organizację wykonania
+wybiera pierwsza sesja Policymakera. Poniżej zachowano pierwotne ustalenia.
+
+Opisy braku izolacji i wyniki w Further Notes dotyczą stanu sprzed wdrożenia.
+Aktualne kontrakty: [definicje zarządzane](../../engine/docs/perpetua/managed-resources.md),
+[izolacja sesji](../../engine/docs/perpetua/session-sandbox.md) i
+[walidacja](../../engine/docs/perpetua/validation.md). Wyłączenie aktualizacji
+z zakresu tej specyfikacji nie oznacza ich obecnego braku; osobną procedurą jest
+[skill update](../../skills/update/SKILL.md).
+
 ## Problem Statement
 
 Setup instaluje skille wykonawcze i role polityki we wspólnym zbiorze zasobów,
@@ -100,7 +117,7 @@ aktywowaną i przywracaną razem.
   produkty pracy, raporty i historię. Wyzwalacze pozostają obecne: przekroczenie
   skonfigurowanego quiet time albo dwie kolejne nieudane sesje Policymakera.
   Dotychczasowe zasady liczenia czasu oczekiwania na właściciela pozostają w mocy.
-- **Setup:** dostarczone szablony są nieaktywne. Setup wybiera i adaptuje role do
+- **Setup (historyczne; zastąpione przez ADR-0005):** dostarczone szablony są nieaktywne. Setup wybiera i adaptuje role do
   celu i podejścia, wykorzystując dostępne skille globalne, projektowe i szablony,
   a nowe tworzy, gdy brak odpowiedniego źródła. Aktywne lokalne definicje trafiają
   do właściwej warstwy; źródłowe instalacje globalne pozostają niezmienione.
@@ -140,7 +157,7 @@ Właściciel zaakceptował następujące granice testów w rozmowie poprzedzają
   definicji. Sprawdzają aktywację i przywrócenie całego zestawu, zgodność rewizji
   oraz zachowanie produktów pracy i raportów. Osobno obejmują setup baseline
   i niezakończoną lub odrzuconą weryfikację evaluatora.
-- Testy setupu obejmują wybór ról z szablonu, skilla globalnego i projektowego,
+- Historyczny zakres testów setupu (zastąpiony przez ADR-0005) obejmował wybór ról z szablonu, skilla globalnego i projektowego,
   nieaktywność niewybranych szablonów oraz brak modyfikacji instalacji źródłowych.
   Wykorzystują kontrolowane źródła zamiast zależności od prywatnych skilli autora.
 - Istniejące testy sesji, przepływu iteracji, bezpieczeństwa, merge, provenance,

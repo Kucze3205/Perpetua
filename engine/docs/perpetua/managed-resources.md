@@ -6,7 +6,8 @@ receipts, iteration revisions and rollback use this boundary.
 
 New templates declare `resources: {format: layered}`. Omission uses that same
 format; explicit legacy formats are rejected. Existing loops keep their own
-versioned engine (ADR-0001); this release supplies no migration or update.
+versioned engine. Explicit plugin updates are separate from format migration;
+see [setup and updates](engine.md#setup-and-updates).
 
 ## Active definitions
 
@@ -62,7 +63,8 @@ uses the accepted checkout and the selected layer, with no fallback to the
 other layer and no writes to global skill installations. Script roles receive
 their own profile's command. Layer selection does not grant additional tools
 or network permissions: profiles retain independent permissions and existing
-accepted-limit checks.
+accepted-limit checks. Filesystem isolation and output admission have their
+contract in [session sandbox](session-sandbox.md#filesystem-isolation-and-output-admission).
 
 Execution roles cannot admit changes to managed definitions even if their
 `write` patterns include those locations; they use suggestions instead.
@@ -94,61 +96,6 @@ restores deleted definitions and removes newly added definitions, retaining
 products, reports, receipts and Git history. Quiet time, consecutive failed
 Policymaker sessions and owner-wait accounting retain their existing rules.
 
-## Offline executor boundary
-
-Layered execution profiles with `agent: false` and `internet: false` run in a
-Linux bubblewrap namespace with a private process tree, network, home and temp
-directory. Only explicit runtime files, the sanitized work snapshot and the
-selected script/offline enforcement program are mounted. Neither the engine
-checkout, staged engine metadata, host home, host temp nor other host checkouts
-are mounted. Seccomp also denies socket creation by the script and its children.
-Missing bubblewrap, required runtime files, namespace denial or missing admission
-metadata fails closed. Runtime directory names confer no access: policy copies
-under `/usr`, executable/library parents and Python's library directory stay
-private too.
-
-Candidate-owned product checks and task verification for layered execution roles
-use the same offline namespace and narrow runtime after admission. Each command
-gets a disposable product-only snapshot with a new Git root; check writes do not
-alter the candidate. Missing isolation fails the check, without a host fallback.
-The accepted change gate still runs through its trusted measurement path with
-the full candidate and baseline required by ADR-0003.
-
-The supported runtime is Bash, Git, Python 3 and the basic file/text commands
-listed in `executor_boundary.runtime_files`. Python supports the standard modules
-explicitly imported by its trusted `-I -S` probe and their imported dependencies;
-site packages and arbitrary additional modules are excluded. The engine resolves
-each executable and imported Python file separately, then adds individual ELF
-shared-library dependencies from `ldd`. It never mounts a runtime parent
-directory. Adding tools or Python modules requires extending this trusted list;
-work scripts cannot expand it through their environment, current directory or
-Python startup customization. This same file allowlist can be used by the model
-and online boundaries without granting access to host directories.
-
-The work snapshot excludes managed definitions in both layers, engine internals/configuration, policy iteration/audit records and
-tool discovery directories. It retains regular tracked product files and the
-already filtered `.session/` recipient view. Redirected product inputs are
-refused. Its fresh Git root commit contains only that view: no original commit
-IDs, object store, alternates, reflogs, remotes, credential configuration or
-hooks. Scripts can use Git locally, but must leave their final files in the
-working tree; the engine admits those bytes, including uncommitted work.
-
-The trusted epilogue never invokes worker Git for these sessions. It reads
-regular output files as data and builds an index against the staged original
-baseline in the engine repository, retaining excluded definitions unchanged.
-Symlinks, hardlinks and special output files are refused. Binary contents,
-executable modes and deletion of visible inputs are preserved. Worker Git
-configuration, hooks and attributes cannot execute during this import. The
-result then passes the existing protected/write checks and merge path; the
-change gate still runs from the accepted tree with the reconstructed candidate
-and accepted baseline. This does not migrate legacy installations.
-
-Run `python3 -m unittest discover -s engine/.github/loop/tests -p test_executor_boundary.py -v`
-on Linux (host requirements: [validation](validation.md)). These tests
-execute the staged script and epilogue, probe host/files/Git/network access,
-attempt credential-bearing worker Git hooks/configuration, and check data
-preservation and admission refusals. A skip on another platform is not evidence
-of isolation. No provider or actual GitHub credential is needed.
 ## New-loop setup
 
 The shipped template has an empty `execution/profiles.yml`, no execution skills and no selected shaper; the policy layer ships the Policymaker, audit, evaluator and evaluator-verifier skills with their profiles. `setup_roles.py prepare` checks this fresh state before the setup branch is committed; it does not convert definitions or change the plugin installation.
@@ -157,4 +104,30 @@ The setup map writes each execution role's complete skill in `execution/roles/<r
 
 Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no `internet` together with writing code beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: the engine contract in system instructions; terms: `CONTEXT.md`.
 
-Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires a selected execution shaper, all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline matching HEAD. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This adds no migration, update or reconfiguration mode.
+Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline whose managed definitions and configuration match HEAD. `shaper: null` is valid; if selected, the shaper must be a complete execution role. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This is fresh-setup validation; it does not migrate formats or reconfigure an existing loop.
+
+## Ownership after arming
+
+These are the shipped boundaries after arming. The owner's ability to change architecture during setup gives the
+Policymaker no additional authority. Any owner-chosen change to these boundaries must be explicit, implemented and
+documented during setup; otherwise they remain in force.
+
+| Zone | Contents | Changed by |
+|---|---|---|
+| Workflows | `.github/workflows/` | the owner only (the loop's token cannot write them) |
+| Engine scripts and config | `.github/loop/`, `engine.yml`, `ENGINE_VERSION` | the owner only (the loop may ask through a `question` request); sessions cannot write them (`protected`) |
+| Managed definitions | `execution/`, `policy/` | the Policymaker, with evaluator changes delegated as below; merged without the change gate, still within the role's `write` paths |
+| Audit and journal | `audit/`, `journal/` | the audit role (`audit/`), the journal role (the generic orchestrator, when installed) (`journal/`); merged without the change gate, still within each role's `write` paths |
+| Evaluator | `policy/evaluator/` | only a role whose profile has `owns_evaluator`, ordered only by the Policymaker, and only after the evaluator verifier passes |
+| Records and goal | `iterations/`, `goal/`, `GOAL_REACHED` | the engine only, except goal files the setup map writes before arming; the owner accepts what goes into `goal/` |
+| Work | everything else | task sessions, through the change gate |
+
+The Policymaker never touches the engine, the goal gate, `AUTOPILOT` or a token. `AUTOPILOT` (repository variable) is the
+owner's switch; it is the first condition of every workflow and anything but a literal `on` means stop.
+
+## Setup baseline after an engine change
+
+`validate --baseline <tag>` compares the revision of the managed definitions (`execution/`, `policy/`, evaluator paths) at `HEAD` with the one in the tag's commit, and `engine.yml` and `goal/` file by file; it does not compare commit SHAs. Two operations follow:
+
+- **Engine fix after arming**: a commit changing only `.github/loop/` (scripts, tests). The tag stays; validation passes.
+- **Definition change**: a change to `execution/`, `policy/`, `engine.yml` or `goal/`. Validation fails until a new `setup-baseline` tag is agreed with the owner.

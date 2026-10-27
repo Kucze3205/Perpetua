@@ -1260,6 +1260,10 @@ def resume(n):
 
 
 def watch_parked():
+    for x in c.list_issues(labels=("awaiting:orders",)):         # a Policymaker waiting for its orders is bounded by the age limit too
+        if (c.now() - c.parse_time(x["created_at"])).days >= MAX_AGE_DAYS:
+            close_out(x["number"], x, "crashed", {"cause": "age-limit"}, "Age limit: %s days." % MAX_AGE_DAYS)
+            it.advance()
     for x in c.list_issues(labels=("blocked:rate-limit",)):
         f = c.report_fields(x["number"])
         if (c.now() - c.parse_time(x["created_at"])).days >= MAX_AGE_DAYS:

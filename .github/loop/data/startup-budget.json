@@ -27,5 +27,32 @@
   ],
   "presented_to": 116,
   "delivered_to": 116
+ },
+ "orchestrator": {
+  "status": "unmeasured",
+  "model": "claude-haiku-5-5",
+  "tokens": null,
+  "limit": 100000,
+  "detail": "ANTHROPIC_API_KEY is not configured for trusted staging",
+  "role": "orchestrator",
+  "issue": 118,
+  "id": "startup-orchestrator-118",
+  "largest_documents_by_bytes": [
+   {
+    "path": ".session/role/SKILL.md",
+    "bytes": 5843,
+    "sha256": "fbca48c79c90035b835082991c5905a055d0115d3564c032e045c0107b08b534"
+   },
+   {
+    "path": ".session/loop-state.json",
+    "bytes": 733,
+    "sha256": "f3ced0d9d21ca08b1f9bdf3157696a12fbf24593a2a55e66090dacc08b68b466"
+   },
+   {
+    "path": ".session/capabilities.json",
+    "bytes": 374,
+    "sha256": "0cddcea1c9380cc513dd78f6893f32ed675f0b005f93614232fb4963e9d945c7"
+   }
+  ]
  }
 }

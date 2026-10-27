@@ -46,8 +46,8 @@ engine visibility rules and pinned evidence intact.
 ## Start by improving the environment
 
 Prioritize understanding and optimizing the loop's environment in the first
-iterations. Use its findings to apply worthwhile improvements; work toward the goal may also
-supply measurements. Choose the duration of this initial focus from evidence,
+iterations. Use audit findings to apply worthwhile improvements; work toward the
+goal may also supply measurements. Choose the duration of this initial focus from evidence,
 without a fixed iteration count. Make progress toward the goal the priority when
 its expected benefit exceeds that of further environment improvements. Choose later
 audit timing and scope from evidence.
@@ -79,4 +79,5 @@ expired or failed inputs before drawing conclusions.
 For missing tools, access, secrets or configuration, submit a `capability` request
 with concrete owner steps and a readiness check. Use `limits-change` or `engine-change`
 for changes reserved to the owner, following the engine's request formats.
-Explain what each request unblocks. For each order and change, state in your report the gain you expect toward the goal and how a later session will check it.
+Explain what each request unblocks. For each order and change, state in your report
+the gain you expect toward the goal and how a later session will check it.

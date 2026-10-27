@@ -107,15 +107,15 @@ def prepare(work, trusted):
     Path(trusted, "executor-mode").write_text("isolated\n", encoding="utf-8")
 
 
-def files(work):
-    """Reject redirects and special files before reading any candidate bytes."""
+def files(work, skip=lambda rel: False):
+    """Reject redirects and special files before reading any candidate bytes; `skip` paths are neither checked nor read."""
     result = {}
     for root, dirs, names in os.walk(work, followlinks=False):
         dirs[:] = [name for name in dirs if name not in (".git", ".session")]
         for name in dirs + names:
             path = Path(root, name)
             rel = path.relative_to(work).as_posix()
-            if rel.startswith((".git/", ".session/")) or rel in (".git", ".session"):
+            if rel.startswith((".git/", ".session/")) or rel in (".git", ".session") or skip(rel):
                 continue
             mode = path.lstat().st_mode
             if stat.S_ISDIR(mode):
@@ -134,13 +134,16 @@ def record(work, trusted):
         "paths": [n.decode("utf-8") for n in names if n], "work": os.path.abspath(work)}), encoding="utf-8")
 
 
-def admit(work, metadata, trusted, ref, message, ignore):
+def admit(work, metadata, trusted, ref, message, ignore=lambda rel, data, tracked: False,
+          skip=lambda rel, tracked: False):
     """Write objects/index in the engine repo, without consulting worker .git: one commit on the baseline from the file
-    bytes the session left. `ignore(rel, data, tracked)` drops environment debris before it reaches any check."""
+    bytes the session left. Environment debris never reaches any check: `skip(rel, tracked)` by path, before the file is
+    inspected or read; `ignore(rel, data, tracked)` by content."""
     if os.path.abspath(work) != metadata["work"]:
         raise ValueError("executor output does not match its staged origin")
     tracked = set(metadata["paths"])
-    current = {rel: v for rel, v in files(Path(work)).items() if not ignore(rel, v[0], rel in tracked)}
+    current = {rel: v for rel, v in files(Path(work), lambda rel: skip(rel, rel in tracked)).items()
+               if not ignore(rel, v[0], rel in tracked)}
     with tempfile.TemporaryDirectory(prefix="executor-admission-") as tmp:
         index = os.path.join(tmp, "index")
         env = {"GIT_INDEX_FILE": index}

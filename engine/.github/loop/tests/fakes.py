@@ -305,6 +305,7 @@ class World:
         for p in delete:
             os.remove(os.path.join(work, p))
         for p, target in (links or {}).items():
+            os.makedirs(os.path.dirname(os.path.join(work, p)), exist_ok=True)
             os.symlink(target, os.path.join(work, p))
         if commit and (files or delete):
             sh(work, "git", "add", "-A")

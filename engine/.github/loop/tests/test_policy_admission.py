@@ -88,6 +88,14 @@ class PolicymakerAdmissionTest(Flow):
         self.assertIsNone(self.w.origin_file("policy/working-memory.md"))
         self.assertFalse(self.w.origin_has_ref("task/%s" % pol))
 
+    @unittest.skipIf(sys.platform == "win32", "symlinks")
+    def test_an_untracked_symlink_outside_the_write_paths_is_debris_not_a_refusal(self):
+        pol = self.pol()
+        self.w.session(pol, files=MEMORY, commit=False, links={".venv/bin/python": "/usr/bin/python3"})
+        self.assertEqual(self.hub.report(pol)["status"], "done")
+        self.assertEqual(self.w.origin_file("policy/working-memory.md"), MEMORY["policy/working-memory.md"])
+        self.assertIsNone(self.w.origin_file(".venv/bin/python"))
+
 
 class AuditAdmissionTest(sessions.SessionCase):
     def test_a_report_written_in_audit_without_a_commit_is_admitted(self):

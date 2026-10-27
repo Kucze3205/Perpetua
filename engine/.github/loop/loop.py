@@ -422,11 +422,11 @@ def fetch_candidate(work, n):
         elif os.path.isfile(policy):
             with open(policy, encoding="utf-8") as fh:
                 meta = json.load(fh)
-            # A new file outside the role's write paths is environment debris (CLI stubs, runner home files, IDE
-            # settings): not admitted. Everything else reaches the usual checks.
+            # A new path outside the role's write paths is environment debris (CLI stubs, runner home files, IDE
+            # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
             write = profile_of(c.roles_of(c.label_names(c.issue(n)))[0]).get("write") or []
             executor_boundary.admit(work, meta, ".", ref, "Policy session files admitted as data\n",
-                                    lambda rel, data, tracked: not tracked and not c.path_match(rel, write))
+                                    skip=lambda rel, tracked: not tracked and not c.path_match(rel, write))
         else:
             print("Required session admission metadata unavailable")
             return None, []

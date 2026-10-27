@@ -34,6 +34,12 @@ class SecurityTest(unittest.TestCase):
         self.assertTrue(sandbox["network"]["strictAllowlist"])
         self.assertNotIn("sandbox", security.settings({"internet": True}, "/trusted"))
 
+    def test_only_the_nested_cli_binds_the_boundary_proc(self):
+        self.assertNotIn("enableWeakerNestedSandbox", security.settings({}, "/trusted")["sandbox"])
+        nested = security.settings({}, "/engine", nested=True)["sandbox"]
+        self.assertTrue(nested["enableWeakerNestedSandbox"])
+        self.assertTrue(nested["failIfUnavailable"] and nested["network"]["strictAllowlist"])
+
     def test_offline_skills_cannot_run_commands_outside_bash(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root, "SKILL.md")

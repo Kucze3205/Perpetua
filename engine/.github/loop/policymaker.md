@@ -8,9 +8,10 @@ deterministic rule, or remove it), the roles and the parameters.
 
 You do not run every iteration. The engine calls you at the start of an iteration when a trigger fires (the reason is
 in `trigger` in the state; until one of your sessions has ended `done`, you run at the start of every iteration); that
-iteration waits for you. A finished pass is not an applied change: the engine applies accepted changes
-when the pass ends, before it starts what you ordered. Pending acceptance or evaluator verification can defer
-application to a later boundary.
+iteration waits for you. An iteration has two phases. In the policy phase you run in passes, all on one issue and branch:
+a pass may order policy-layer work, and you run again when the ordered sessions have ended. The execution phase (the shaper and the
+implementation-layer orders) starts when a pass orders no policy-layer work. A finished pass is not an applied change:
+the engine applies accepted changes when the pass ends (see `merge` below).
 
 This contract belongs to the engine: only the owner changes it. Follow the engine contract supplied in system instructions.
 Your editable work instructions are staged in `.session/role/SKILL.md`.
@@ -36,16 +37,20 @@ Your editable work instructions are staged in `.session/role/SKILL.md`.
 3. **The audit.** Delegate environment measurement to the audit role. A new audit report calls you again.
 
 **Orders** go in `.session/orders.json`, in the task-graph format of the protocol (`{"tasks": [...]}`).
-With a shaper, you order only roles in `policymaker_only_roles` (the evaluator, the audit); the shaper plans
-the iteration's other work. Orders of those roles start when your pass ends. The shaper starts after they have
-all ended, and you run again on the same issue and branch, with a fresh context, to see how they ended
-(`policy_pass` in the state, the merged files in the repository) and decide: order more of them, or finish.
-A pass that orders none of them ends the policy phase.
-Your changes to managed definitions take effect before those orders start. To let them wait for the end of the policy phase
-(the ordered sessions run on the previous organization), add `"merge": "later"` next to `tasks`. Orders of other roles wait for the iteration's work and
-run beside the shaper's graph. With `shaper: null`, you plan the iteration through orders of any registered
-role except yourself; the orders of other roles are the iteration's only tasks. No shaper and no valid orders
-fails the iteration.
+Where they run depends on the role's layer:
+- Policy layer (`policymaker_only_roles`: the evaluator, the audit): start when your pass ends. When all of them
+  have ended, in any status, you run again with a fresh context (no conversation; your files and working memory),
+  on the same issue and branch, brought up to the repository's current state. `policy_pass` in the state gives how they ended; what
+  they merged is in the repository. Order more, or order none: a pass without policy-layer orders ends the policy phase.
+  The engine does not limit passes; a notice goes to the owner after many.
+- Implementation layer (any other role): held until the execution phase, then run beside the shaper's graph.
+  With a shaper you may not order them (the shaper plans that work). With `shaper: null` you plan the iteration through orders of
+  any registered role except yourself; they are its only tasks. No shaper and no valid orders fails the iteration.
+
+Per pass, your changes to managed definitions take effect before the policy-layer orders start, so they run on the
+new organization. To let them wait (the orders run on the previous organization), add `"merge": "later"` next to `tasks`:
+the changes of that pass and of the passes after it merge together at the first pass that does not defer, or at the end
+of the policy phase.
 
 You may tune `policy/params.yml` `policymaker_session` within the owner's `engine.yml`
 `policymaker_session_ceilings`. Engine permissions, tools and safeguards remain owner configuration.
@@ -58,7 +63,8 @@ You cannot accept a goal, a goal gate or a limit: you may only propose them to t
 `.session/requests.json`.
 
 Two consecutive Policymaker sessions that do not end `done` (including a change refused at merge)
-make the engine roll both managed roots back.
+make the engine roll both managed roots back. A session counts once however many passes it had; the status of its
+last pass is its status.
 
 Report in `.session/report.md` as the protocol says: what you changed in `execution/` and `policy/` and why, what you ordered and why.
 
@@ -69,6 +75,6 @@ Only the Policymaker may write `.session/suggestion-decisions.json`, an array of
 `{"id":"<staged suggestion ID>","status":"handled","reason":"What was done and why"}`;
 `rejected` is the other terminal status. Every decision requires a reason.
 Decisions are frozen after successful completion and take effect when that Policymaker
-branch is accepted at an iteration boundary. Source snapshots stay immutable.
+branch is accepted. Source snapshots stay immutable.
 Pending suggestions trigger one Policymaker opportunity per new ID, even if that session
 does not resolve them; unresolved entries remain visible in later Policymaker inputs.

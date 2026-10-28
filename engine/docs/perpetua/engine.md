@@ -44,15 +44,20 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 
 1. **Start.** The watchdog or previous close starts an iteration if cadence allows.
    Policy triggers are checked at the start, always firing for the first iteration.
-2. **Policymaker.** When due, its session opens the iteration and writes proposed
-   definitions and orders. `apply_policy` admits the completed candidate at the
-   iteration boundary before work begins; completion alone does not activate it.
-   A failure leaves the accepted organization in force; two consecutive failures
-   roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
-3. **Shape.** The optional execution shaper reads the staged state and writes
+2. **Policy phase.** When a trigger is due, the Policymaker session opens the iteration and writes proposed
+   definitions and orders. `apply_policy` admits the completed candidate when the pass ends
+   (or, if the pass says `"merge": "later"`, at the end of the phase); completion alone does not activate it.
+   Policy-layer orders (`policymaker_only_roles`) start at once and the issue waits (`awaiting:orders`).
+   When all have ended in any status, the same issue runs again on the same branch with a fresh context,
+   as often as the Policymaker orders policy-layer work; the engine sets no limit and only opens a
+   `notice` owner request at `policy_passes_notice` passes. A pass without such orders ends the phase.
+   A failure leaves the accepted organization in force; two consecutive failed sessions (many passes count
+   once) roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
+   With no trigger due there is no policy phase.
+3. **Shape.** The execution phase. The optional execution shaper reads the staged state and writes
    `.session/tasks.json`. It may be a model orchestrator or a script. The engine
    validates and creates graph issues, blocking edges and consent requests.
-   Accepted Policymaker orders become tasks alongside it. With `shaper: null`,
+   Implementation-layer Policymaker orders held from the policy phase become tasks alongside it. With `shaper: null`,
    orders are the only tasks; no valid orders means a failed iteration.
    [Task graph](../../.github/loop/task-graph.md) defines the interface.
 4. **Execute.** Free tasks start parallel `session.yml` jobs. Each prepares and stages

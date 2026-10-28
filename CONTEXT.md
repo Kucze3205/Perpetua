@@ -49,9 +49,13 @@ _Avoid_: success metric, stop condition
 **Iteration**:
 One unit of the loop's work: a plan executed as one or more parallel jobs,
 ending in a verdict on what it produced. Exploring a wrong solution counts.
-It starts with the policy layer: a due Policymaker session opens it and its
-changes and orders hold in it; with no trigger due it runs on the last
-organization. The first iteration of the loop always has the session.
+It has two phases. In the policy phase, which a due trigger opens (always in
+the first iteration), one Policymaker session runs in passes: it changes policy
+and orders policy-layer work, and is resumed with a clean context when that work
+has ended, until a pass orders none. The execution phase then runs the shaper's
+graph and the implementation-layer orders on the organization the policy phase
+produced. With no trigger due there is no policy phase and the iteration runs on
+the last organization.
 _Avoid_: cycle
 
 **Session**:
@@ -92,19 +96,22 @@ and revising policy, including skills in both layers and its own skill. It does
 not perform the implementation layer's work or change protected engine contracts.
 It opens an iteration when a trigger is due (always in the first), and decides how
 the implementation layer is organized, including the orders that become tasks.
+It reads the results of its policy-layer orders and decides what next; the engine
+does not limit how many passes that takes.
 _Avoid_: policy, politician, strategy, scheduler
 
 **Policy layer**:
 The part of the loop in which the policymaker defines how the implementation
 layer works, within the owner's accepted limits. Its skills and session tool
 access are separate from those of the implementation layer. It includes the
-Policymaker, audit, evaluator maintenance and evaluator verification.
+Policymaker, audit, evaluator maintenance and evaluator verification; it runs
+in the policy phase.
 
 **Implementation layer**:
 The part of the loop that applies policy to plan, execute and evaluate work
 toward the goal. Its skills belong to this layer even when the Policymaker
 creates or revises them. It includes the shaper (when one is set) and roles performing
-goal-directed tasks. Its sessions cannot read policy-layer internals; they
+goal-directed tasks, and runs in the execution phase. Its sessions cannot read policy-layer internals; they
 receive their work instructions and may submit suggestions for policy changes.
 
 **Orchestrator**:

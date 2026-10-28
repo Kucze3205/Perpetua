@@ -63,8 +63,9 @@ See [validation](validation.md) for prerequisites and limits of this verificatio
 - `iteration.begin_work` imports and calls `loop.apply_policy` when work begins.
   This local import keeps the dependency explicit without requiring callers to
   import `loop.py` first; the two modules still depend on each other.
-- A Policymaker session's iteration label identifies its trigger. Accepted orders
-  and policy changes take effect at a later iteration start. Completion and
+- A Policymaker session's iteration label identifies its trigger. Policy changes
+  take effect when its pass ends (or at the end of the policy phase); implementation-layer
+  orders start in the execution phase. Completion and
   application are distinct events.
 - Graph `width` measures the largest dependency-depth level. It is a record
   statistic, not a concurrency cap or a prediction of simultaneous running jobs.

@@ -25,8 +25,7 @@ iteration and rolls `execution/` and `policy/` back. A change to the script reac
    not a prerequisite for finding work.
 3. **Records and exact snapshots** provide detail. Prepared Iteration records live
    at `.session/history/records/<iteration>.json`. Report documents retain their
-   source URL and body hash. `reports/index.json` distinguishes current reports
-   from pinned suggestion evidence; a stored snapshot is not automatically current.
+   source URL and body hash. `reports/index.json` lists the current reports; a stored snapshot is not automatically current.
 
 `.session/history/manifest.json` describes scope, checkout and counts, not every
 entry. No match is not proof that something was never attempted. See
@@ -60,7 +59,7 @@ replace these defaults, including its own. Its own profile stays engine-owned.
 Skill frontmatter may also supply default `exports` using the existing selectors.
 An explicit issue declaration takes precedence. Either declaration changes the
 Policymaker/shaper's archive scope to task-selected inputs; `exports: []` opts out
-of the full archive view. Mandatory current inputs and pinned suggestion evidence
+of the full archive view. Mandatory current inputs
 remain independent. Memory organization and authorship are mutable policy choices.
 
 ## Nonblocking startup budget

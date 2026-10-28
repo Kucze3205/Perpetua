@@ -251,7 +251,7 @@ def build_state(n):
                            "recently_closed": [dict(request_summary(x), answer=x.get("state_reason")) for x in closed]},
         "no_progress": no_progress(idx),
         "policymaker_sessions": policymaker_sessions(),
-        "suggestions": session_reports.pending(),
+        "outboxes": [x["issue"] for x in session_reports.outboxes()],
         "audit_report": "audit/latest.md" if os.path.exists("audit/latest.md") else None,
         "audit_rev": audit_revision(),
         "iterations": idx,
@@ -559,6 +559,7 @@ def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
     bundle = tempfile.mkdtemp(prefix="policy-script-")
     try:
         shutil.copy(path, os.path.join(bundle, "script"))
+        shutil.copytree(resources.ROOT, os.path.join(bundle, resources.ROOT), symlinks=True)     # data the script keeps in policy/
         with open(os.path.join(bundle, "facts.json"), "w", encoding="utf-8", newline="\n") as fh:
             json.dump(facts, fh)
         with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
@@ -600,12 +601,11 @@ def policymaker_due(n):
     last = max(sessions, key=lambda x: x["number"], default=None)
     state = (read_state(last["number"], SEEN_MARK, last=True) or read_state(last["number"]) or {}) if last else {}
     audit = audit_revision()
-    seen = {item["id"] for session in sessions for item in
-            (read_state(session["number"]) or {}).get("suggestions", [])}
+    seen = {issue for session in sessions for issue in (read_state(session["number"]) or {}).get("outboxes", [])}
     out = run_policy_script("policymaker-trigger.py", {
         "iteration": n, "no_progress": no_progress(), "triggers": c.params()["policymaker_triggers"],
         "audit_changed": bool(audit and audit != state.get("audit_rev")),
-        "new_suggestions": any(item["id"] not in seen for item in session_reports.pending()),
+        "new_outboxes": [x for x in session_reports.outboxes() if x["issue"] not in seen],
         "startup_pending": bool(session_startup.pending())})
     reason = (out or {}).get("reason")
     if reason is not None and not (isinstance(reason, str) and 0 < len(reason) <= 200):

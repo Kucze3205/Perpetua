@@ -109,12 +109,10 @@ that manifest; arbitrary release globs and unknown origins are refused. Allowed
 execution reports and outputs remain available. Policy roles retain their required
 state, report evidence and exports across both layers.
 
-Suggestions still travel from session output through immutable engine snapshots
-to the Policymaker. Only an accepted Policymaker result applies resolutions;
-replaying capture or resolution does not duplicate or lose a suggestion. Internal
-policy rationale and reports are excluded from subsequent execution snapshots.
+Suggestions travel from session output through the engine's archive of raw outboxes to the policy script that
+presents them to the Policymaker ([reports](session-reports.md)). Internal policy rationale and reports are excluded
+from subsequent execution snapshots.
 
 These checks cover engine-passed data. They do not establish isolation of the
 checkout, Git objects, shell or host; those require the separate execution boundary.
-Run `test_input_boundary.py` for recipient views and the layered suggestion lifecycle,
-and `test_reports.py` for suggestion validation, rejection and concurrency regressions.
+Run `test_input_boundary.py` for recipient views and `test_reports.py` for the suggestion archive and policy lifecycle.

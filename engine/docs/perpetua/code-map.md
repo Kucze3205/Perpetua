@@ -38,7 +38,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | `test_merge.py`, `test_change_records.py` |
 | Policymaker tuning and applying finished sessions | `policymaker_session.profile`; `loop.apply_policy` | `test_exports.py`, `test_flow.py` |
 | Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
-| Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
+| Reports and the suggestion archive | `session_reports.py`; `policy/session-state.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
 | Setup role registration and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
 | Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py` |

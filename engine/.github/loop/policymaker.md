@@ -61,11 +61,7 @@ Report in `.session/report.md` as the protocol says: what you changed in `execut
 
 ## Suggestion decisions
 
-The Policymaker receives pending suggestions in `.session/loop-state.json` `suggestions`.
-Only the Policymaker may write `.session/suggestion-decisions.json`, an array of
-`{"id":"<staged suggestion ID>","status":"handled","reason":"What was done and why"}`;
-`rejected` is the other terminal status. Every decision requires a reason.
-Decisions are frozen after successful completion and take effect when that Policymaker
-branch is accepted at an iteration boundary. Source snapshots stay immutable.
-Pending suggestions trigger one Policymaker opportunity per new ID, even if that session
-does not resolve them; unresolved entries remain visible in later Policymaker inputs.
+Pending suggestions are in `.session/loop-state.json` `suggestions` (refused entries in `suggestion_diagnostics`); policy
+builds that list. Record a decision in `policy/suggestion-decisions.json`, an object
+`{"<suggestion ID>": {"status": "handled", "reason": "What was done and why"}}`; `rejected` is the other terminal status.
+A decided suggestion is no longer listed once your change merges. Undecided ones stay pending.

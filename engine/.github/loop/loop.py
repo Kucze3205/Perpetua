@@ -249,7 +249,7 @@ def stage(n, work, trusted):
         fh.write("\n.session/\n")
     c.export_issue(n, os.path.join(sess, "issue.md"),
                    omit_markers=(it.STATE_MARK, session_startup.MARK) +
-                   ((it.ORDERS_MARK, session_reports.DECISIONS_MARK, session_inputs.ORIGIN_MARK)
+                   ((it.ORDERS_MARK, session_inputs.ORIGIN_MARK)
                     if session_inputs.restricted(role) else ()))
     metadata = it.frontmatter(c.safe_read(".", resources.role_directory(role) + "/SKILL.md"))[0]
     fetch_inputs(i["body"], os.path.join(sess, "inputs"), role=role)
@@ -855,7 +855,6 @@ def epilogue(n, artifact, baseline, digest):
 def hold_policymaker_output(n, work):
     """Keep a finished Policymaker session's orders on its issue until the iteration continues; a run without orders keeps
     an empty entry, so the orders of an earlier run are never read again. Returns the report prose."""
-    session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
     text = c.safe_read(work, ".session/orders.json")
     try:
         doc = json.loads(text) if text else {}
@@ -910,7 +909,6 @@ def apply_policy(keeps_open=lambda number: False):
         st, upd, pr = merge_outcome(r)
         if st == "done":
             merged.append(x["number"])
-            session_reports.apply_decisions(x["number"])
             if keeps_open(x["number"]):
                 c.update_report(x["number"], dict(upd, status="done"), pr)
                 c.edit_labels(x["number"], add=["awaiting:orders"], remove=["awaiting:iteration"])

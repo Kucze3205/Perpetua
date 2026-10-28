@@ -243,6 +243,74 @@ class PolicymakerTriggerTest(Flow):
         self.assertIsNone(it.policymaker_due(1))
 
 
+class PolicyScriptTest(Flow):
+    """`policy/policymaker-trigger.py` decides when the Policymaker is called; the engine validates what it prints."""
+    SCRIPT = "policy/policymaker-trigger.py"
+
+    def set_script(self, body):
+        self.w.push_main({self.SCRIPT: body}, "the Policymaker changes the trigger rule")
+        c.sync_main()
+
+    def test_the_trigger_rule_is_policy_and_the_policymaker_can_change_it(self):
+        self.set_script("import json\nprint(json.dumps({'reason': 'my own rule'}))\n")
+        it.start_iteration()
+        self.assertEqual(it.read_state(self.session_issue("policymaker"))["trigger"], "my own rule")
+
+    def test_a_script_that_never_calls_it_leaves_the_last_organization(self):
+        self.set_script("print('{\"reason\": null}')\n")
+        it.start_iteration()
+        self.assertEqual(self.hub.role_issues("policymaker"), [])
+        self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
+
+    def assert_refused(self, body):
+        good = open(self.SCRIPT, encoding="utf-8").read()
+        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
+        self.set_script(body)
+        it.start_iteration()
+        self.assertEqual(it.read_json(it.record_path(0))["status"], "failed")
+        c.sync_main()
+        self.assertEqual(open(self.SCRIPT, encoding="utf-8").read(), good)             # rolled back
+        self.assertTrue(any(x["title"] == "policy/ rolled back" for x in self.hub.issues.values()))
+
+    def test_output_that_is_not_json_fails_the_iteration_and_rolls_policy_back(self):
+        self.assert_refused("print('hello')\n")
+
+    def test_output_that_is_not_an_object_is_refused(self):
+        self.assert_refused("print('[1]')\n")
+
+    def test_a_reason_that_is_not_a_string_is_refused(self):
+        self.assert_refused("print('{\"reason\": 3}')\n")
+
+    def test_an_empty_reason_is_refused(self):
+        self.assert_refused("print('{\"reason\": \"\"}')\n")
+
+    def test_oversized_output_is_refused(self):
+        self.assert_refused("print('{\"reason\": \"' + 'x' * 5000 + '\"}')\n")
+
+    def test_a_failing_script_is_refused(self):
+        self.assert_refused("import sys\nprint('{\"reason\": \"a\"}')\nsys.exit(1)\n")
+
+    def test_a_script_that_cannot_run_in_the_tokenless_job_fails_the_iteration(self):
+        self.hub.tokenless_fault = "no-artifact"
+        n = it.start_iteration()
+        self.assertEqual(it.read_json(it.record_path(n))["status"], "failed")
+
+    def test_one_open_policymaker_whatever_the_script_returns(self):
+        self.set_script("raise SystemExit(1)\n")
+        self.policymaker_session(0)
+        self.assertIsNone(it.policymaker_due(1))
+
+
+class FirstPolicymakerScriptTest(Flow):
+    FIRST = True
+
+    def test_until_the_first_done_the_policymaker_is_called_whatever_the_script_returns(self):
+        self.w.push_main({"policy/policymaker-trigger.py": "print('{\"reason\": null}')\n"}, "no trigger ever")
+        c.sync_main()
+        it.start_iteration()
+        self.assertEqual(it.read_state(self.session_issue("policymaker"))["trigger"], "the first iteration of the loop")
+
+
 class FirstPolicymakerTest(Flow):
     """No Policymaker session has run yet: the first iteration of the loop starts with one."""
     FIRST = True

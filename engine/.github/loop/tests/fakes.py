@@ -240,6 +240,7 @@ class World:
         self.write(self.loop, "policy/params.yml", POLICY_PARAMS)
         self.write(self.loop, "execution/profiles.yml", EXECUTION_PROFILES)
         self.write(self.loop, "policy/profiles.yml", POLICY_PROFILES)
+        shutil.copy(os.path.join(ENGINE, "policy", "policymaker-trigger.py"), os.path.join(self.loop, "policy"))
         for layer, roles in (("execution", ("orchestrator", "worker", "net")),
                              ("policy", ("evaluator", "evaluator-verifier", "audit", "policymaker"))):
             for role in roles:

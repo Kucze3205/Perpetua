@@ -43,7 +43,10 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 `loop:iteration N`; its sessions carry `loop:iteration N` and `role:<name>`.
 
 1. **Start.** The watchdog or previous close starts an iteration if cadence allows.
-   Policy triggers are checked at the start, always firing for the first iteration.
+   The trigger rule is `policy/policymaker-trigger.py`: the engine writes facts, the script runs in the tokenless job and
+   prints `{"reason": "..."}` or `{"reason": null}` (at most 4 KB). Invalid output fails the iteration and rolls `execution/` and
+   `policy/` back. Whatever the script returns, the engine keeps one open Policymaker at a time and calls one at every iteration
+   until a session ended `done`.
 2. **Policymaker.** When due, its session opens the iteration and writes proposed
    definitions and orders. `apply_policy` admits the completed candidate at the
    iteration boundary before work begins; completion alone does not activate it.

@@ -34,6 +34,6 @@ checked snapshot, and `application_result`. `pass` may accompany `conflict`,
 An owner decision after a passing verification creates a separate
 `verification-<verifier issue>-owner.json`, preserving the original verdict and pending
 application outcome. Owner approval still checks the pinned snapshot. Repeated terminal
-events cannot overwrite receipts. Policymaker sessions retain the existing iteration-boundary
+events cannot overwrite receipts. Policymaker sessions retain the existing pass-boundary
 application of their policy changes and orders. The evaluator role owns evaluator changes;
 the Policymaker cannot write evaluator files directly.

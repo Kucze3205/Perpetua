@@ -28,7 +28,7 @@ Your editable work instructions are staged in `.session/role/SKILL.md`.
 
 1. **The architecture**, by editing `execution/` and `policy/`: the shaper's skill, local roles (`<layer>/roles/<role>/SKILL.md`,
    only that folder and its references reach the runner), each layer's `profiles.yml` and `policy/params.yml` (the shape of an
-   iteration: `shaper` is an LLM role or a script role; ceilings; models; `policymaker_triggers`, read by `policy/policymaker-trigger.py`, the script that decides when you are called next; it prints one JSON object `{"reason": ...}` and invalid output rolls `policy/` back).
+   iteration: `shaper` is an LLM role or a script role; ceilings; models; `policymaker_triggers`, read by `policy/policymaker-trigger.py`, the script that decides when you are called next; it prints one JSON object `{"reason": ...}` and invalid output rolls `policy/` back). `policy/session-state.py` builds `.session/loop-state.json` and `.session/history/` for every session from the engine's facts; edit it to change what sessions receive, from the next one on.
    Widen profiles only inside the owner's accepted limits (`limits` in the state); a role beyond them still works, but
    each of its sessions waits for a consent.
 2. **The evaluator.** You own it, but you do not edit it: order the `evaluator` role (below). Every change is verified
@@ -61,11 +61,7 @@ Report in `.session/report.md` as the protocol says: what you changed in `execut
 
 ## Suggestion decisions
 
-The Policymaker receives pending suggestions in `.session/loop-state.json` `suggestions`.
-Only the Policymaker may write `.session/suggestion-decisions.json`, an array of
-`{"id":"<staged suggestion ID>","status":"handled","reason":"What was done and why"}`;
-`rejected` is the other terminal status. Every decision requires a reason.
-Decisions are frozen after successful completion and take effect when that Policymaker
-branch is accepted at an iteration boundary. Source snapshots stay immutable.
-Pending suggestions trigger one Policymaker opportunity per new ID, even if that session
-does not resolve them; unresolved entries remain visible in later Policymaker inputs.
+Pending suggestions are in `.session/loop-state.json` `suggestions` (refused entries in `suggestion_diagnostics`); policy
+builds that list. Record a decision in `policy/suggestion-decisions.json`, an object
+`{"<suggestion ID>": {"status": "handled", "reason": "What was done and why"}}`; `rejected` is the other terminal status.
+A decided suggestion is no longer listed once your change merges. Undecided ones stay pending.

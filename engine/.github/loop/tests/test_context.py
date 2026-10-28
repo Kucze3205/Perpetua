@@ -222,3 +222,26 @@ class ContextTest(sessions.SessionCase):
                 patch.object(startup, "count_tokens", return_value=100001):
             self.stage("worker")
         self.assertEqual(set(startup.notices()), {"audit", "worker"})
+
+
+class SessionStateScriptTest(sessions.SessionCase):
+    SCRIPT = "policy/session-state.py"
+    work = sessions.StageTest.work
+    stage = ContextTest.stage
+
+    def test_a_policymaker_change_to_the_script_changes_what_the_next_session_receives(self):
+        _, work, _ = self.stage(state={"iteration": 1, "iterations": [{"n": 0}, {"n": 1}]})
+        self.assertEqual([x["n"] for x in json.loads(read(os.path.join(work, ".session/loop-state.json")))["iterations"]], [1])
+        c.commit_main({self.SCRIPT: "import json\nprint(json.dumps({'loop_state': {'mine': True}, 'files': {'history/note.md': 'hi'}}))\n"},
+                      "the Policymaker changes the state")
+        _, work, _ = self.stage(state={"iteration": 2, "iterations": []})
+        self.assertEqual(json.loads(read(os.path.join(work, ".session/loop-state.json"))), {"mine": True})
+        self.assertEqual(read(os.path.join(work, ".session/history/note.md")), "hi")
+        self.assertFalse(os.path.exists(os.path.join(work, ".session/history/manifest.json")))
+
+    def test_invalid_script_output_stops_the_staging(self):
+        for body in ("print('{\"loop_state\": 3}')", "print('{\"files\": {\"../x\": \"y\"}}')",
+                     "print('{\"files\": {\"loop-state.json\": \"y\"}}')", "print('nope')"):
+            c.commit_main({self.SCRIPT: body + "\n"}, "bad state script")
+            with self.assertRaises(SystemExit):
+                self.stage(state={"iterations": []})

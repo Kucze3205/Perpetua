@@ -12,7 +12,7 @@ agent's git. New untracked files outside the role's write paths (CLI stubs, runn
 files) are environment debris and are not admitted; symlinks, hard links and special files
 refuse the admission. Write-path, protected-path, size and change checks apply unchanged.
 All sessions retain trust, reporting and owner-request rules. Only the Policymaker
-receives suggestion-decision instructions; only it and the shaper receive graph and
+receives the policy-owned suggestion instructions; only it and the shaper receive graph and
 report-reader instructions. There is no role-configurable contract selector.
 
 Staging writes the selected contract once to a trusted file passed with

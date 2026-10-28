@@ -13,7 +13,7 @@ Details have one home:
   filesystem and network boundaries, output admission and sessions without a shell.
 - [Session context](session-context.md): startup reads and working memory.
 - [Session data exports](session-exports.md): historical inputs and recipient views.
-- [Reports and records](session-reports.md): session reports, iteration records and suggestions.
+- [Reports and records](session-reports.md): session reports, the suggestion archive and iteration records.
 - [Change provenance](policy-changes.md): accepted changes and evaluator verification in the iteration record.
 - [Validation](validation.md): test commands, host requirements and limits of the evidence.
 
@@ -38,6 +38,9 @@ merges the plugin engine with the loop's local changes using the untouched
 review/reconfiguration by repeating setup is not implemented.
 
 ## One iteration
+
+When a session is staged, `policy/session-state.py` builds its `loop-state.json` and history from the engine's facts
+(see `session-context.md`).
 
 Iterations run sequentially. Each is an issue labelled `loop:map` and
 `loop:iteration N`; its sessions carry `loop:iteration N` and `role:<name>`.

@@ -535,9 +535,7 @@ class PolicyPhaseTest(Flow):
         ended = it.read_state(pol, it.PASS_MARK, last=True)["ordered"]
         self.assertEqual(sorted((o["role"], o["status"]) for o in ended), [("audit", "crashed"), ("evaluator", "done")])
         sess = os.path.join(self.w.tmp, "sess")
-        it.export_state(pol, sess, role="policymaker")
-        with open(os.path.join(sess, "loop-state.json"), encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh)["policy_pass"]["pass"], 2)
+        self.assertEqual(it.stored_state(pol, sess, role="policymaker")["policy_pass"]["pass"], 2)
 
     def test_the_relaunched_branch_holds_what_merged_and_a_second_run_merges_its_own_change(self):
         it.start_iteration()

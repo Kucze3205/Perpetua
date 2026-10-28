@@ -124,16 +124,9 @@ class WorkflowTest(unittest.TestCase):
         for f, text, doc in self.workflows():
             self.assertNotIn("pull_request_target", text, f)
             self.assertNotIn("ANTHROPIC_API_KEY", str(doc.get("env", {})), f)
-            counter_steps = []
             for job in doc.get("jobs", {}).values():
                 self.assertNotIn("ANTHROPIC_API_KEY", str(job.get("env", {})), f)
-                for step in job.get("steps", []):
-                    if "ANTHROPIC_API_KEY" in str(step):
-                        counter_steps.append(step)
-                        self.assertEqual((f, step.get("name"), step.get("working-directory")),
-                                         ("session.yml", "Stage the session", "loop"))
-                        self.assertEqual(step["env"]["ANTHROPIC_API_KEY"], "${{ secrets.ANTHROPIC_API_KEY }}")
-            self.assertEqual(len(counter_steps), 1 if f == "session.yml" else 0)
+                self.assertNotIn("ANTHROPIC_API_KEY", str(job.get("steps", [])), f)
             lines = text.splitlines()
             for i, line in enumerate(lines):
                 if "uses: actions/checkout@v4" in line:

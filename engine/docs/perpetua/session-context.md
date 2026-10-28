@@ -48,7 +48,7 @@ startup:
 ```
 
 The engine includes its contract/bootstrap, task and role skill. One resolved list
-generates startup Read instructions and the provider estimate; file aliases count
+generates startup Read instructions and the estimate; file aliases count
 once. Further references are read when needed. Remove duplicate unconditional Read
 instructions from role prose/prompts. Paths select allowed recipient files, not
 commands, globs, parent traversal or Git internals. Missing files are diagnostics.
@@ -65,22 +65,22 @@ remain independent. Memory organization and authorship are mutable policy choice
 
 ## Nonblocking startup budget
 
-Every model Session gets `.session/startup.json`: model, provider estimate,
+Every model Session gets `.session/startup.json`: model, estimate,
 document paths/hashes/byte sizes and `ok`, `over_budget` or `unmeasured` status.
 Owner `engine.yml` `startup_token_warning` defaults to 100000, a warning threshold
 and not a target. Script-only sessions have no token budget.
 
-Trusted staging makes one request to
-[`messages/count_tokens`](https://platform.claude.com/docs/en/build-with-claude/token-counting)
-using `ANTHROPIC_API_KEY`, wired only into the workflow's staging step. The key
-never goes to the Session. Counting/summarizing starts no extra model Session.
-The estimate covers contract, bootstrap and declared documents; diagnostic output,
-CLI internals and later reads are excluded. It is not full active-context usage
-or a guarantee about model quality.
+`policy/session-startup.py` makes the estimate, locally: 4 bytes per token, from the
+contract, bootstrap and declared documents. No provider call is made and no API key is
+needed. The engine shows the script the files the recipient may read and checks what it
+returns (reads it was shown, a prompt, a status). The script also builds the
+bootstrap prompt and the warning lines the session sees, so the Policymaker can change
+them. Diagnostic output, CLI internals and later reads are excluded. It is not full
+active-context usage or a guarantee about model quality.
 
-Missing credentials, unsupported models, provider errors, nontext documents and missing declared files
-produce `unmeasured`; characters are not reported as tokens. Over-budget estimates
-and provider/notification failures never stop the Session.
+Nontext documents and missing declared files produce `unmeasured`. Over-budget estimates
+and notification failures never stop the Session. A script that prints invalid data fails
+the iteration like the other policy scripts; a loop without the script has no bootstrap or budget.
 
 The Session sees a warning and the Policymaker receives it at its next permitted
 Session, at an Iteration boundary. One active incident per role updates without

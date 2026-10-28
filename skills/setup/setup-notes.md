@@ -99,6 +99,5 @@ as described in `docs/perpetua/session-context.md`. Keep other references condit
 The initial memory organization lets the selected shaper maintain
 `journal/working-memory.md` and the Policymaker maintain `policy/working-memory.md`;
 the Policymaker may revise that organization and each role's default `exports`.
-The provider counter uses an optional repository `ANTHROPIC_API_KEY` in trusted
-staging only. An unavailable counter or a startup package over 100k tokens notifies
+The estimate is made by `policy/session-startup.py`; no API key is involved. A startup package over 100k tokens notifies
 the Session and Policymaker; it does not block arming or execution.

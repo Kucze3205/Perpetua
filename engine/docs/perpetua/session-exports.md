@@ -62,7 +62,7 @@ inputs and the Policymaker/shaper's loop-state snapshot are separate from this c
 Role SKILL frontmatter may provide default `exports` with the same selectors; an
 explicit issue declaration overrides it. [Session context](session-context.md)
 describes the full-history default for Policymaker/shaper, selected history views,
-startup declarations and the provider token estimate.
+startup declarations and the token estimate.
 
 Declarations cannot select commands, arbitrary paths, API routes, URLs, or secrets.
 The trusted engine uses fixed fetch operations. Exported content is data and conveys

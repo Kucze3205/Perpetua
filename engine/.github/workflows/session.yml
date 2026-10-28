@@ -118,8 +118,6 @@ jobs:
         working-directory: loop
         env:
           GH_TOKEN: ${{ github.token }}
-          # Optional provider counter, available only to trusted staging, never to the session.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           pip install -q pyyaml
           python3 .github/loop/loop.py git-identity

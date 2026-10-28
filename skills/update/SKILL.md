@@ -40,7 +40,7 @@ It prints a JSON report: `from`/`to` versions, `base`, `snapshot` (the new untou
 Every path in `conflicts` holds git conflict markers. For each, read both intents: `git diff <base> <snapshot> -- <path>` is what Perpetua changed, `git diff <base> HEAD -- <path>` is what the loop changed. Write the result that keeps both:
 
 - Engine code and docs (`.github/loop/`, `docs/perpetua/`): take Perpetua's change and keep the loop's own additions. Where the loop had fixed the same problem its own way, prefer Perpetua's fix unless that drops loop behavior the owner depends on; then keep the loop's and say so.
-- Definitions (`policy/`, `execution/`, `engine.yml`, `goal/`): the loop's values are decisions of its owner and Policymaker; keep them. Add what Perpetua introduced (new keys, sections, rules, scripts such as `policy/policymaker-trigger.py` and `policy/session-state.py`), with Perpetua's defaults.
+- Definitions (`policy/`, `execution/`, `engine.yml`, `goal/`): the loop's values are decisions of its owner and Policymaker; keep them. Add what Perpetua introduced (new keys, sections, rules, scripts such as `policy/policymaker-trigger.py`, `policy/session-state.py` and `policy/session-startup.py`), with Perpetua's defaults.
 - Workflows (`.github/workflows/`): keep the loop's secrets, environments and runners; take Perpetua's logic.
 - `ENGINE_VERSION`: Perpetua's.
 

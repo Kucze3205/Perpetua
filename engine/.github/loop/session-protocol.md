@@ -19,7 +19,7 @@ Other files the engine may put in `.session/`: `loop-state.json` (the Policymake
 Policymaker), `inputs/` (artifacts the task lists), `streams/` (the audit).
 
 The bootstrap lists the declared startup reads once. `.session/startup.json` records
-the provider estimate for that document package; an over-budget or unavailable
+the estimate for that document package; an over-budget or unavailable
 measurement is a notice, and your Session continues. The engine notifies the
 Policymaker. Later reads and the CLI's internal context are outside this estimate.
 

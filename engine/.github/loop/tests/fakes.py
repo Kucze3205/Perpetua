@@ -18,7 +18,6 @@ import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
 import session_artifact  # noqa: E402
-import session_startup  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
@@ -227,8 +226,6 @@ class World:
         os.environ.pop("GH_TOKEN", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
-        self.counter_saved = session_startup.count_tokens
-        session_startup.count_tokens = lambda model, system, content: 1000
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
@@ -242,6 +239,7 @@ class World:
         self.write(self.loop, "policy/profiles.yml", POLICY_PROFILES)
         shutil.copy(os.path.join(ENGINE, "policy", "policymaker-trigger.py"), os.path.join(self.loop, "policy"))
         shutil.copy(os.path.join(ENGINE, "policy", "session-state.py"), os.path.join(self.loop, "policy"))
+        shutil.copy(os.path.join(ENGINE, "policy", "session-startup.py"), os.path.join(self.loop, "policy"))
         for layer, roles in (("execution", ("orchestrator", "worker", "net")),
                              ("policy", ("evaluator", "evaluator-verifier", "audit", "policymaker"))):
             for role in roles:
@@ -265,7 +263,6 @@ class World:
             common.update_report(0, {"status": "done"}, "seed")
 
     def close(self):
-        session_startup.count_tokens = self.counter_saved
         self.hub.uninstall()
         os.chdir(self.cwd_saved)
         os.environ.clear()

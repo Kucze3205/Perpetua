@@ -20,7 +20,7 @@ import session_startup  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
-           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr"]
+           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless"]
 
 
 class FakeHub:
@@ -35,6 +35,8 @@ class FakeHub:
         self.artifacts = []
         self.prs = {}                       # head branch -> {"number", "url", "state", "merged", "title", "body"}
         self.next_n = 1
+        self.tokenless = []                 # (bundle files) of every command sent to the tokenless job
+        self.tokenless_fault = None         # "no-artifact" | "failed": what the next tokenless job does wrong instead
 
     def ts(self):
         self.tick += 1
@@ -130,6 +132,20 @@ class FakeHub:
         n = 900 + len(self.prs)
         self.prs[branch] = {"number": n, "url": "https://github.com/o/r/pull/%s" % n, "state": "open", "merged": False,
                             "title": title, "body": body}
+
+    def run_tokenless(self, bundle, timeout_minutes, poll=15):
+        """The tokenless job: runs the bundle's `run.sh` in a clean environment and returns the output directory."""
+        self.tokenless.append(sorted(os.listdir(bundle)))
+        fault, self.tokenless_fault = self.tokenless_fault, None
+        if fault == "no-artifact":
+            return None
+        out = tempfile.mkdtemp(prefix="tokenless-out-")
+        r = subprocess.run([os.environ.get("LOOP_BASH", "bash"), os.path.join(bundle, "run.sh")], env=common.clean_env(),
+                           capture_output=True, text=True, timeout=timeout_minutes * 60)
+        for name, text in (("stdout.txt", r.stdout), ("stderr.txt", r.stderr), ("exit-code", "%d\n" % (1 if fault == "failed" else r.returncode))):
+            with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+        return out
 
     def gh(self, *args, inp=None, check=True):
         self.gh_calls.append(args)

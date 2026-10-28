@@ -103,10 +103,10 @@ class WorkflowTest(unittest.TestCase):
             self.assertIn("jobs", doc, f)
             self.assertTrue("on" in doc or True in doc, f)                   # PyYAML reads `on:` as True
             self.assertIn("permissions", doc, f)
-            if f != "watchdog.yml":
+            if f not in ("watchdog.yml", "tokenless-job.yml"):          # the reusable job is only called from tokenless.yml
                 self.assertIn("vars.AUTOPILOT == 'on'", text, f)               # the first condition of every loop workflow
         if not IN_LOOP_REPO:
-            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml"})
+            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml", "tokenless.yml", "tokenless-job.yml"})
 
     def test_run_names_keep_their_hash(self):
         """An unquoted ' #' in a YAML value is a comment: run-name became 'session' and no run matched its session (#84)."""
@@ -172,6 +172,25 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN", sh)
         code = [l for l in sh.splitlines() if not l.strip().startswith("#")]
         self.assertEqual([l for l in code if re.search(r"(^|[\s;|&(])gh\s", l)], [])          # the agent has no gh
+
+
+    def test_the_tokenless_job_has_no_permissions_and_no_secret(self):
+        for name in ("tokenless-job.yml", "tokenless.yml"):
+            with open(os.path.join(ENGINE, ".github", "workflows", name), encoding="utf-8") as fh:
+                text = fh.read()
+            job = yaml.safe_load(text)["jobs"]["run"]
+            self.assertEqual(job["permissions"], {}, name)
+            if name == "tokenless-job.yml":
+                self.assertEqual(yaml.safe_load(text)["permissions"], {})
+                self.assertNotIn("secrets", text.replace("no GitHub secret", ""))
+                self.assertNotIn("github.token", text)
+                self.assertNotIn("GH_TOKEN", text)
+
+    def test_every_checkout_leaves_no_credentials_behind(self):
+        for f, text, doc in self.workflows():
+            for step in [s for j in doc["jobs"].values() for s in j.get("steps", [])]:
+                if str(step.get("uses", "")).startswith("actions/checkout"):
+                    self.assertIs((step.get("with") or {}).get("persist-credentials"), False, f)
 
 
 @TEMPLATE_ONLY

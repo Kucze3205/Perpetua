@@ -225,7 +225,6 @@ class World:
                     os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
                     break
         os.environ.pop("GH_TOKEN", None)
-        os.environ.pop("LOOP_SANDBOX", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
         self.counter_saved = session_startup.count_tokens
@@ -241,6 +240,7 @@ class World:
         self.write(self.loop, "policy/params.yml", POLICY_PARAMS)
         self.write(self.loop, "execution/profiles.yml", EXECUTION_PROFILES)
         self.write(self.loop, "policy/profiles.yml", POLICY_PROFILES)
+        shutil.copy(os.path.join(ENGINE, "policy", "policymaker-trigger.py"), os.path.join(self.loop, "policy"))
         for layer, roles in (("execution", ("orchestrator", "worker", "net")),
                              ("policy", ("evaluator", "evaluator-verifier", "audit", "policymaker"))):
             for role in roles:

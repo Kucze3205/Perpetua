@@ -454,11 +454,10 @@ def verification_rules(body):
     return ["Bash(%s)" % re.sub(r"([\\()*])", r"\\\1", cmd) for cmd in verification_commands(body) if "\n" not in cmd]
 
 
-def run_verification(cand, body, role=None):
-    """`## Verification` of the task: commands from code blocks or backticked lines. No secrets."""
+def run_verification(cand, body):
+    """`## Verification` of the task: commands from code blocks or backticked lines, run in the tokenless job."""
     for cmd in verification_commands(body):
-        r = (executor_boundary.run_candidate(cmd, cand) if role and session_inputs.restricted(role)
-             else c.run_command(cmd, cand))
+        r = c.run_command(cmd, cand)
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -530,8 +529,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                 return dict(res, result="large", detail=", ".join(big))
             if work_paths:
                 if cfg["check"]:
-                    t = (executor_boundary.run_candidate(cfg["check"], cand) if session_inputs.restricted(role)
-                         else c.run_command(cfg["check"], cand))
+                    t = c.run_command(cfg["check"], cand)
                     if t.returncode:
                         return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
                 if override:
@@ -760,7 +758,7 @@ def finalize(n, work):
         upload_artifacts(n, work, k)
     if status == "done" and sha and not script:
         with Tree("task/%s" % n) as cand:
-            ok, out = run_verification(cand, i["body"], role=role)
+            ok, out = run_verification(cand, i["body"])
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"

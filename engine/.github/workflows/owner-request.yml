@@ -26,7 +26,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      LOOP_SANDBOX: "1"
     steps:
       - uses: actions/checkout@v4
         with:

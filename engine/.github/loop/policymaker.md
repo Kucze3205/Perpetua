@@ -28,7 +28,7 @@ Your editable work instructions are staged in `.session/role/SKILL.md`.
 
 1. **The architecture**, by editing `execution/` and `policy/`: the shaper's skill, local roles (`<layer>/roles/<role>/SKILL.md`,
    only that folder and its references reach the runner), each layer's `profiles.yml` and `policy/params.yml` (the shape of an
-   iteration: `shaper` is an LLM role or a script role; ceilings; models; `policymaker_triggers`, when you are called next).
+   iteration: `shaper` is an LLM role or a script role; ceilings; models; `policymaker_triggers`, read by `policy/policymaker-trigger.py`, the script that decides when you are called next; it prints one JSON object `{"reason": ...}` and invalid output rolls `policy/` back).
    Widen profiles only inside the owner's accepted limits (`limits` in the state); a role beyond them still works, but
    each of its sessions waits for a consent.
 2. **The evaluator.** You own it, but you do not edit it: order the `evaluator` role (below). Every change is verified

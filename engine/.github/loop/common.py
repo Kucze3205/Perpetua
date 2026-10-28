@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -701,13 +702,27 @@ def clean_env(extra=()):
     return env
 
 
-def run_command(cmd, cwd, env=None, timeout=3600, extra_env=None):
-    """A shell command from the repo (check, verification, gate, goal gate) in a PID namespace when `bwrap` is there:
-    candidate code must not read the engine's token from /proc/<parent>/environ."""
-    argv = [os.environ.get("LOOP_BASH", "bash"), "-c", cmd]
-    if os.environ.get("LOOP_SANDBOX") == "1" and shutil.which("bwrap"):
-        argv = ["bwrap", "--unshare-pid", "--die-with-parent", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-                "--bind", os.path.realpath(cwd), os.path.realpath(cwd), "--bind", tempfile.gettempdir(), tempfile.gettempdir()] + argv
-    e = dict(env if env is not None else clean_env())
-    e.update(extra_env or {})
-    return subprocess.run(argv, cwd=cwd, env=e, capture_output=True, text=True, timeout=timeout)
+def run_command(cmd, tree, timeout_minutes=60):
+    """A shell command from the repo (check, verification, goal gate) run on a copy of `tree` in the tokenless job, never
+    on a machine with the token. Returns a CompletedProcess; a job that left no output counts as a failed command."""
+    bundle = tempfile.mkdtemp(prefix="bundle-")
+    try:
+        shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
+        with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write('cd "$(dirname "$0")/tree"\nbash -c %s\n' % shlex.quote(cmd))
+        out = run_tokenless(bundle, timeout_minutes)
+    finally:
+        shutil.rmtree(bundle, ignore_errors=True)
+
+    def read(name):
+        try:
+            with open(os.path.join(out, name), encoding="utf-8", errors="replace") as fh:
+                return fh.read()
+        except (OSError, TypeError):
+            return None
+    stdout, stderr, code = read("stdout.txt"), read("stderr.txt"), read("exit-code")
+    if out:
+        shutil.rmtree(out, ignore_errors=True)
+    if stdout is None or code is None or not code.strip().isdigit():
+        return subprocess.CompletedProcess(cmd, 1, "", "the tokenless job returned no result for the command")
+    return subprocess.CompletedProcess(cmd, int(code.strip()), stdout, stderr or "")

@@ -406,7 +406,7 @@ class EpilogueTest(SessionCase):
 
     def test_a_refused_merge_ends_blocked(self):
         n = self.issue()
-        self.w.session(n, files={".github/workflows/x.yml": "x"})
+        self.w.session(n, files={".github/loop/loop.py": "x"})
         self.assertEqual(self.hub.report(n)["status"], "blocked")
         self.assertEqual(self.hub.report(n)["merged"], "false")
         self.assertIn("protected paths", self.hub.prose(n))

@@ -7,7 +7,6 @@ import json
 import os
 
 import common as c
-import session_inputs
 import session_reports
 
 
@@ -18,27 +17,15 @@ def write(directory, path, value):
         fh.write(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=1) + "\n")
 
 
-def history(directory, role, full=False):
-    """Expose permitted records and exact report snapshots without a model-readable global index."""
+def history(directory, full=False):
+    """Expose records and exact report snapshots without a model-readable global index."""
     import iteration as it
-
-    restricted = bool(role and session_inputs.restricted(role))
-    visibility = {}
-
-    def visible(issue):
-        if not restricted:
-            return True
-        if issue not in visibility:
-            visibility[issue] = session_inputs.visible(issue)
-        return visibility[issue]
 
     record_paths = it.record_files() if full else sorted(glob.glob(os.path.join(directory, "exports/records/*.json")))
     tasks, records = {}, 0
     for path in record_paths:
         with open(path, encoding="utf-8") as fh:
             record = json.load(fh)
-        if full and restricted:
-            record = session_inputs.record(record, can_read=visible)
         n = record["iteration"]
         write(directory, "history/records/%04d.json" % n, record)
         records += 1
@@ -53,15 +40,14 @@ def history(directory, role, full=False):
     if full:
         for _, record in session_reports.source_records():
             report = record["report"]
-            if visible(report["issue"]):
-                snapshots[(report["issue"], report["snapshot"])] = report
+            snapshots[(report["issue"], report["snapshot"])] = report
     # Keep current reports and pinned suggestion evidence distinct in reports/index.json.
     # Both are searchable as text; identity, not a mutable 'latest' alias, names the body.
     for pattern in ("reports/*.json", "exports/reports/*.json"):
         for path in sorted(glob.glob(os.path.join(directory, pattern))):
             with open(path, encoding="utf-8") as fh:
                 report = json.load(fh)
-            if isinstance(report, dict) and "body" in report and visible(report["issue"]):
+            if isinstance(report, dict) and "body" in report:
                 snapshots[(report["issue"], report["snapshot"])] = report
 
     for (issue, snapshot), report in snapshots.items():
@@ -75,8 +61,6 @@ def history(directory, role, full=False):
                    report["source"], snapshot))
         write(directory, "history/sessions/%s/%s.md" % (issue, snapshot), header + report["body"])
     for issue, task in tasks.items():
-        if not visible(issue):
-            continue
         body = task.get("body", "")
         facts = {key: value for key, value in task.items() if key != "body"}
         write(directory, "history/sessions/%s/task.md" % issue,
@@ -94,10 +78,10 @@ def history(directory, role, full=False):
             "report_snapshots": len(snapshots), "scope": manifest["scope"]}
 
 
-def startup_state(state, directory, role, full=True):
+def startup_state(state, directory, full=True):
     """A compact starting view, with complete evidence retained outside mandatory reads."""
     view = dict(state)
     # The previous outcome is current context; the rest is discoverable history.
     view["iterations"] = state.get("iterations", [])[-1:]
-    view["history"] = history(directory, role, full=full)
+    view["history"] = history(directory, full=full)
     return view

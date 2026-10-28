@@ -6,7 +6,6 @@ import os
 import re
 
 import common as c
-import session_inputs
 
 ROOT = ".github/loop/data/session-reports"
 STATE = ".github/loop/data/suggestions-state.json"
@@ -148,14 +147,12 @@ def apply_decisions(n):
             c.sync_main()
 
 
-def stage(state, directory, role=None):
+def stage(state, directory):
     """Actual trusted comment bodies, readable without gh or credentials."""
     reports, seen = [], set()
     for line in state.get("iterations", [])[-5:]:
         for issue in c.list_issues(state="all", labels=(c.ITER + str(line["n"]),)):
             n = issue["number"]
-            if (role and session_inputs.restricted(role) and not session_inputs.visible(n)):
-                continue
             if n in seen or not c.roles_of(c.label_names(issue)):
                 continue
             seen.add(n)
@@ -164,8 +161,6 @@ def stage(state, directory, role=None):
                 reports.append(report)
     for item in state.get("suggestions", []):
         n = item["source"]["issue"]
-        if role and session_inputs.restricted(role) and not session_inputs.visible(n):
-            continue
         if n in seen:
             continue
         seen.add(n)
@@ -186,8 +181,6 @@ def stage(state, directory, role=None):
     for _, record in source_records():
         report = record["report"]
         if (report["issue"], report["snapshot"]) not in wanted:
-            continue
-        if (role and session_inputs.restricted(role) and not session_inputs.visible(report["issue"])):
             continue
         rel = "%s-%s.json" % (report["issue"], report["snapshot"])
         with open(os.path.join(out, rel), "w", encoding="utf-8") as fh:

@@ -351,11 +351,11 @@ def export_state(n, directory, role=None, full_history=True):
         state = dict(state, policy_pass=passed)
     if state is not None:
         import session_inputs
-        if role and session_inputs.restricted(role):
-            state = dict(session_inputs.state(state), task_options=session_inputs.task_options())
-        session_reports.stage(state, directory, role=role)
+        if role and role != "policymaker":
+            state = dict(state, task_options=session_inputs.task_options())
+        session_reports.stage(state, directory)
         import session_context
-        state = session_context.startup_state(state, directory, role, full=full_history)
+        state = session_context.startup_state(state, directory, full=full_history)
         with open(os.path.join(directory, "loop-state.json"), "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=1, ensure_ascii=False)
 

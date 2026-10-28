@@ -18,20 +18,14 @@ independent evaluator verification and atomic activation of dependent definition
 Use `python3` on Linux if that is the interpreter name. The host requirements of the
 Linux tests (packages, kernel settings, the pinned CLI) are the install step of
 [`engine-tests.yml`](https://github.com/Kucze3205/Perpetua/blob/main/.github/workflows/engine-tests.yml); nothing else lists them.
-Windows skips the kernel-isolation tests (they need Linux and bubblewrap), the tests that need a POSIX shell,
-the symlink cases and the tests that need the native CLI, so a Windows run does not prove isolation. The script and
-model boundary tests must execute on Linux; an environment skip is an outstanding check, not proof.
+Windows skips the tests that need a POSIX shell, the symlink cases and the kernel-isolation tests, so a Windows run
+does not prove isolation. The script boundary tests must execute on Linux; an environment skip is an outstanding check, not proof.
 The opt-in live provider procedure is below. A passing fake CLI or a live API error
 does not establish the real provider guarantee: the pinned CLI must successfully
-call its model while subprocess probes demonstrate denied policy/history/host
-reads and the appropriate network restrictions.
+call its model while subprocess probes demonstrate the network restrictions.
 
 `test_agent_chain.py` runs the real `agent.sh` with a stand-in CLI. `PlainPromptTest` needs a
-POSIX shell and checks that a prompt over 128 KiB reaches the CLI whole, through stdin. `ExecutorChainTest`
-builds the stand-in CLI from C (the boundary runs only a native CLI) and walks stage, executor admission, the isolated CLI, checkpoint and epilogue for an
-execution-layer role and requires a completed session (`turns` of at least 1), an admitted work product and
-no `origin` remote in the executor repository. Without its requirements it is skipped with the reason
-printed.
+POSIX shell and checks that a prompt over 128 KiB reaches the CLI whole, through stdin.
 
 Record the commit, command, platform, test count and skips for each validation run.
 Report provider quota/authentication or missing kernel support separately from
@@ -59,17 +53,8 @@ file written by its Bash/Python subprocess with blocked HTTP, IPv4, and loopback
 connections. This live check is skipped on other hosts or without explicit opt-in.
 
 Run `python3 -m unittest discover -s .github/loop/tests -p test_executor_boundary.py -v`
-on Linux to exercise staged scripts and the epilogue, host/files/Git/network probes,
-credential-bearing worker Git hooks/configuration, output preservation and admission
-refusals. No provider or actual GitHub credential is needed.
-
-Run `python3 -m unittest discover -s .github/loop/tests -p test_model_boundary.py -v`.
-Its local tests check namespace access, useful online
-connectivity and credential-free native startup. With the same explicit opt-in
-and credential, its provider matrix requires actual Read, Glob, Grep and Bash
-tool calls in online and offline sessions, denied policy reads and a useful work
-product. A surrogate CLI, successful startup, authenticated API error or skipped
-provider test does not prove that matrix.
+on Linux to exercise staged scripts and the epilogue, credential-bearing worker Git
+hooks/configuration, output preservation and admission refusals. No provider or actual GitHub credential is needed.
 
 ## Deployment checks
 

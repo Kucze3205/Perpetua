@@ -85,29 +85,15 @@ prep job's values. A changed profile, owner limit, gate, CLI pin or execution se
 stops startup; the next dispatch resolves the current accepted configuration.
 
 
-## Layered recipient views
+## Recipient views
 
-With `resources.format: layered`, execution roles receive their own complete local
-skill and references, task instructions and execution contracts. Shapers also get
-`.session/capabilities.json`: role names, public descriptions and agent/script kinds
-for execution roles only. This catalogue is sufficient for role selection in a task
-graph; it contains no policy role instructions or tool profiles.
-
-The engine allowlists public loop-state and iteration-record fields and excludes
-policy sessions from staged report bodies, indexes, Actions metadata and streams.
-Session origin is pinned before execution in a dedicated engine bot comment. It
-is immutable across retries and role transfers; report fields and agent text cannot
-set it. Missing, malformed or conflicting origins fail closed. Legacy sessions
-without origin evidence remain unavailable to execution recipients.
-Explicit policy or unknown session selectors return `denied` without downloading
-the requested content. Trusted engine state/orders/decision comments are omitted
-from execution issue snapshots. Re-staging removes the previous recipient view.
-
-Execution artifact inputs require an execution session with a trusted published
-artifact manifest. Both issue/name and exact release selectors resolve through
-that manifest; arbitrary release globs and unknown origins are refused. Allowed
-execution reports and outputs remain available. Policy roles retain their required
-state, report evidence and exports across both layers.
+Policy is not hidden from execution roles ([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md)).
+Every role is staged the same way: its own complete local skill and references, task
+instructions, the engine contract, and the records, reports, streams and artifacts it
+selects. The execution contract asks execution roles not to read `policy/`; nothing
+enforces it. Shapers also get `.session/capabilities.json`: role names, public descriptions
+and agent/script kinds for execution roles, enough to choose roles in a task graph.
+Re-staging removes the previous recipient view.
 
 Suggestions still travel from session output through immutable engine snapshots
 to the Policymaker. Only an accepted Policymaker result applies resolutions;

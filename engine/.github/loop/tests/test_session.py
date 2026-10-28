@@ -239,6 +239,21 @@ class EpilogueTest(SessionCase):
         self.assertEqual(self.hub.issues[n]["state"], "open")
         self.assertIn(("resume.yml", {"issue": n}), self.hub.dispatched)
 
+    def test_a_forged_limit_does_not_park_the_loop_unless_the_probe_confirms_it(self):
+        n = self.issue()
+        self.hub.limit = (False, None)
+        self.w.session(n, report=False, exit_code="1", result=self.limit_result())
+        self.assertEqual(self.hub.report(n)["status"], "crashed")
+        self.assertNotIn("blocked:rate-limit", self.hub.issues[n]["_labels"])
+        self.assertNotIn(("resume.yml", {"issue": n}), self.hub.dispatched)
+
+    def test_the_clock_of_a_park_is_the_probes_not_the_sessions(self):
+        n = self.issue()
+        reset = c.now() + timedelta(hours=3)
+        self.hub.limit = (True, reset)
+        self.w.session(n, report=False, exit_code="1", result=dict(self.limit_result(), resets_at=4102444800))
+        self.assertEqual(self.hub.report(n)["resume_after"], c.iso(reset))
+
     def test_resume_sleeps_to_the_date_and_launches(self):
         n = self.issue()
         self.w.session(n, report=False, exit_code="1", result=self.limit_result())

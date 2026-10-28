@@ -186,6 +186,21 @@ class WorkflowTest(unittest.TestCase):
                 self.assertNotIn("github.token", text)
                 self.assertNotIn("GH_TOKEN", text)
 
+    def test_the_session_job_has_no_permissions_and_only_the_claude_token(self):
+        with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
+            jobs = yaml.safe_load(fh)["jobs"]
+        job = jobs["session"]
+        self.assertEqual(job["permissions"], {})
+        text = str(job)
+        for forbidden in ("github.token", "GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "actions/checkout"):
+            self.assertNotIn(forbidden, text)
+        text = re.sub(r"contains\(needs\.prep\.outputs\.secrets, '\|\w+\|'\) && secrets\.\w+ \|\| ''", "", text)    # consented names
+        self.assertEqual(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)), {"CLAUDE_CODE_OAUTH_TOKEN"})
+        # the token jobs sit on both sides of it and are other machines
+        self.assertEqual(job["needs"], ["prep", "stage"])
+        self.assertEqual(jobs["epilogue"]["needs"], ["prep", "stage", "session"])
+        self.assertIn("github.token", str(jobs["epilogue"]))
+
     def test_every_checkout_leaves_no_credentials_behind(self):
         for f, text, doc in self.workflows():
             for step in [s for j in doc["jobs"].values() for s in j.get("steps", [])]:

@@ -224,8 +224,6 @@ class World:
                     os.environ["LOOP_BASH"] = cand
                     os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
                     break
-        # A background `git gc --auto` repacks loose objects while a later clone copies them: no gc in fixture repos.
-        os.environ.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="gc.auto", GIT_CONFIG_VALUE_0="0")
         os.environ.pop("GH_TOKEN", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
@@ -234,6 +232,11 @@ class World:
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
+        # Git starts a detached gc/maintenance after pushes and clones (also from the child processes of a local
+        # transport, which do not inherit environment config). It can repack origin while a later clone copies its
+        # objects, so the repository that is cloned says no background maintenance.
+        for key, value in (("gc.auto", "0"), ("maintenance.auto", "false"), ("receive.autogc", "false")):
+            sh(self.origin, "git", "config", key, value)
         # hermetic: the engine's code plus a small policy fixture, never whatever policy/ holds in the repository we run in
         shutil.copytree(os.path.join(ENGINE, ".github"), os.path.join(self.loop, ".github"),
                         ignore=shutil.ignore_patterns("__pycache__", "tests"))

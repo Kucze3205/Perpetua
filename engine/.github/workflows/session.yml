@@ -91,7 +91,6 @@ jobs:
       WORK: ${{ github.workspace }}/work
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
-      LOOP_SANDBOX: "1"
     steps:
       - uses: actions/checkout@v4
         with:

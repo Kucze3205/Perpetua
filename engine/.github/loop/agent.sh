@@ -41,7 +41,7 @@ if [ "$KIND" = script ]; then
   fi
   # A shell function cannot be invoked by timeout. Keep the namespace command in an array.
   isolation=()
-  if [ "$NETWORK_MODE" = offline ] || [ "${LOOP_SANDBOX:-}" = 1 ]; then
+  if [ "$NETWORK_MODE" = offline ]; then
     if ! command -v bwrap >/dev/null; then
       echo "Required script sandbox unavailable" >&2
       echo 1 > "$OUT/agent-exit"

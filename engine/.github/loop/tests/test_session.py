@@ -377,11 +377,17 @@ class EpilogueTest(SessionCase):
         self.assertIsNone(self.w.origin_file("src/a1.txt"))
         self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % n))
 
-    @unittest.skipUnless(sys.platform == "linux", "candidate verification requires Linux bubblewrap namespaces")
     def test_a_passing_verification_runs_in_the_candidate_tree(self):
         n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/a.txt`\n")
         self.w.session(n, files={"src/a.txt": "A"})
         self.assertEqual(self.hub.report(n)["status"], "done")
+        self.assertTrue(self.hub.tokenless)
+
+    def test_a_verification_job_that_returns_nothing_fails_the_verification(self):
+        n = self.issue(body="## Goal\nx\n## Verification\n`true`\n")
+        self.hub.tokenless_fault = "no-artifact"
+        self.w.session(n, files={"src/a.txt": "A"})
+        self.assertEqual(self.hub.report(n)["verification"], "fail")
 
     def test_a_refused_merge_ends_blocked(self):
         n = self.issue()

@@ -219,7 +219,6 @@ class World:
                     os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
                     break
         os.environ.pop("GH_TOKEN", None)
-        os.environ.pop("LOOP_SANDBOX", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
         self.counter_saved = session_startup.count_tokens

@@ -986,6 +986,20 @@ class GoalGateTest(Flow):
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
         self.assertEqual(self.hub.by_label("owner-request:result-confirmation"), [])
 
+    def test_the_gate_command_runs_in_the_tokenless_job(self):
+        self.gate(True, False)
+        self.finish_one()
+        self.assertTrue(any("run.sh" in files for files in self.hub.tokenless))
+
+    def test_a_goal_gate_job_that_returns_nothing_is_not_reached(self):
+        self.gate(True, False)
+        self.hub.tokenless_fault = "no-artifact"
+        it.start_iteration()
+        self.play_shaper(task("a"))
+        c.sync_main()
+        it.check_goal()
+        self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
+
     def test_reached_and_the_owner_confirms(self):
         self.gate(True, True)
         self.finish_one()

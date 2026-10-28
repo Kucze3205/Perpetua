@@ -1031,8 +1031,7 @@ def check_goal():
     gate = c.load_yaml("goal/gate.yml")
     if not gate or not gate.get("command"):
         return
-    r = c.run_command(gate["command"], ".", env=c.clean_env(gate.get("env_passthrough") or c.cfg()["gate"]["env_passthrough"]),
-                      timeout=3600)
+    r = c.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120))
     verdict = parse_verdict(r.stdout)
     if r.returncode or not verdict or not verdict.get("reached"):
         return

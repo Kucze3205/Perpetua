@@ -94,7 +94,6 @@ class GateTest(MergeCase):
         finally:
             w2.close()
 
-    @unittest.skipUnless(sys.platform == "linux", "candidate check requires Linux bubblewrap namespaces")
     def test_a_passing_check_runs_in_the_candidate_tree(self):
         w2 = fakes.worker_world(SCRIPT_GATE + "check: 'test -f src/a.txt'\n")
         try:

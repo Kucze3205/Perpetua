@@ -98,10 +98,8 @@ class LayeredSessionTest(sessions.SessionCase):
         original = read('execution/profiles.yml')
         cases = [
             ('policy/profiles.yml', 'worker: {tools: [Read]}\n', 'both execution and policy'),
-            ('execution/profiles.yml', original + 'audit: {}\n', 'must belong to the policy'),
             ('execution/profiles.yml', 'worker: {layer: policy}\n', 'assigned by its profiles.yml'),
             ('execution/profiles.yml', 'worker: {}\nworker: {tools: [Read]}\n', 'duplicate'),
-            ('policy/roles/worker/SKILL.md', 'conflicting copy', 'wrong or both layers'),
         ]
         for path, content, reason in cases:
             with self.subTest(path=path, content=content):
@@ -116,6 +114,17 @@ class LayeredSessionTest(sessions.SessionCase):
                         shutil.rmtree(os.path.dirname(path))
                     else:
                         self.w.write(self.w.loop, path, old)
+
+    def test_layer_rules_are_policy_and_refuse_at_merge(self):
+        for files, reason in (({'execution/profiles.yml': read('execution/profiles.yml') + 'evaluator: {}\n'}, 'must belong to the policy'),
+                              ({'policy/roles/worker/SKILL.md': 'conflicting copy'}, 'wrong or both layers')):
+            with self.subTest(files=files):
+                n = self.issue('policymaker')
+                self.w.branch(n, files)
+                result = loop.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)
+                self.assertEqual(result['result'], 'invalid-resources')
+                self.assertIn('policy/layer-rules.py: ', result['detail'])
+                self.assertRegex(result['detail'], reason)
 
     def test_profiles_keep_independent_tools_network_and_owner_limits(self):
         n = self.issue()

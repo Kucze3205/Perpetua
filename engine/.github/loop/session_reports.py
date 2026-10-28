@@ -9,7 +9,6 @@ import json
 import os
 
 import common as c
-import session_inputs
 
 ROOT = ".github/loop/data/session-reports"
 OUTBOXES = "iterations/suggestions"
@@ -62,13 +61,13 @@ def capture(n, work=None):
         c.commit_main(files, "session #%s: freeze report and suggestion outbox" % n)
 
 
-def outboxes(visible=lambda issue: True):
+def outboxes():
     """The archived raw outboxes: [{issue, raw}] by session number."""
     out = []
     for path in glob.glob(OUTBOXES + "/[0-9]*.json"):
         issue = int(os.path.basename(path)[:-5])
         text = c.safe_read(".", path)
-        if text is not None and visible(issue):
+        if text is not None:
             out.append({"issue": issue, "raw": text})
     return sorted(out, key=lambda x: x["issue"])
 
@@ -77,14 +76,12 @@ def references(n):
     return {"report_snapshots": [path for path, _ in source_records(n)]}
 
 
-def stage(state, directory, role=None):
+def stage(state, directory):
     """Actual trusted comment bodies, readable without gh or credentials."""
     reports, seen = [], set()
     for line in state.get("iterations", [])[-5:]:
         for issue in c.list_issues(state="all", labels=(c.ITER + str(line["n"]),)):
             n = issue["number"]
-            if (role and session_inputs.restricted(role) and not session_inputs.visible(n)):
-                continue
             if n in seen or not c.roles_of(c.label_names(issue)):
                 continue
             seen.add(n)

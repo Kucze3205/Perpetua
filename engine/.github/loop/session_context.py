@@ -8,7 +8,6 @@ import os
 import re
 
 import common as c
-import session_inputs
 import session_reports
 
 STATE_BYTES = 8 * 1024 * 1024       # what the engine accepts from policy/session-state.py
@@ -24,33 +23,23 @@ def write(directory, path, value):
 
 
 def facts(directory, role, state, full):
-    """The records and report snapshots this role may see, and the stored state it may see."""
+    """The records and report snapshots, and the stored state, a session is staged with."""
     import iteration as it
-
-    restricted = bool(role and session_inputs.restricted(role))
-    visibility = {}
-
-    def visible(issue):
-        if not restricted:
-            return True
-        if issue not in visibility:
-            visibility[issue] = session_inputs.visible(issue)
-        return visibility[issue]
 
     records, reports = [], []
     for path in it.record_files() if full else sorted(glob.glob(os.path.join(directory, "exports/records/*.json"))):
         with open(path, encoding="utf-8") as fh:
             record = json.load(fh)
-        records.append(session_inputs.record(record, can_read=visible) if full and restricted else record)
+        records.append(record)
     if full:
-        reports += [record["report"] for _, record in session_reports.source_records() if visible(record["report"]["issue"])]
+        reports += [record["report"] for _, record in session_reports.source_records()]
     for pattern in ("reports/*.json", "exports/reports/*.json"):
         for path in sorted(glob.glob(os.path.join(directory, pattern))):
             with open(path, encoding="utf-8") as fh:
                 report = json.load(fh)
-            if isinstance(report, dict) and "body" in report and visible(report["issue"]):
+            if isinstance(report, dict) and "body" in report:
                 reports.append(report)
-    outboxes = session_reports.outboxes(visible)
+    outboxes = session_reports.outboxes()
     return {"role": role, "state": state, "outboxes": outboxes, "full": full, "checkout": c.head(), "records": records, "reports": reports}
 
 

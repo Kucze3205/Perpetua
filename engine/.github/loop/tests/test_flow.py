@@ -724,6 +724,50 @@ class TaskCapTest(Flow):
         self.assertIn("cap", errors[0])
 
 
+class GraphRulesTest(Flow):
+    """`policy/graph-rules.py` adds its refusals to the engine's: policy can only refuse more."""
+    SCRIPT = "policy/graph-rules.py"
+    NO_FORBIDDEN = ("import json, sys\nfacts = json.load(open(sys.argv[1]))\n"
+                    "print(json.dumps({'errors': ['task %s is forbidden' % t['id'] for t in facts['tasks'] if 'forbidden' in t['title']]}))\n")
+
+    def set_script(self, body):
+        self.w.push_main({self.SCRIPT: body}, "the Policymaker adds a graph rule")
+        c.sync_main()
+
+    def test_a_policy_rule_refuses_a_graph_the_engine_accepts(self):
+        self.set_script(self.NO_FORBIDDEN)
+        it.start_iteration()
+        s = self.session_issue("orchestrator")
+        self.w.session(s, session_files={"tasks.json": tasks_json(task("a", title="a forbidden task"))})
+        self.assertIn("policy/graph-rules.py: task a is forbidden", self.hub.prose(s))
+        self.assertIsNone(self.task_issue("a"))
+        self.assertEqual(self.record(0)["status"], "failed")
+
+    def test_a_graph_the_rule_does_not_mind_runs(self):
+        self.set_script(self.NO_FORBIDDEN)
+        it.start_iteration()
+        self.play_shaper(task("a"))
+        self.assertIsNotNone(self.task_issue("a"))
+
+    def test_no_policy_rule_accepts_a_graph_the_engine_refuses(self):
+        self.set_script("print('{\"errors\": []}')\n")
+        it.start_iteration()
+        s = self.session_issue("orchestrator")
+        self.w.session(s, session_files={"tasks.json": tasks_json(*[task("t%s" % k) for k in range(it.MAX_TASKS + 1)])})
+        self.assertIn("the cap is %s" % it.MAX_TASKS, self.hub.prose(s))
+        self.assertIsNone(self.task_issue("t0"))
+
+    def test_an_answer_the_engine_refuses_fails_the_iteration_and_rolls_policy_back(self):
+        fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")
+        self.set_script("print('{\"errors\": \"no\"}')\n")
+        it.start_iteration()
+        self.w.session(self.session_issue("orchestrator"), session_files={"tasks.json": tasks_json(task("a"))})
+        self.assertEqual(self.record(0)["status"], "failed")
+        c.sync_main()
+        self.assertFalse(os.path.exists(self.SCRIPT))
+        self.assertTrue(any(x["title"] == "policy/ rolled back" for x in self.hub.issues.values()))
+
+
 class OwnerGateTest(Flow):
     YML = ""
 
@@ -903,9 +947,7 @@ class ConsentSecretsTest(Flow):
         fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", self.w.origin, work)
         trusted = os.path.join(self.w.tmp, "trusted-" + tid)
         os.environ["RUNNER_TEMP"] = os.path.join(self.w.tmp, "run-" + tid)
-        # the real stage; only the native-ELF executor preparation is left out (it needs Linux)
-        with mock.patch.object(loop.executor_boundary, "prepare"):
-            loop.stage(self.task_issue(tid), work, trusted)
+        loop.stage(self.task_issue(tid), work, trusted)
         return work, trusted
 
     def test_stage_writes_the_approved_names_for_agent_sh(self):

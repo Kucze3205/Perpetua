@@ -7,7 +7,6 @@ from unittest.mock import patch
 from fakes import common as c, iteration as it, loop
 import session_reports as reports
 import session_startup as startup
-import session_inputs
 import test_session as sessions
 
 read = sessions.read
@@ -54,21 +53,16 @@ class ContextTest(sessions.SessionCase):
         self.assertEqual(staged["history"]["records"], 180)
         self.assertIn("old refusal", read(os.path.join(work, ".session/history/records/0000.json")))
 
-    def test_shaper_can_find_old_frozen_reports_without_policy_data(self):
+    def test_shaper_can_find_old_frozen_reports(self):
         public = self.issue()
-        private = self.issue("audit")
-        for n, body in [(public, "Old public finding\nUseful second line"), (private, "PRIVATE POLICY")]:
-            loop.resolve(n)
-            c.update_report(n, {"status": "done"}, body)
-            reports.capture(n)
+        loop.resolve(public)
+        c.update_report(public, {"status": "done"}, "Old public finding\nUseful second line")
+        reports.capture(public)
         frozen = reports.source_records(public)[0][1]["report"]
         c.update_report(public, {"status": "done"}, "New report text")
         record = {"iteration": 0, "status": "closed", "tasks": [
-            {"issue": public, "title": "Validate old data", "role": "worker", "body": "Check source"},
-            {"issue": private, "title": "PRIVATE POLICY", "role": "audit"}],
-            "policy": {"orders_refused": "PRIVATE POLICY"},
-            "outcome": {"sessions": [{"issue": public, "role": "worker", "status": "done"},
-                                      {"issue": private, "role": "audit", "status": "done"}]}}
+            {"issue": public, "title": "Validate old data", "role": "worker", "body": "Check source"}],
+            "outcome": {"sessions": [{"issue": public, "role": "worker", "status": "done"}]}}
         c.commit_main({"iterations/0000.json": json.dumps(record)}, "old evidence")
         _, work, _ = self.stage("orchestrator", labels=["loop:shaper"],
                                 state={"iteration": 20, "iterations": [{"n": n} for n in range(20)]})
@@ -76,10 +70,6 @@ class ContextTest(sessions.SessionCase):
         text = read(os.path.join(work, path))
         self.assertIn("Validate old data", text)
         self.assertIn("Old public finding\nUseful second line", text)
-        for root, _, names in os.walk(os.path.join(work, ".session")):
-            for name in names:
-                self.assertNotIn("PRIVATE POLICY", read(os.path.join(root, name)))
-        self.assertFalse(os.path.exists(os.path.join(work, "iterations")))
 
     def test_startup_declaration_drives_reads_and_counts_only_selected_documents(self):
         c.commit_main({"execution/roles/worker/SKILL.md":
@@ -196,27 +186,6 @@ class ContextTest(sessions.SessionCase):
         paths = [doc["path"] for doc in budget["documents"]]
         self.assertIn("policy/current.md", paths)
         self.assertNotIn("policy/working-memory.md", paths)
-
-    def test_history_reuses_provenance_for_repeated_references_to_a_session(self):
-        worker = self.issue()
-        loop.resolve(worker)
-        c.update_report(worker, {"status": "done"}, "An old execution result")
-        reports.capture(worker)
-        summary = {"issue": worker, "role": "worker", "status": "done"}
-        record = {"iteration": 0, "status": "closed", "tasks": [dict(summary, title="Old work")],
-                  "outcome": {"sessions": [summary], "shaper": summary}}
-        c.commit_main({"iterations/0000.json": json.dumps(record)}, "repeated references")
-        origin = session_inputs.origins
-        lookups = []
-
-        def lookup(n):
-            lookups.append(n)
-            return origin(n)
-
-        with patch.object(session_inputs, "origins", side_effect=lookup):
-            self.stage("orchestrator", labels=["loop:shaper"],
-                       state={"iterations": [{"n": n} for n in range(20)]})
-        self.assertEqual(lookups.count(worker), 1)
 
     def test_new_notices_arriving_during_policy_are_not_acknowledged_unseen(self):
         self.over()

@@ -34,6 +34,8 @@ HELD_MARK = "<!-- policymaker-held-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
 SEEN_MARK = "<!-- policymaker-audit-seen -->"
 HANDLED = "request:handled"
+POLICY_OUTPUT_BYTES = 4096      # what the engine accepts from a policy script
+POLICY_SCRIPT_MINUTES = 10
 MAX_TASKS = 50          # the kernel's cap on the tasks of one iteration's graph: shaper output and Policymaker orders alike
 
 
@@ -416,7 +418,11 @@ def start_iteration():
         c.close_issue(it, "not planned")
         return None
     c.update_report(it, {"phase": "starting", "started": c.iso(), "policy_rev_start": policy_rev()})
-    why = policymaker_due(n)
+    try:
+        why = policymaker_due(n)
+    except PolicyScriptError as e:
+        fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
+        return n
     if why and c.guard_ok():
         c.update_report(it, {"phase": "policy", "policy_issue": start_policymaker(n, why), "policy_trigger": why})
         return n
@@ -551,34 +557,71 @@ def audit_revision():
     return c.git(".", "log", "-1", "--format=%H", "--", "audit/", check=False).stdout.strip() or None
 
 
+class PolicyScriptError(Exception):
+    """A policy script returned data the engine refuses."""
+
+
+def run_policy_script(name, facts):
+    """The JSON object `policy/<name>` prints for `facts`, run in the tokenless job (`python3 <script> facts.json`). Anything
+    else - no output, over POLICY_OUTPUT_BYTES, a failed run, not one JSON object - raises PolicyScriptError. None: no such script."""
+    path = "%s/%s" % (resources.ROOT, name)
+    if not os.path.isfile(path):
+        return None
+    bundle = tempfile.mkdtemp(prefix="policy-script-")
+    try:
+        shutil.copy(path, os.path.join(bundle, "script"))
+        with open(os.path.join(bundle, "facts.json"), "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(facts, fh)
+        with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write('cd "$(dirname "$0")" && python3 script facts.json\n')
+        out = c.run_tokenless(bundle, POLICY_SCRIPT_MINUTES)
+    finally:
+        shutil.rmtree(bundle, ignore_errors=True)
+    try:
+        with open(os.path.join(out, "exit-code"), encoding="utf-8") as fh:
+            code = fh.read().strip()
+        with open(os.path.join(out, "stdout.txt"), encoding="utf-8", errors="replace") as fh:
+            text = fh.read(POLICY_OUTPUT_BYTES + 1)
+    except (OSError, TypeError):
+        raise PolicyScriptError("policy/%s returned no output from the tokenless job" % name)
+    if code != "0":
+        raise PolicyScriptError("policy/%s exited with %s" % (name, code))
+    if len(text) > POLICY_OUTPUT_BYTES:
+        raise PolicyScriptError("policy/%s printed more than %s bytes" % (name, POLICY_OUTPUT_BYTES))
+    try:
+        value = json.loads(text)
+    except ValueError:
+        raise PolicyScriptError("policy/%s did not print JSON" % name)
+    if not isinstance(value, dict):
+        raise PolicyScriptError("policy/%s did not print a JSON object" % name)
+    return value
+
+
 def policymaker_due(n):
-    """Why the Policymaker opens iteration n (None: it does not, the last organization stands). One session at a time.
-    The loop starts with one, and until a session ended `done` it starts every iteration with one: it sets up how
-    the execution layer works."""
+    """Why the Policymaker opens iteration n (None: it does not, the last organization stands). The engine decides two
+    things whatever policy says: one session at a time, and until a session ended `done` every iteration starts with one
+    (it sets up how the execution layer works). Otherwise `policy/policymaker-trigger.py` decides from the engine's facts.
+    Raises PolicyScriptError when the script's output is invalid."""
     if c.list_issues(labels=("role:policymaker",)):
         return None
     if not any(c.report_fields(x["number"]).get("status") == "done"
                for x in c.list_issues(state="closed", labels=("role:policymaker",))):
         return "the first iteration of the loop"
-    t = c.params()["policymaker_triggers"]
-    k = no_progress()
-    if t.get("every_iterations") and n and n % t["every_iterations"] == 0:
-        return "every %s iterations" % t["every_iterations"]
-    if t.get("no_progress") and k and k % t["no_progress"] == 0:
-        return "%s iterations without progress" % k
     sessions = c.list_issues(state="all", labels=("role:policymaker",))
     last = max(sessions, key=lambda x: x["number"], default=None)
     state = (read_state(last["number"], SEEN_MARK, last=True) or read_state(last["number"]) or {}) if last else {}
     audit = audit_revision()
-    if audit and audit != state.get("audit_rev"):
-        return "a new audit report"
     seen = {item["id"] for session in sessions for item in
             (read_state(session["number"]) or {}).get("suggestions", [])}
-    if any(item["id"] not in seen for item in session_reports.pending()):
-        return "new session suggestions"
-    if session_startup.pending():
-        return "startup budget needs attention"
-    return None
+    out = run_policy_script("policymaker-trigger.py", {
+        "iteration": n, "no_progress": no_progress(), "triggers": c.params()["policymaker_triggers"],
+        "audit_changed": bool(audit and audit != state.get("audit_rev")),
+        "new_suggestions": any(item["id"] not in seen for item in session_reports.pending()),
+        "startup_pending": bool(session_startup.pending())})
+    reason = (out or {}).get("reason")
+    if reason is not None and not (isinstance(reason, str) and 0 < len(reason) <= 200):
+        raise PolicyScriptError("policy/policymaker-trigger.py: `reason` must be null or a string of 1 to 200 characters")
+    return reason
 
 
 def start_policymaker(n, why):

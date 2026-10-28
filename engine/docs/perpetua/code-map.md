@@ -18,7 +18,7 @@ or preparing an engine-change proposal. The engine remains owner-controlled.
 | Which settings are owner-controlled? | `engine.yml`; omitted values fall back to `common.DEFAULTS` |
 | Which settings may the Policymaker tune? | `policy/params.yml`, both layers' `profiles.yml` |
 | Why did a session or change get this outcome? | Its staged report; `session-reports.md` and `policy-changes.md` explain provenance |
-| How are instructions staged and network access enforced? | `session-sandbox.md` |
+| How are instructions staged and the machine boundary kept? | `session-boundary.md` |
 | Which historical data can a role request? | `session-exports.md` |
 | How do startup inputs, working memory and historical discovery fit together? | `session-context.md` |
 
@@ -45,7 +45,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Accepted-change and verifier records | `iteration.record_change`, `record_verification` | `test_change_records.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
 | Startup notices (the reads, prompt and estimate are `policy/session-startup.py`) and offline history | `session_context.py`, `session_startup.py` | `test_context.py` |
-| Isolation, credentials and data-only admission; the session artifact | `session_security.py`, `executor_boundary.py`, `session_artifact.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_session_artifact.py`, `test_executor_boundary.py`, `test_static.py` |
+| Isolation, credentials and data-only admission; the session artifact | `session_security.py`, `executor_boundary.py`, `session_artifact.py`, `agent.sh` | `test_security.py`, `test_session_artifact.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | `test_watchdog.py`, `test_stream.py` |
 
 `managed_resources.py` describes the managed definition tree and its role, prompt,

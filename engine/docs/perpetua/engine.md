@@ -9,7 +9,7 @@ Details have one home:
 
 - [Managed definitions](managed-resources.md): role layout, ownership, activation,
   rollback and fresh-setup validation.
-- [Session instructions and isolation](session-sandbox.md): staging, credentials,
+- [Session instructions and the machine boundary](session-boundary.md): staging, credentials,
   filesystem and network boundaries, output admission and sessions without a shell.
 - [Session context](session-context.md): startup reads and working memory.
 - [Session data exports](session-exports.md): historical inputs and recipient views.
@@ -81,7 +81,7 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 4. **Execute.** Free tasks start parallel `session.yml` jobs. Each stages inputs in a token job, executes its role in a job without
    GitHub permissions and hands outputs, as data, to the epilogue job. Closing a
    task releases its consumers; a producer that did not deliver blocks them.
-   [Session isolation](session-sandbox.md) defines how outputs are admitted.
+   [Session isolation](session-boundary.md) defines how outputs are admitted.
 5. **Close.** Once no session remains open, the engine writes the immutable iteration
    record, closes the issue, prunes streams, checks progress and the goal gate,
    then starts the next iteration.
@@ -100,7 +100,7 @@ report carrying the error, up to two times (`fixes`). A gate verdict is not retr
 - `owner`: the engine opens a `merge-acceptance` request and the task waits (`awaiting:owner`). Completed merges, not
   planned discards (the branch is kept and tagged `iter/NNNN/<issue>`). This is the default until the setup decides.
 - `script`: `gate.command` runs in the **tokenless job** (`tokenless.yml`: `permissions: {}`, no GitHub secret, one
-  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md))
+  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-boundary.md))
   from the **accepted tree**, never from the candidate, with `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`,
   `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no secrets (`gate.env_passthrough` does not reach it).
   The epilogue runs no gate command itself; it reads the verdict back. It prints a JSON object as its last line:
@@ -155,7 +155,7 @@ internet with writes outside `internet_write`) gets a `consent` request that blo
 starts the session only when that request is closed as completed, and then only that one session runs with the profile.
 The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
 secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with
-`secret-missing:NAME` (see [session secrets](session-sandbox.md#session-secrets)). There is no other path for a secret
+`secret-missing:NAME` (see [session secrets](session-boundary.md#session-secrets)). There is no other path for a secret
 to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command (not yet passed to the tokenless job).
 
 ## The watchdog

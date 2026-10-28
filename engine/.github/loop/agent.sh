@@ -30,23 +30,7 @@ done < "$TRUSTED/secrets"
 if [ "$KIND" = script ]; then
   # a deterministic role: no model, no credential
   unset CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN GITHUB_TOKEN
-  # A shell function cannot be invoked by timeout. Keep the namespace command in an array.
-  isolation=()
-  if [ "$NETWORK_MODE" = offline ]; then
-    if ! command -v bwrap >/dev/null; then
-      echo "Required script sandbox unavailable" >&2
-      echo 1 > "$OUT/agent-exit"
-      date +%s > "$OUT/agent-end"
-      exit 1
-    fi
-    isolation=(bwrap --unshare-pid --die-with-parent --ro-bind / / --dev /dev --proc /proc
-      --bind "$WORK" "$WORK" --bind "$OUT" "$OUT" --bind "$HOME" "$HOME" --bind /tmp /tmp
-      --ro-bind "$TRUSTED" "$TRUSTED")
-    [ "$NETWORK_MODE" != offline ] || isolation+=(--unshare-net)
-  fi
-  command=(bash "$TRUSTED/command.sh")
-  [ "$NETWORK_MODE" != offline ] || command=(python3 "$TRUSTED/offline_exec.py" "${command[@]}")
-  timeout "${AGENT_TIMEOUT}m" "${isolation[@]}" "${command[@]}" > "$OUT/script-output.txt" 2>&1
+  timeout "${AGENT_TIMEOUT}m" bash "$TRUSTED/command.sh" > "$OUT/script-output.txt" 2>&1
   echo $? > "$OUT/agent-exit"
   cat "$OUT/script-output.txt"
   date +%s > "$OUT/agent-end"

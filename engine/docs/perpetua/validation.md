@@ -38,23 +38,15 @@ an engine-owned accepted measurement (ADR-0003), limits, owner requests and roll
 triggers. Validation supplies no migration or reconfiguration procedure. Repeating
 setup as a review is separate work.
 
-## Isolation and live-provider checks
+## Session boundary checks
 
-The [session sandbox](session-sandbox.md) defines the boundaries these checks exercise.
-In the commands below use `engine/.github/loop/tests` in the plugin repository
-or `.github/loop/tests` in a copied loop.
+The [session boundary](session-boundary.md) defines what these checks exercise. In the commands below use
+`engine/.github/loop/tests` in the plugin repository or `.github/loop/tests` in a copied loop.
 
-Run `python3 -m unittest discover -s .github/loop/tests -p test_security.py -v`.
-The kernel test runs on Linux without credentials. To check the real provider and
-Bash HTTP/raw-socket denial together, install the pinned CLI and sandbox dependencies,
-set `LOOP_NETWORK_INTEGRATION=1` plus `CLAUDE_CODE_OAUTH_TOKEN`, and run the same command.
-It first checks host internet, then requires a successful model result and a proof
-file written by its Bash/Python subprocess with blocked HTTP, IPv4, and loopback
-connections. This live check is skipped on other hosts or without explicit opt-in.
-
-Run `python3 -m unittest discover -s .github/loop/tests -p test_executor_boundary.py -v`
-on Linux to exercise staged scripts and the epilogue, credential-bearing worker Git
-hooks/configuration, output preservation and admission refusals. No provider or actual GitHub credential is needed.
+Run `python3 -m unittest discover -s .github/loop/tests -p test_security.py -v` for the tool allowlist and
+`-p test_static.py` for the workflow properties: the session job has `permissions: {}` and nothing mentions the removed
+sandbox. No provider, native CLI or actual GitHub credential is needed; the engine tests workflow installs only
+`python3-yaml`.
 
 ## Deployment checks
 

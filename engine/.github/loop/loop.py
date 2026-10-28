@@ -142,7 +142,7 @@ def resolve(n):
         close_out(n, i, "blocked", {"cause": "start:policymaker-session"}, str(error))
         reconcile()
         raise SystemExit(str(error))
-    why = security.profile_error(p, c.cfg()["cli_version"]) if p else "no profile for role `%s`" % role
+    why = security.profile_error(p) if p else "no profile for role `%s`" % role
     granted = False
     if not why and role != "policymaker":
         granted, why = consent_status(p, labels)
@@ -219,7 +219,7 @@ def stage(n, work, trusted):
         p = profile_of(role)
     except ValueError as error:
         raise SystemExit("invalid session profile: " + str(error))
-    error = security.profile_error(p, c.cfg()["cli_version"])
+    error = security.profile_error(p)
     if error:
         raise SystemExit("invalid session profile: " + error)
     if role != "policymaker":
@@ -277,7 +277,7 @@ def stage(n, work, trusted):
         fh.write(",".join(security.tool_names(p)))
     with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:
         json.dump({"mcpServers": {}}, fh)
-    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py", "sandbox.sh", "session_artifact.py"):
+    for f in ("agent.sh", "stream_filter.py", "remaining.py", "session_artifact.py"):
         shutil.copy(".github/loop/" + f, trusted)
     # Machine preparation is policy: `policy/prepare.sh` of the accepted tree (none: nothing to prepare).
     prepare = os.path.join(resources.ROOT, "prepare.sh")
@@ -292,17 +292,12 @@ def stage(n, work, trusted):
         staged_role = os.path.join(sess, "role")
         shutil.rmtree(staged_role, ignore_errors=True)
         shutil.copytree(resources.role_directory(role), staged_role)
-        security.check_skills(staged_role)
     if role == "policymaker":
         with open(os.path.join(sess, "policymaker.md"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write("You are the Policymaker. Follow the engine contract supplied in system instructions.\n\n" + template)
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")
-    # Skill hooks and interpolation execute outside the Bash tool sandbox.
-    if p.get("agent") is not False and not p.get("internet", False):
-        for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
-            security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
         json.dump(security.settings(p, trusted), fh)
     executor_boundary.record(work, trusted)
@@ -399,7 +394,7 @@ def fetch_candidate(work, n):
         with open(baseline, encoding="utf-8") as fh:
             meta = json.load(fh)
         role = c.roles_of(c.label_names(c.issue(n)))[0]
-        # A new path outside a role's write paths is environment debris (CLI stubs, runner home files, IDE
+        # A new path outside a role's write paths is environment debris (runner home files, IDE
         # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
         write = profile_of(role).get("write") or []
         skip = lambda rel, tracked: not tracked and not c.path_match(rel, write)

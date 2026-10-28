@@ -36,5 +36,4 @@ jobs:
       - run: |
           pip install -q pyyaml
           python3 .github/loop/loop.py git-identity
-          bash .github/loop/sandbox.sh
           python3 .github/loop/loop.py request-closed "${{ github.event.issue.number }}"

@@ -1,4 +1,4 @@
-# Session instructions and network access
+# Session instructions and the machine boundary
 
 The engine owns the common contract in `.github/loop/session-protocol.md`, the
 report-reader and task-graph sections in `.github/loop/task-graph.md`,
@@ -8,8 +8,7 @@ and adds verification/delivery instructions from shell access, and for execution
 Every role delivers file bytes, committed or not. A session is staged with a
 baseline (`executor_boundary.record`); the epilogue builds one commit on it from the final files of the working tree
 (`executor_boundary.import_candidate`, the same import as for execution sessions), without running the
-agent's git. New untracked files outside the role's write paths (CLI stubs, runner home
-files) are environment debris and are not admitted; symlinks, hard links and special files
+agent's git. New untracked files outside the role's write paths (runner home files) are environment debris and are not admitted; symlinks, hard links and special files
 refuse the admission. Write-path, protected-path, size and change checks apply unchanged.
 All sessions retain trust, reporting and owner-request rules. Only the Policymaker
 receives the policy-owned suggestion instructions; only it and the shaper receive graph and
@@ -30,7 +29,7 @@ The engine records the staged baseline (`executor_boundary.record`) and never ru
 session's Git. The epilogue reads the regular files the working tree holds at the end,
 committed or not, and builds one commit on the baseline from those bytes
 (`executor_boundary.import_candidate`). New untracked files outside the role's write
-paths (CLI stubs, runner home files) are environment debris and are not admitted.
+paths (runner home files) are environment debris and are not admitted.
 Symlinks, hard links and special files refuse the admission. Binary contents, executable
 modes and deletions are preserved. Worker Git configuration, hooks and attributes cannot
 execute during the import. The result then passes the protected/write checks and the
@@ -46,40 +45,21 @@ runs from the accepted tree with the full candidate and baseline required by ADR
 
 ## Model process and network access
 
-Model sessions require the pinned native CLI and a non-root user. The outer
-namespace admits individual runtime, DNS/CA and selected engine contract files.
-The CLI retains network access to its provider. `launch_model` passes its credential
-through a pipe identified by `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`, keeping the
-value out of process environments and `/proc/*/environ`. Private procfs supports
-the native CLI's nested sandbox; the inherited process guard denies ptrace and
-cross-process memory syscalls. Subprocess environments scrub provider credentials.
-These controls also apply online.
+There is no sandbox around a session. The boundary is the machine
+([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-boundary.md)): the agent, its scripts and the
+candidate commands run in the `session` job, which has no GitHub permissions and never shares a machine with the GitHub
+token. The Claude token and the secrets the owner approved for the task are readable by the session; the response to a
+leak is revoking them.
 
-`internet` defaults to false and must be a boolean, including on script profiles.
-Offline model sessions use the pinned Claude CLI's strict Bash sandbox: subprocesses
-inherit network isolation; WebFetch/WebSearch and unsandboxed retries are unavailable.
-The CLI process retains network access for model calls. Unsupported tool surfaces
-(including MCP and subagents) are refused rather than assuming they inherit Bash
-isolation. `--tools` limits available builtins independently of permission rules.
-User/project settings are disabled and MCP configuration is empty. Offline sessions
-disable native skill/command discovery, which could execute hooks or interpolation
-outside the Bash sandbox. They read their complete staged role skill tree from
-`.session/role/`; ordinary skill scripts run through sandboxed Bash. Executable hook
-or interpolation content is rejected. Creating a new skill during the session cannot
-re-enable native discovery.
+What the engine still owns is the tool allowlist. `--tools` limits the available builtins independently of permission
+rules, `--allowedTools` lists what the role may use, and `settings.json` denies `Agent`, `Task`, `Monitor` and
+`PowerShell` for every profile. MCP configuration is empty and a profile that lists an MCP or subagent tool is refused.
+User and project settings are disabled. Subprocess environments scrub the provider credential
+(`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). Script roles receive no model credential.
 
-Offline script roles use a private network namespace and inherit an engine seccomp
-filter denying socket creation (including Unix sockets and io_uring), preventing
-access to local proxy or container-daemon sockets. Script roles receive no model
-credential. Supported script hosts are Linux x86_64 and aarch64. Online scripts
-share the network and receive DNS/CA files, while retaining filesystem isolation.
-Online profiles still require accepted-limit/consent checks; internet access does
-not add tools.
-
-The native sandbox is a boundary around tool commands, not around the trusted CLI
-or engine hooks. Keep the runner and pinned CLI trusted. See the provider's
-[sandbox contract](https://code.claude.com/docs/en/sandboxing) and
-[settings precedence](https://code.claude.com/docs/en/settings).
+`internet` must be a boolean and, until the profile key is removed, still decides whether a profile may list
+WebFetch/WebSearch and whether native skill and slash-command discovery are enabled. Sessions without it read their
+staged role skill tree from `.session/role/`. A session reaches the network like any process on the runner.
 
 Test commands, Linux requirements and opt-in live-provider evidence are in
 [validation](validation.md).
@@ -141,7 +121,7 @@ when updating a loop.
 Status files (start, end, exit code, turns, tokens) are trusted as data. A usage limit that parks the loop is not: the
 epilogue parks only when the engine's own probe (`common.probe_limit`) confirms it, and the probe sets the clock.
 Both layers publish final file bytes against their staged baseline as described above; the engine does not read worker
-commits or execute worker Git. The session sandbox is still on (ADR-0006 removes it in a later step).
+commits or execute worker Git.
 
 The [session protocol](../../.github/loop/session-protocol.md) defines input/output
 files, statuses and report field ownership. Agent and script roles use the same

@@ -87,7 +87,7 @@ stops startup; the next dispatch resolves the current accepted configuration.
 
 ## Recipient views
 
-Policy is not hidden from execution roles ([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md)).
+Policy is not hidden from execution roles ([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-boundary.md)).
 Every role is staged the same way: its own complete local skill and references, task
 instructions, the engine contract, and the records, reports, streams and artifacts it
 selects. The execution contract asks execution roles not to read `policy/`; nothing

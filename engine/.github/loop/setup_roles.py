@@ -96,7 +96,7 @@ def validate(repo, baseline=None):
         import iteration
         pm_profile = dict(loop.profile_of('policymaker'), layer='policy')
         for role, profile in dict(profiles, policymaker=pm_profile).items():
-            error = session_security.profile_error(profile, c.cfg()['cli_version'])
+            error = session_security.profile_error(profile)
             if error:
                 raise ValueError('invalid profile ' + role + ': ' + error)
             if role != 'policymaker' and iteration.limits_exceeded(profile):

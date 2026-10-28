@@ -83,6 +83,15 @@ class FilesTest(unittest.TestCase):
                 r = subprocess.run([BASH, "-n", p], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, "%s: %s" % (p, r.stderr))
 
+    def test_no_session_sandbox_remains(self):
+        for p in engine_files():
+            if p == __file__:
+                continue
+            with open(p, encoding="utf-8") as fh:
+                text = fh.read().lower()
+            for word in ("bubblewrap", "bwrap", "seccomp", "offline_exec", "sandbox.sh"):
+                self.assertNotIn(word, text, "%s still mentions %s" % (p, word))
+
     def test_version_stamp(self):
         with open(os.path.join(ENGINE, "ENGINE_VERSION"), encoding="utf-8") as fh:
             self.assertRegex(fh.read().strip(), r"^\d+\.\d+\.\d+$")

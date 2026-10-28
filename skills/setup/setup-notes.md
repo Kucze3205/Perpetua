@@ -78,7 +78,7 @@ These consequences inform the owner's choice; they do not automatically block it
 
 **Authority after arming.** The owner's power to change setup does not pass to the Policymaker. Under the shipped boundaries only the owner accepts a goal gate or changes the engine, accepted limits and `AUTOPILOT`; the Policymaker changes only its permitted artifacts and proposes other changes through owner requests. A setup decision changes those boundaries only when the owner explicitly chooses it and the map implements and documents it. See `docs/perpetua/managed-resources.md`, "Ownership after arming".
 
-**Where things are.** Glossary: `CONTEXT.md`. Engine documentation: `docs/perpetua/engine.md`. Engine version: `{{ENGINE_VERSION}}`, stamped in `ENGINE_VERSION`. For provider integration points see `docs/perpetua/session-sandbox.md`, "Session lifecycle and outputs".
+**Where things are.** Glossary: `CONTEXT.md`. Engine documentation: `docs/perpetua/engine.md`. Engine version: `{{ENGINE_VERSION}}`, stamped in `ENGINE_VERSION`. For provider integration points see `docs/perpetua/session-boundary.md`, "Session lifecycle and outputs".
 
 **Language.** These notes stay in English. Write tickets, comments and the conversation in the language the owner used to state the goal.
 

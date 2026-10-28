@@ -64,7 +64,7 @@ other layer and no writes to global skill installations. Script roles receive
 their own profile's command. Layer selection does not grant additional tools
 or network permissions: profiles retain independent permissions and existing
 accepted-limit checks. Filesystem isolation and output admission have their
-contract in [session sandbox](session-sandbox.md#filesystem-isolation-and-output-admission).
+contract in [session boundary](session-boundary.md#output-admission).
 
 Execution roles cannot admit changes to managed definitions even if their
 `write` patterns include those locations; they use suggestions instead.

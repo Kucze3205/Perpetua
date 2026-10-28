@@ -48,9 +48,8 @@ Decide routine cases yourself and list them in the report. Ask the owner only wh
 
 ## 5. Check
 
-- `python3 -m unittest discover -s .github/loop/tests`. The isolation tests need Linux with `bwrap`; on another system run the suite in a container:
-  `docker run --rm --privileged -v "$PWD":/src:ro python:3.12-bookworm bash -c "apt-get -qq update; apt-get -qq install -y bubblewrap git socat; pip -q install pyyaml; cp -r /src /w && cd /w && git config --global user.email t@t && git config --global user.name t && python3 -m unittest discover -s .github/loop/tests"`.
-  Fix failures the merge caused. Report environment skips separately; a skip is not a pass. If neither Linux nor Docker is available, say which tests did not run.
+- `python3 -m unittest discover -s .github/loop/tests` (needs `git`, `bash` and `pyyaml`; no container or namespace support).
+  Fix failures the merge caused. Report environment skips separately; a skip is not a pass.
 - `python3 .github/loop/setup_roles.py validate` passes.
 
 ## 6. Commit

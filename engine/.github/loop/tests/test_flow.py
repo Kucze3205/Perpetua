@@ -684,7 +684,7 @@ class ShaperFailureTest(Flow):
         self.assertEqual(it.iteration_number(self.open_iteration()), 1)         # the next one started
 
     def test_partial_ends_the_iteration_and_the_graph_is_not_read(self):
-        # Decision (b) of docs/perpetua/session-sandbox.md: `partial` is final for the shaper, no retry,
+        # Decision (b) of docs/perpetua/session-boundary.md: `partial` is final for the shaper, no retry,
         # no graph loading. The cause (a prompt demanding a shell) is removed at the source instead.
         it.start_iteration()
         s = self.session_issue("orchestrator")

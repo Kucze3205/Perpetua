@@ -159,7 +159,6 @@ jobs:
       MAX_TURNS: ${{ needs.prep.outputs.max_turns }}
       AGENT_TIMEOUT: ${{ needs.prep.outputs.agent_timeout }}
       WORK: ${{ github.workspace }}/work
-      LOOP_SANDBOX: "1"
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -172,7 +171,6 @@ jobs:
       - name: Tools
         run: |
           npm install -g "@anthropic-ai/claude-code@$(cat "$RUNNER_TEMP/trusted/cli-version")"
-          bash "$RUNNER_TEMP/trusted/sandbox.sh"
       - name: Prepare the machine
         working-directory: work
         run: bash "$RUNNER_TEMP/trusted/prepare.sh"
@@ -194,7 +192,7 @@ jobs:
           mkdir -p capture
           find "$WORK" -path "$WORK/.git" -prune -o -path "$WORK/.session" -prune -o -printf '%y %s %TY-%Tm-%TdT%TTZ %p\n' > capture/work-tree.txt || true
           find "$WORK" -path "$WORK/.git" -prune -o -path "$WORK/.session" -prune -o -type f -newer session-start -printf '%s %p\n' > capture/work-new-files.txt || true
-          { uname -a; lsb_release -d || true; nproc; free -m; df -h "$WORK"; claude --version || true; bwrap --version || true; } > capture/machine.txt 2>&1 || true
+          { uname -a; lsb_release -d || true; nproc; free -m; df -h "$WORK"; claude --version || true; } > capture/machine.txt 2>&1 || true
           env | grep -E '^(GITHUB_(RUN|JOB|WORKFLOW|EVENT|REF|SHA|ACTOR)|RUNNER_|ImageOS|ImageVersion)' | sort > capture/env.txt || true
           present=(); for f in trusted capture stream.ndjson agent-exit agent-start agent-end claude-stderr.txt claude-execution-output.json script-output.txt secret-missing; do [ -e "$f" ] && present+=("$f"); done
           tar -czf capture.tgz "${present[@]}" -C "$WORK" .session || true
@@ -231,7 +229,6 @@ jobs:
       PROFILE_DIGEST: ${{ needs.prep.outputs.profile_digest }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
-      LOOP_SANDBOX: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -250,9 +247,6 @@ jobs:
         with:
           name: baseline
           path: ${{ runner.temp }}/baseline
-      - name: Tools
-        working-directory: loop
-        run: bash .github/loop/sandbox.sh
       - name: Epilogue
         working-directory: loop
         env:

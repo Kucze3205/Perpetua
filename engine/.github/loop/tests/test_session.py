@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from fakes import common as c, iteration as it, loop
+import owner_requests as requests
 from session_fixtures import SessionCase, read
 
 
@@ -68,8 +69,8 @@ class StageTest(SessionCase):
     def test_stage_writes_the_secrets_file_agent_sh_reads(self):
         n = self.issue(body="## Goal\nx\n")
         trusted = os.path.join(self.w.tmp, "trusted-secrets")
-        with patch.object(loop, "consent_status", return_value=(True, None)), \
-                patch.object(loop, "secrets_of_consent", return_value=["A", "B"]):
+        with patch.object(requests, "consent_status", return_value=(True, None)), \
+                patch.object(requests, "secrets_of_consent", return_value=["A", "B"]):
             loop.stage(n, self.work(), trusted)
         self.assertEqual(read(os.path.join(trusted, "secrets")), "A\nB\n")
         self.assertFalse(os.path.exists(os.path.join(trusted, "unapproved")))

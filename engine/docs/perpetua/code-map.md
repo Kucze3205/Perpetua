@@ -35,12 +35,13 @@ The engine uses the accepted checkout; files left by a session (committed or not
 |---|---|---|
 | Session resolution and staging | `loop.resolve`, `loop.stage` | `test_session.py` |
 | Session finalization, retries and outputs | `loop.finalize`, `loop.resume` | `test_session_finalize.py` |
-| Iteration lifecycle and task graph | `iteration.start_iteration`, `validate_tasks`, `instantiate`, `advance`, `close_iteration` | `test_flow.py`, `test_pure.py` |
+| Iteration lifecycle and session launch | `iteration.start_iteration`, `instantiate`, `advance`, `close_iteration` | `test_flow.py`, `test_iteration_import.py` |
+| Task validation, dependencies, inputs and frozen graph | `task_graph.validate_tasks`, `create_tasks`, `read`, `width` | `test_task_graph.py`, `test_flow.py`; `.github/loop/task-graph.md` defines the format |
 | Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate` | `test_merge.py`, `test_flow_gate.py`, `test_policy_changes.py` |
 | Policymaker triggers, orders and policy phases | `iteration.start_policymaker`, `policymaker_due`; `loop.apply_policy` | `test_flow_policymaker.py`, `test_policy_admission.py` |
-| Owner consent and approved secrets | `loop.consent_status`, `secret_pool`, `secrets_of_consent`; `loop.stage`, `finalize` | `test_flow_consent.py` |
+| Owner consent and approved secrets | `owner_requests.consent_status`, `secrets_of_consent`, `limits_exceeded`; `loop.secret_pool`, `stage`, `finalize` | `test_flow_consent.py` |
 | Goal gate and owner confirmation | `iteration.run_goal_gate`; `loop.on_request_closed` | `test_flow_goal.py` |
-| Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
+| Owner requests | `owner_requests.open_request`, `process_proposals`, `settle`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
 | Setup role registration and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
@@ -73,8 +74,24 @@ Run the suite from the loop repository root:
 From the plugin source use `-s engine/.github/loop/tests` instead.
 See [validation](validation.md) for prerequisites and limits of this verification.
 
+For a new graph rule, read `task_graph.py` and `test_task_graph.py`, then the
+shaper-to-record scenario in `test_flow.py` if the rule affects execution. Before
+this split, that work required navigating `iteration.py` alongside lifecycle,
+policy-phase and owner-request rules, then finding graph tests in `test_pure.py`.
+Consent rules now lead directly to `owner_requests.py`; export rules still lead
+to `session_exports.py`. Neither requires reading unrelated session-finalization
+or recovery code.
+
 ## Details that are easy to misread
 
+- `task_graph.py` validates and materializes tasks, wires blocking and consent,
+  resolves input references and saves the frozen graph. It imports neither
+  `iteration` nor `loop`. `iteration.instantiate` validates and saves first,
+  updates phase/statistics second, then launches sessions. Policymaker orders use
+  the same graph implementation while their phase handling stays in `iteration`.
+- `owner_requests.py` owns request creation, frozen proposals and consent rules;
+  `loop.on_request_closed` owns the resulting continuation. Startup checks consent
+  again during staging so a changed profile or decision cannot use a stale check.
 - `iteration.begin_work` imports and calls `loop.apply_policy` when work begins.
   This local import keeps the dependency explicit without requiring callers to
   import `loop.py` first; the two modules still depend on each other.

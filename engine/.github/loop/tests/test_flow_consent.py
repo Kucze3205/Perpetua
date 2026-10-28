@@ -5,6 +5,7 @@ from unittest import mock
 
 import fakes
 from fakes import common as c, iteration as it, loop, task
+import owner_requests as requests
 from flow_fixtures import Flow
 
 
@@ -97,10 +98,10 @@ class ConsentSecretsTest(Flow):
     def test_names_enter_the_frozen_text_and_a_later_edit_is_not_applied(self):
         n = self.request_of("a")
         body = self.hub.issues[n]["body"]
-        self.assertEqual(it.frozen_text(body), "secrets: STRIPE_KEY")
+        self.assertEqual(requests.frozen_text(body), "secrets: STRIPE_KEY")
         self.hub.issues[n]["body"] = body.replace("STRIPE_KEY", "OTHER_KEY")
-        self.assertIsNone(it.frozen_text(self.hub.issues[n]["body"]))
-        self.assertEqual(loop.secrets_of_consent(self.hub.issues[self.task_issue("a")]["_labels"]), [])
+        self.assertIsNone(requests.frozen_text(self.hub.issues[n]["body"]))
+        self.assertEqual(requests.secrets_of_consent(self.hub.issues[self.task_issue("a")]["_labels"]), [])
 
     def test_two_sessions_get_their_own_names(self):
         self.grant("a")
@@ -204,15 +205,15 @@ class ConsentSecretsTest(Flow):
         self.hub.answer(self.request_of("a"), False)
         loop.on_request_closed(self.request_of("a"))
         labels = self.hub.issues[self.task_issue("a")]["_labels"]
-        self.assertEqual(loop.consent_status(c.profiles()["worker"], labels), (False, None))
-        self.assertEqual(loop.secrets_of_consent(labels), [])
+        self.assertEqual(requests.consent_status(c.profiles()["worker"], labels), (False, None))
+        self.assertEqual(requests.secrets_of_consent(labels), [])
 
     def test_invalid_names_are_refused_without_echoing_them(self):
         for bad in (["lower"], ["A=hunter2"], ["A", "A"], "A", [1]):
-            errors = it.consent_errors({"secrets": bad})
+            errors = requests.consent_errors({"secrets": bad})
             self.assertTrue(errors, bad)
             self.assertNotIn("hunter2", " ".join(errors))
-        self.assertEqual(it.consent_errors({"what": "w", "secrets": ["A_1", "B"]}), [])
+        self.assertEqual(requests.consent_errors({"what": "w", "secrets": ["A_1", "B"]}), [])
 
 if __name__ == "__main__":
     unittest.main()

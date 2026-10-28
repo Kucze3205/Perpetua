@@ -64,7 +64,7 @@ class LayeredSessionTest(LayeredSessionCase):
                                ('policy/evaluator/new.py', 'scope')):
             if path.startswith('../'):
                 # Git cannot carry host writes: scope also excludes source installations.
-                self.assertFalse(loop.may_write(loop.profile_of('policymaker'), '/global/skill.md'))
+                self.assertFalse(resources.may_write(loop.profile_of('policymaker'), '/global/skill.md'))
                 continue
             with self.subTest(path=path):
                 n = self.issue('policymaker')

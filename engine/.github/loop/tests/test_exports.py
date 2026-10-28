@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import fakes
 from fakes import common as c, iteration as it, loop
+import task_graph as graph
+import owner_requests as requests
 import policymaker_session
 import session_exports as exports
 from session_fixtures import SessionCase
@@ -153,7 +155,7 @@ class ExportPipelineTest(SessionCase):
         profiles = c.profiles()
         profiles["worker"]["internet"] = True
         # Even when a consent is otherwise valid, the frozen prep profile must match.
-        with patch.dict(os.environ, environment), patch.object(c, "profiles", return_value=profiles), patch.object(loop, "consent_status", return_value=(True, None)):
+        with patch.dict(os.environ, environment), patch.object(c, "profiles", return_value=profiles), patch.object(requests, "consent_status", return_value=(True, None)):
             with self.assertRaisesRegex(SystemExit, "configuration changed after prep: PROFILE_DIGEST"):
                 loop.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
 
@@ -168,8 +170,8 @@ class ExportPipelineTest(SessionCase):
     def test_task_graph_declaration_reaches_role_staging(self):
         declaration = [{"source": "records", "iterations": [0]}]
         task = {"id": "selected", "title": "T", "role": "worker", "body": "Consume selected data", "exports": declaration}
-        self.assertEqual(it.validate_tasks({"tasks": [task]}), [])
-        n = it.create_tasks(1, [task])[0]
+        self.assertEqual(graph.validate_tasks({"tasks": [task]}), [])
+        n = graph.create_tasks(1, [task])[0]
         self.assertEqual(json.loads(c.marker(self.hub.issue(n)["body"], "exports")), declaration)
         work = os.path.join(self.w.tmp, "selected-work")
         fakes.sh(self.w.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.w.origin, work)

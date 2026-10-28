@@ -73,13 +73,17 @@ def claude(prompt):
     """One turn of the ticket's session (the first starts it, later ones resume it). Returns the final message."""
     SESSION["n"] += 1
     log = os.path.join(OUT, "transcript-%d.ndjson" % SESSION["n"])
-    cmd = [CLI, "-p", prompt, "--model", MODEL, "--effort", EFFORT, "--dangerously-skip-permissions",
+    # The engine tests run `pkill -TERM -f "claude -p"` (stream_filter.py, test_stream.py), which would kill this very
+    # session: its command line must not contain that string. Hence `-p` comes last and the prompt arrives on stdin.
+    cmd = [CLI, "--model", MODEL, "--effort", EFFORT, "--dangerously-skip-permissions",
            "--output-format", "stream-json", "--verbose"]
     if SESSION["id"]:
         cmd += ["--resume", SESSION["id"]]
+    cmd += ["-p"]
     env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
     with open(log, "w") as fh:
-        subprocess.run(cmd, cwd=WORK, env=env, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        subprocess.run(cmd, cwd=WORK, env=env, input=prompt, text=True, encoding="utf-8",
+                       stdout=fh, stderr=subprocess.STDOUT)
     result, limited, resets = None, False, None
     for raw in open(log, errors="replace"):
         try:

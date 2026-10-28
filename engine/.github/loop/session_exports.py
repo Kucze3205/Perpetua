@@ -9,7 +9,6 @@ import re
 import shutil
 
 import common as c
-import session_inputs
 
 SOURCES = {"streams", "actions", "records", "reports"}
 STREAM = re.compile(r"stream-(\d{4})-(\d+)$")
@@ -99,14 +98,6 @@ def stage(body, role, iteration, sess, defaults=None):
             result("unknown", detail="unsupported export source")
             continue
         before = len(results)
-        restricted = session_inputs.restricted(role)
-        if restricted and request.get("sessions"):
-            denied = [n for n in request["sessions"] if not session_inputs.visible(n)]
-            for n in sorted(set(denied)):
-                result("denied", issue=n, detail="session data is not available to this recipient")
-            request = dict(request, sessions=[n for n in request["sessions"] if n not in denied])
-            if not request["sessions"]:
-                continue
         try:
             if source == "streams":
                 covered_iterations, covered_sessions = set(), set()
@@ -118,8 +109,6 @@ def stage(body, role, iteration, sess, defaults=None):
                     if request.get("iterations") and k not in request["iterations"]:
                         continue
                     if request.get("sessions") and issue not in request["sessions"]:
-                        continue
-                    if restricted and not session_inputs.visible(issue):
                         continue
                     covered_iterations.add(k)
                     covered_sessions.add(issue)
@@ -155,14 +144,10 @@ def stage(body, role, iteration, sess, defaults=None):
                         continue
                     rel = "exports/records/%04d.json" % k
                     value = json.loads(text)
-                    if restricted:
-                        value = session_inputs.record(value)
                     _write(os.path.join(sess, *rel.split("/")), value)
                     result("downloaded", iteration=k, path=rel, snapshot=hashlib.sha256(text.encode()).hexdigest())
             else:
                 issues = _issues(request)
-                if restricted:
-                    issues = [i for i in issues if session_inputs.visible(i["number"])]
                 if source == "reports":
                     for issue in issues:
                         n = issue["number"]

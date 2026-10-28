@@ -353,9 +353,9 @@ def stored_state(n, directory, role=None):
         return None
     if role == "policymaker" and (passed := read_state(n, PASS_MARK, last=True)):
         state = dict(state, policy_pass=passed)
-    if role and session_inputs.restricted(role):
-        state = dict(session_inputs.state(state), task_options=session_inputs.task_options())
-    session_reports.stage(state, directory, role=role)
+    if role and role != "policymaker":
+        state = dict(state, task_options=session_inputs.task_options())
+    session_reports.stage(state, directory)
     return state
 
 

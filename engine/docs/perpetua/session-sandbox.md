@@ -4,8 +4,8 @@ The engine owns the common contract in `.github/loop/session-protocol.md`, the
 report-reader and task-graph sections in `.github/loop/task-graph.md`,
 and the Policymaker's ownership/order contract in `.github/loop/policymaker.md`.
 `loop.session_contract` selects sections by the engine-selected role and shaper label,
-and adds verification/delivery instructions from shell access and execution isolation.
-Both layers deliver file bytes, committed or not. A policy session is staged with a
+and adds verification/delivery instructions from shell access, and for execution roles the request not to read `policy/`.
+Every role delivers file bytes, committed or not. A session is staged with a
 baseline (`executor_boundary.record`); the epilogue builds one commit on it from the final files of the working tree
 (`executor_boundary.import_candidate`, the same import as for execution sessions), without running the
 agent's git. New untracked files outside the role's write paths (CLI stubs, runner home
@@ -24,45 +24,21 @@ tree. They cannot change parsed outputs, field ownership, required inputs, or
 merge/security restrictions. Role skills remain
 local to `<layer>/roles/` and staged with their complete references; global skill installations remain sources.
 
-## Filesystem isolation and output admission
+## Output admission
 
-Every implementation session, including model sessions and online scripts, runs
-inside the Linux bubblewrap boundary in `executor_boundary.py`. Only explicit
-runtime files, the sanitized work snapshot and selected enforcement files are
-mounted, with private process, home and temp namespaces. Neither engine checkout,
-host home/temp nor other host checkouts are mounted. Missing bubblewrap, runtime
-files, namespace support or admission metadata fails closed, without host fallback.
-Policymaker sessions retain access to both managed roots; protected contracts and
-accepted limits remain enforced at admission.
+The engine records the staged baseline (`executor_boundary.record`) and never runs the
+session's Git. The epilogue reads the regular files the working tree holds at the end,
+committed or not, and builds one commit on the baseline from those bytes
+(`executor_boundary.import_candidate`). New untracked files outside the role's write
+paths (CLI stubs, runner home files) are environment debris and are not admitted.
+Symlinks, hard links and special files refuse the admission. Binary contents, executable
+modes and deletions are preserved. Worker Git configuration, hooks and attributes cannot
+execute during the import. The result then passes the protected/write checks and the
+merge path; the change gate still runs from the accepted tree with the reconstructed
+candidate and accepted baseline.
 
-The supported runtime is Bash, Git, Python 3 and the basic file/text commands
-listed in `executor_boundary.runtime_files`. Python supports the standard modules
-explicitly imported by its trusted `-I -S` probe and their imported dependencies;
-site packages and arbitrary additional modules are excluded. The engine resolves
-each executable and imported Python file separately, then adds individual ELF
-shared-library dependencies from `ldd`. It never mounts a runtime parent
-directory. Adding tools or Python modules requires extending this trusted list;
-work scripts cannot expand it through their environment, current directory or
-Python startup customization. Model and online boundaries use this same file
-allowlist without granting access to host directories.
-
-The work snapshot excludes managed definitions in both layers, engine internals/configuration, policy iteration/audit records and
-tool discovery directories. It retains regular tracked product files and the
-already filtered `.session/` recipient view. Redirected product inputs are
-refused. Its fresh Git root commit contains only that view: no original commit
-IDs, object store, alternates, reflogs, remotes, credential configuration or
-hooks. Scripts can use Git locally, but must leave their final files in the
-working tree; the engine admits those bytes, including uncommitted work.
-
-The trusted epilogue never invokes worker Git for these sessions. It reads
-regular output files as data and builds an index against the staged original
-baseline in the engine repository, retaining excluded definitions unchanged.
-Symlinks, hardlinks and special output files are refused. Binary contents,
-executable modes and deletion of visible inputs are preserved. Worker Git
-configuration, hooks and attributes cannot execute during this import. The
-result then passes the existing protected/write checks and merge path; the
-change gate still runs from the accepted tree with the reconstructed candidate
-and accepted baseline.
+Execution roles see the same checkout as policy roles. Policy internals are not hidden
+from them (ADR-0006).
 
 Candidate-owned product checks and task verification run in the tokenless job on a copy of the candidate tree
 without `.git`, like the change gate; a job that returns nothing fails the command. The accepted change gate still

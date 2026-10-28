@@ -31,8 +31,7 @@ iteration and rolls `execution/` and `policy/` back. A change to the script reac
 entry. No match is not proof that something was never attempted. See
 [reports](session-reports.md) and [exports](session-exports.md) for source semantics.
 The Policymaker and shaper default to all permitted history in the prepared checkout.
-Other roles receive task-selected inputs. Immutable provenance filters all text
-and metadata before staging; execution receives no policy internals or original Git.
+Other roles receive task-selected inputs.
 
 ## Declarations controlled by the Policymaker
 

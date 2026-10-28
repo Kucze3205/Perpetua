@@ -232,6 +232,11 @@ class World:
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
+        # Git starts a detached gc/maintenance after pushes and clones (also from the child processes of a local
+        # transport, which do not inherit environment config). It can repack origin while a later clone copies its
+        # objects, so the repository that is cloned says no background maintenance.
+        for key, value in (("gc.auto", "0"), ("maintenance.auto", "false"), ("receive.autogc", "false")):
+            sh(self.origin, "git", "config", key, value)
         # hermetic: the engine's code plus a small policy fixture, never whatever policy/ holds in the repository we run in
         shutil.copytree(os.path.join(ENGINE, ".github"), os.path.join(self.loop, ".github"),
                         ignore=shutil.ignore_patterns("__pycache__", "tests"))

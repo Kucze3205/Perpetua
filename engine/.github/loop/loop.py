@@ -171,7 +171,6 @@ def resolve(n):
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
-    session_inputs.capture_origin(n, role)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
     c.set_output(**options, start=start, consented="true" if granted else "false",
                  secrets="|%s|" % "|".join(names) if names else "")
@@ -199,6 +198,8 @@ def session_contract(role, profile, labels):
         parts.append("You have no shell and cannot run commands. `done` means the requested files "
                      "are written; the engine runs verification.")
     parts.append("Do not create a branch or commit: the engine imports the files you wrote, not your commits.")
+    if resources.role_layer(role) == resources.EXECUTION:
+        parts.append("Do not read `policy/`: it holds the Policymaker's working files, not your task.")
     return "\n\n".join(parts) + "\n"
 
 
@@ -226,7 +227,6 @@ def stage(n, work, trusted):
             if env_key in os.environ and os.environ[env_key] != str(value):
                 raise SystemExit("session configuration changed after prep: " + env_key)
     security.check_session_directory(work)
-    session_inputs.capture_origin(n, role)
     sess = os.path.join(work, ".session")
     # Discard prior recipient views before staging a new scope.
     if os.path.isdir(sess):
@@ -237,11 +237,9 @@ def stage(n, work, trusted):
     with open(os.path.join(work, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
         fh.write("\n.session/\n")
     c.export_issue(n, os.path.join(sess, "issue.md"),
-                   omit_markers=(it.STATE_MARK, session_startup.MARK) +
-                   ((it.ORDERS_MARK, session_inputs.ORIGIN_MARK)
-                    if session_inputs.restricted(role) else ()))
+                   omit_markers=(it.STATE_MARK, session_startup.MARK))
     metadata = it.frontmatter(c.safe_read(".", resources.role_directory(role) + "/SKILL.md"))[0]
-    fetch_inputs(i["body"], os.path.join(sess, "inputs"), role=role)
+    fetch_inputs(i["body"], os.path.join(sess, "inputs"))
     session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess, defaults=metadata.get("exports"))
     sees_state = role == "policymaker" or "loop:shaper" in labels
     full = sees_state and c.marker(i["body"], "exports") is None and "exports" not in metadata
@@ -253,7 +251,7 @@ def stage(n, work, trusted):
         if k is not None:
             it.fail_iteration(k, "invalid policy script output: %s" % e, rollback=True)
         raise SystemExit("invalid policy script output: %s" % e)
-    if "loop:shaper" in labels and session_inputs.restricted(role):
+    if "loop:shaper" in labels:
         with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
             json.dump(session_inputs.capabilities(), fh, indent=1)
     contract = session_contract(role, p, labels)
@@ -298,12 +296,8 @@ def stage(n, work, trusted):
         for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
             security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
-        json.dump(security.settings(p, "/engine" if session_inputs.restricted(role) else trusted), fh)
-    if session_inputs.restricted(role):
-        shutil.copy(".github/loop/executor_boundary.py", trusted)
-        executor_boundary.prepare(work, trusted)
-    else:
-        executor_boundary.record(work, trusted)
+        json.dump(security.settings(p, trusted), fh)
+    executor_boundary.record(work, trusted)
     if p.get("agent") is not False:
         session_startup.prepare(n, role, session_options(i, role, p)["model"], work, trusted,
                                 shaper="loop:shaper" in labels)
@@ -345,35 +339,12 @@ def upload_artifacts(n, work, k):
     return len(lines)
 
 
-def fetch_inputs(body, dest, role=None):
-    """Fetch only engine-published assets of sessions visible to this recipient."""
-    refs = json.loads(c.marker(body, "inputs") or "[]")
-    results = []
-    restricted = bool(role and session_inputs.restricted(role))
-    for ref in refs:
-        rel, asset = ref.get("release"), None
-        issue = ref.get("issue")
-        if restricted:
-            # A direct release selector must identify an engine-published asset;
-            # arbitrary release patterns/globs have no trustworthy origin.
-            match = re.fullmatch(r"iter-[0-9]{4,}/([0-9]+)-[A-Za-z0-9._-]+", rel or "")
-            if issue is None and match:
-                issue = int(match.group(1))
-            if type(issue) is not int or not session_inputs.visible(issue):
-                results.append({"status": "denied", "detail": "artifact is not available to this recipient"})
-                continue
-            report = c.find_report(issue)
-            candidates = [m for m in ARTIFACT_LINE.finditer(report["body"] if report else "")
-                          if (m.group(1) == ref.get("name") if "issue" in ref else m.group(2) == rel)]
-            if not candidates:
-                results.append({"status": "unavailable", "detail": "no matching published artifact"})
-                continue
-            rel = candidates[0].group(2)
-            if not re.fullmatch(r"iter-[0-9]{4,}/%s-[A-Za-z0-9._-]+" % issue, rel):
-                results.append({"status": "denied", "detail": "artifact has no supported origin"})
-                continue
-        elif "issue" in ref:
-            report = c.find_report(issue)
+def fetch_inputs(body, dest):
+    """Download the release assets the task body names."""
+    for ref in json.loads(c.marker(body, "inputs") or "[]"):
+        rel = ref.get("release")
+        if "issue" in ref:
+            report = c.find_report(ref["issue"])
             for match in ARTIFACT_LINE.finditer(report["body"] if report else ""):
                 if match.group(1) == ref.get("name"):
                     rel = match.group(2)
@@ -383,13 +354,8 @@ def fetch_inputs(body, dest, role=None):
         os.makedirs(dest, exist_ok=True)
         try:
             c.gh("release", "download", tag, "--pattern", asset, "--dir", dest, "--clobber")
-            results.append({"status": "downloaded"})
         except (SystemExit, OSError):
-            results.append({"status": "unavailable", "detail": "artifact download failed"})
-    if restricted and refs:
-        os.makedirs(dest, exist_ok=True)
-        with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8", newline="\n") as fh:
-            json.dump({"schema_version": 1, "results": results}, fh, indent=1)
+            pass
 
 
 # ---------------------------------------------------------------- the candidate: the agent's commits in a trusted tree
@@ -425,12 +391,10 @@ def fetch_candidate(work, n):
         with open(baseline, encoding="utf-8") as fh:
             meta = json.load(fh)
         role = c.roles_of(c.label_names(c.issue(n)))[0]
-        skip = lambda rel, tracked: False
-        if not session_inputs.restricted(role):
-            # A new path outside a policy role's write paths is environment debris (CLI stubs, runner home files, IDE
-            # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
-            write = profile_of(role).get("write") or []
-            skip = lambda rel, tracked: not tracked and not c.path_match(rel, write)
+        # A new path outside a role's write paths is environment debris (CLI stubs, runner home files, IDE
+        # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
+        write = profile_of(role).get("write") or []
+        skip = lambda rel, tracked: not tracked and not c.path_match(rel, write)
         executor_boundary.import_candidate(work, meta, ".", ref, skip)
     except (ValueError, OSError, subprocess.SubprocessError):
         print("Session output could not be admitted safely")

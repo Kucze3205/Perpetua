@@ -1060,11 +1060,9 @@ class GoalGateTest(Flow):
         self.assertTrue(any("run.sh" in files for files in self.hub.tokenless))
 
     def test_a_goal_gate_job_that_returns_nothing_is_not_reached(self):
+        self.finish_one()
         self.gate(True, False)
         self.hub.tokenless_fault = "no-artifact"
-        it.start_iteration()
-        self.play_shaper(task("a"))
-        c.sync_main()
         it.check_goal()
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
 

@@ -20,8 +20,32 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get update
+          # Host requirements of the Linux tests; the runner is non-root.
+          # bubblewrap: namespace isolation of executor and model sessions
+          # socat: network checks of the model boundary
+          # build-essential: C compiler for the stand-in CLI (the boundary runs only native CLIs)
           # python3-yaml: the system Python reads engine/engine.yml
-          sudo apt-get install -y python3-yaml
+          sudo apt-get install -y bubblewrap socat build-essential python3-yaml
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          # Ubuntu 26.04 confines nested bwrap through this profile even with
+          # the user-namespace sysctl disabled. This disposable test runner
+          # needs nesting for the real CLI sandbox test.
+          if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
+            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+          fi
+          # The pinned native CLI (version from engine/engine.yml) on the system path.
+          version=$(python3 -c "import yaml; print(yaml.safe_load(open('engine/engine.yml'))['cli_version'])")
+          curl -fsSL https://claude.ai/install.sh | bash -s "$version"
+          sudo install -m 755 "$(readlink -f "$HOME/.local/bin/claude")" /usr/local/bin/claude
+          # Policy canaries: files the sandboxes must keep unreadable.
+          for dir in /usr/local/share /usr/bin /bin /lib /lib64 "$(python3 -c 'import os; print(os.path.dirname(os.__file__))')"; do
+            if [ -d "$dir" ]; then
+              sudo touch "$dir/perpetua-policy-canary.txt"
+              sudo chown "$(id -u):$(id -g)" "$dir/perpetua-policy-canary.txt"
+            fi
+          done
           git config --global gc.auto 0
           git config --global maintenance.auto false
       - name: Verify system Python 3.14

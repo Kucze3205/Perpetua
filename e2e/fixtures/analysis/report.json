@@ -1,0 +1,561 @@
+{
+ "sessions": [
+  {
+   "issue": 21,
+   "role": "worker",
+   "iteration": 8,
+   "title": "worker task",
+   "state": "closed",
+   "labels": [
+    "loop:iteration 8",
+    "role:worker"
+   ],
+   "created_at": "2026-10-01T00:00:00Z",
+   "closed_at": "2026-10-01T00:02:00Z",
+   "report": {
+    "status": "done",
+    "turns": 2,
+    "agent_s": 45,
+    "merged": "accepted",
+    "tokens_in": 100,
+    "tokens_out": 20,
+    "cache_read": 30,
+    "cache_write": 10
+   },
+   "report_bytes": 147,
+   "runs": [
+    121
+   ],
+   "run_conclusions": [
+    "success"
+   ],
+   "comments": 1,
+   "comment_bytes": 147,
+   "dir": "021-worker",
+   "analysis_file": "sessions/021-worker/analysis.json"
+  },
+  {
+   "issue": 22,
+   "role": "policymaker",
+   "iteration": 8,
+   "title": "policymaker task",
+   "state": "closed",
+   "labels": [
+    "loop:iteration 8",
+    "role:policymaker"
+   ],
+   "created_at": "2026-10-01T00:00:00Z",
+   "closed_at": "2026-10-01T00:02:00Z",
+   "report": {
+    "status": "done",
+    "turns": 2,
+    "agent_s": 45,
+    "merged": "accepted",
+    "tokens_in": 100,
+    "tokens_out": 20,
+    "cache_read": 30,
+    "cache_write": 10
+   },
+   "report_bytes": 147,
+   "runs": [
+    122
+   ],
+   "run_conclusions": [
+    "success"
+   ],
+   "comments": 1,
+   "comment_bytes": 147,
+   "dir": "022-policymaker",
+   "analysis_file": "sessions/022-policymaker/analysis.json"
+  }
+ ],
+ "iteration_record": {
+  "schema_version": 1,
+  "iteration": 8,
+  "status": "closed",
+  "tasks": [
+   {
+    "id": "order-a"
+   }
+  ],
+  "policy": {
+   "orders_refused": []
+  },
+  "outcome": {
+   "wall_s": 120
+  }
+ },
+ "actions": {
+  "runs": [
+   {
+    "run": 121,
+    "workflow": "session",
+    "title": "worker",
+    "event": "schedule",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-01T00:00:00Z",
+    "run_started_at": "2026-10-01T00:00:00Z",
+    "updated_at": "2026-10-01T00:02:00Z",
+    "attempt": 1,
+    "jobs": [
+     {
+      "name": "session",
+      "queue_s": 0.0,
+      "duration_s": 120.0,
+      "conclusion": "success",
+      "runner": "test",
+      "labels": [
+       "linux"
+      ],
+      "steps": [
+       {
+        "name": "Tools",
+        "duration_s": 120.0,
+        "conclusion": "success"
+       },
+       {
+        "name": "Session",
+        "duration_s": 120.0,
+        "conclusion": "success"
+       },
+       {
+        "name": "Epilogue",
+        "duration_s": 120.0,
+        "conclusion": "success"
+       }
+      ]
+     }
+    ],
+    "cron_delay_s": 0
+   },
+   {
+    "run": 122,
+    "workflow": "session",
+    "title": "policymaker",
+    "event": "schedule",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-01T00:00:00Z",
+    "run_started_at": "2026-10-01T00:00:00Z",
+    "updated_at": "2026-10-01T00:02:00Z",
+    "attempt": 1,
+    "jobs": [
+     {
+      "name": "session",
+      "queue_s": 0.0,
+      "duration_s": 120.0,
+      "conclusion": "success",
+      "runner": "test",
+      "labels": [
+       "linux"
+      ],
+      "steps": [
+       {
+        "name": "Tools",
+        "duration_s": 120.0,
+        "conclusion": "success"
+       },
+       {
+        "name": "Session",
+        "duration_s": 120.0,
+        "conclusion": "success"
+       },
+       {
+        "name": "Epilogue",
+        "duration_s": 120.0,
+        "conclusion": "success"
+       }
+      ]
+     }
+    ],
+    "cron_delay_s": 0
+   }
+  ],
+  "billable_minutes_estimate_rounded_up_per_job": 4,
+  "max_concurrent_session_jobs": 2,
+  "note": "queue_s = job created -> started; cron_delay_s only for scheduled runs (distance to the :00/:30 slot)"
+ },
+ "actions_overhead": {
+  "per_session_run": [
+   {
+    "issue": 21,
+    "role": "worker",
+    "run": 121,
+    "prep_s": null,
+    "tools_s": 120.0,
+    "stage_s": 0,
+    "agent_step_s": 120.0,
+    "epilogue_s": 120.0,
+    "session_job_s": 120.0,
+    "agent_s": 45,
+    "around_agent_s": 0.0
+   },
+   {
+    "issue": 22,
+    "role": "policymaker",
+    "run": 122,
+    "prep_s": null,
+    "tools_s": 120.0,
+    "stage_s": 0,
+    "agent_step_s": 120.0,
+    "epilogue_s": 120.0,
+    "session_job_s": 120.0,
+    "agent_s": 45,
+    "around_agent_s": 0.0
+   }
+  ],
+  "iteration_width": {
+   "sessions": 2,
+   "by_role": {
+    "worker": 1,
+    "policymaker": 1
+   },
+   "report_bytes_total": 294,
+   "report_bytes_max": 147,
+   "comment_bytes_total": 294
+  },
+  "totals": {
+   "around_agent_s": 0.0,
+   "agent_step_s": 240.0,
+   "around_agent_share": 0.0
+  }
+ },
+ "growth": {
+  "accumulating": {
+   "iterations/ directory, bytes": {
+    "this_iteration": 360,
+    "x50": 18000
+   },
+   "journal/, bytes": {
+    "this_iteration": 6,
+    "x50": 300
+   },
+   "audit/, bytes": {
+    "this_iteration": 0,
+    "x50": 0
+   },
+   "policy/ + execution/, bytes": {
+    "this_iteration": 19,
+    "x50": 950
+   },
+   "raw session streams, bytes": {
+    "this_iteration": 1610,
+    "x50": 80500
+   },
+   "issue comments of the loop (reports, state, orders), bytes": {
+    "this_iteration": 735,
+    "x50": 36750
+   },
+   "commits on the branch since the baseline, count": {
+    "this_iteration": 1,
+    "x50": 50
+   }
+  },
+  "per_iteration_not_scaled": {
+   "iteration record, bytes": 180,
+   "loop-state.json as staged, bytes (largest)": 2,
+   "issues of the iteration, count": 5,
+   "tokens in + out of all sessions": 240,
+   "cache read + write tokens of all sessions": 80,
+   "turns of all sessions": 4,
+   "agent seconds of all sessions": 90,
+   "wall seconds of the iteration": 120
+  },
+  "session_input_growth_per_iteration": {
+   "policymaker": {
+    "first_session_estimated_tokens": 22,
+    "next_iteration_session_estimated_tokens": 29,
+    "added_by_one_iteration": 7,
+    "added_history_tokens": 4,
+    "added_state_tokens": 5,
+    "projection_x50_extra_tokens": 270,
+    "projection_x50_tokens": 292
+   },
+   "worker": {
+    "first_session_estimated_tokens": 22,
+    "next_iteration_session_estimated_tokens": 29,
+    "added_by_one_iteration": 7,
+    "added_history_tokens": 4,
+    "added_state_tokens": 5,
+    "projection_x50_extra_tokens": 270,
+    "projection_x50_tokens": 292
+   }
+  },
+  "note": "accumulating: sizes the repository keeps; per_iteration_not_scaled: ceilings (iteration_minutes, tokens) apply per iteration"
+ },
+ "session_inputs": [
+  {
+   "issue": 21,
+   "role": "worker",
+   "has_bash_tool": true,
+   "estimated_input_tokens": 22,
+   "estimated_history_tokens": 3,
+   "fixed_tokens": 4,
+   "measured_first_call_context_tokens": 1000,
+   "measured_peak_context_tokens": 1000,
+   "cli_overhead_tokens (measured first call - estimate)": 978,
+   "ratio measured / estimate": 45.45,
+   "projection_x50_constant_overhead_model": 1270,
+   "projection_x50_proportional_model": 13273,
+   "over_250000_tokens": false
+  },
+  {
+   "issue": 22,
+   "role": "policymaker",
+   "has_bash_tool": true,
+   "estimated_input_tokens": 22,
+   "estimated_history_tokens": 3,
+   "fixed_tokens": 4,
+   "measured_first_call_context_tokens": 1000,
+   "measured_peak_context_tokens": 1000,
+   "cli_overhead_tokens (measured first call - estimate)": 978,
+   "ratio measured / estimate": 45.45,
+   "projection_x50_constant_overhead_model": 1270,
+   "projection_x50_proportional_model": 13273,
+   "over_250000_tokens": false
+  }
+ ],
+ "visibility": {
+  "needles_in_next_iteration_sessions": {
+   "the planted step (the worker's skill)": {
+    "policymaker": [
+     "role/SKILL.md"
+    ],
+    "worker": [
+     "role/SKILL.md"
+    ]
+   },
+   "the worker session, by issue number": {
+    "policymaker": [
+     "reports/8.md"
+    ],
+    "worker": [
+     "reports/8.md"
+    ]
+   },
+   "the worker's repeated Read of its issue, in a stream": {
+    "policymaker": [
+     "streams/21.txt"
+    ],
+    "worker": [
+     "streams/21.txt"
+    ]
+   }
+  },
+  "planted_step_in_inputs_of_this_iteration": {
+   "worker#21": [
+    "role/SKILL.md"
+   ],
+   "policymaker#22": [
+    "role/SKILL.md"
+   ]
+  },
+  "exports_manifest_of_next_sessions": {
+   "policymaker": {},
+   "worker": {}
+  }
+ },
+ "mechanics": {
+  "policymaker_issue": 22,
+  "report": {
+   "status": "done",
+   "turns": 2,
+   "agent_s": 45,
+   "merged": "accepted",
+   "tokens_in": 100,
+   "tokens_out": 20,
+   "cache_read": 30,
+   "cache_write": 10
+  },
+  "tools_offered": [
+   "Read",
+   "Write",
+   "Bash"
+  ],
+  "tool_errors": [
+   {
+    "tool": "Read",
+    "input": {
+     "file_path": ".session/issue.md"
+    },
+    "error": "\"Permission denied\""
+   }
+  ],
+  "tried_to_write_execution_or_policy": [
+   "policy/params.yml"
+  ],
+  "diff_of_execution_and_policy_since_baseline": " policy/params.yml | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
+  "change_receipts": null,
+  "orders_in_record": [
+   "order-a"
+  ],
+  "orders_refused": []
+ },
+ "environment_facts": {
+  "sessions": {
+   "worker#21": {
+    "trusted_files": [
+     "contract.md",
+     "prompt.md",
+     "tools.json"
+    ],
+    "unapproved_file_present": false,
+    "secrets_file_present": false,
+    "agent_exit": "0",
+    "files_created_outside_session_dir": [
+     "src/output.txt"
+    ],
+    "sandbox_or_denial_mentions": [
+     "\"Permission denied\""
+    ],
+    "tool_errors": [
+     {
+      "tool": "Read",
+      "input": {
+       "file_path": ".session/issue.md"
+      },
+      "error": "\"Permission denied\""
+     }
+    ],
+    "claude_stderr": "warning\n"
+   },
+   "policymaker#22": {
+    "trusted_files": [
+     "contract.md",
+     "prompt.md",
+     "tools.json"
+    ],
+    "unapproved_file_present": false,
+    "secrets_file_present": false,
+    "agent_exit": "0",
+    "files_created_outside_session_dir": [
+     "src/output.txt"
+    ],
+    "sandbox_or_denial_mentions": [
+     "\"Permission denied\""
+    ],
+    "tool_errors": [
+     {
+      "tool": "Read",
+      "input": {
+       "file_path": ".session/issue.md"
+      },
+      "error": "\"Permission denied\""
+     }
+    ],
+    "claude_stderr": "warning\n"
+   }
+  }
+ },
+ "next_iteration_probe": {
+  "iteration": 9,
+  "views": {
+   "policymaker": {
+    "files": {
+     "exports/manifest.json": 2,
+     "issue.md": 8,
+     "loop-state.json": 22,
+     "reports/8.md": 13,
+     "role/SKILL.md": 46,
+     "streams/21.txt": 8
+    },
+    "estimated_tokens": 29,
+    "tokens_by_category": {
+     "other": 2,
+     "history": 7,
+     "state": 6,
+     "role skill": 12
+    },
+    "fixed_tokens": {
+     "prompt.md": 2
+    }
+   },
+   "worker": {
+    "files": {
+     "exports/manifest.json": 2,
+     "issue.md": 8,
+     "loop-state.json": 22,
+     "reports/8.md": 13,
+     "role/SKILL.md": 46,
+     "streams/21.txt": 8
+    },
+    "estimated_tokens": 29,
+    "tokens_by_category": {
+     "other": 2,
+     "history": 7,
+     "state": 6,
+     "role skill": 12
+    },
+    "fixed_tokens": {
+     "prompt.md": 2
+    }
+   }
+  }
+ },
+ "contract": {
+  "iteration record exists and parses": {
+   "ok": true,
+   "detail": "iterations/0008.json"
+  },
+  "iteration record status closed or failed": {
+   "ok": true,
+   "detail": "closed"
+  },
+  "no outage was opened": {
+   "ok": true,
+   "detail": ""
+  },
+  "every session issue is closed": {
+   "ok": true,
+   "detail": []
+  },
+  "every session reached a status": {
+   "ok": true,
+   "detail": []
+  },
+  "the Policymaker's change is applied or refused": {
+   "ok": true,
+   "detail": "report.merged"
+  },
+  "session #21 (worker): model call made on claude-haiku-5-5": {
+   "ok": true,
+   "detail": [
+    "claude-haiku-5-5"
+   ]
+  },
+  "session #21 (worker): turn limit held": {
+   "ok": true,
+   "detail": 2
+  },
+  "session #21 (worker): time limit held": {
+   "ok": true,
+   "detail": 45
+  },
+  "session #22 (policymaker): model call made on claude-haiku-5-5": {
+   "ok": true,
+   "detail": [
+    "claude-haiku-5-5"
+   ]
+  },
+  "session #22 (policymaker): turn limit held": {
+   "ok": true,
+   "detail": 2
+  },
+  "session #22 (policymaker): time limit held": {
+   "ok": true,
+   "detail": 45
+  }
+ },
+ "collect_errors": [],
+ "run": {
+  "repo": "test/repo",
+  "started": {
+   "at": "2026-10-01T00:00:00Z",
+   "iteration": 7,
+   "iterations": 2,
+   "repo": "test/repo",
+   "commit": "saved-start-commit"
+  }
+ }
+}

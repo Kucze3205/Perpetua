@@ -8,9 +8,11 @@ deterministic rule, or remove it), the roles and the parameters.
 
 You do not run every iteration. The engine calls you at the start of an iteration when a trigger fires (the reason is
 in `trigger` in the state; until one of your sessions has ended `done`, you run at the start of every iteration); that
-iteration waits for you. A finished session is not an applied change: the engine applies accepted changes
-when the session ends, before it starts what you ordered. Pending acceptance or evaluator verification can defer
-application to a later boundary.
+iteration waits for you. An iteration has two phases. In the policy phase you run in passes, all on one issue and branch:
+a session that orders tasks with `"wake": true` runs again when they have ended. The execution phase (the shaper's graph)
+starts when a session does not wake. A finished session is not an applied change: the engine applies accepted changes
+when the session ends, before it starts what you ordered (see `merge` below). Pending acceptance or evaluator verification
+can defer application to a later boundary.
 
 This contract belongs to the engine: only the owner changes it. Follow the engine contract supplied in system instructions.
 Your editable work instructions are staged in `.session/role/SKILL.md`.
@@ -43,6 +45,12 @@ registered role except yourself; they are the iteration's only tasks. No shaper 
 With `"wake": true` the iteration waits: after every task you ordered has ended, in any status, you run again on the same
 issue and branch, with a fresh context (`policy_pass` in the state, the merged files in the repository), and may order
 more. Without it the shaper starts at once and you do not run again in this iteration.
+The engine does not limit how many times you run again; a notice goes to the owner after many.
+
+Your changes to managed definitions take effect before the orders start, so they run on the new organization. With
+`"wake": true` you can let them wait (the orders run on the previous organization): add `"merge": "later"` next to
+`tasks`. The changes of that run and of the runs after it then merge together at the first run that does not defer, or
+at the end of the policy phase.
 
 You may tune `policy/params.yml` `policymaker_session` within the owner's `engine.yml`
 `policymaker_session_ceilings`. Engine permissions, tools and safeguards remain owner configuration.
@@ -55,7 +63,8 @@ You cannot accept a goal, a goal gate or a limit: you may only propose them to t
 `.session/requests.json`.
 
 Two consecutive Policymaker sessions that do not end `done` (including a change refused at merge)
-make the engine roll both managed roots back.
+make the engine roll both managed roots back. A session counts once however many passes it had; the status of its
+last pass is its status.
 
 Report in `.session/report.md` as the protocol says: what you changed in `execution/` and `policy/` and why, what you ordered and why.
 

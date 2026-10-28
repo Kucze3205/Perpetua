@@ -107,6 +107,8 @@ class FirstIterationTest(Flow):
         self.assertNotIn("macro_plan", rec)
         self.assertEqual(rec["decided_by"], "orchestrator")
         self.assertEqual(len(rec["tasks"]), 3)
+        self.assertEqual(rec["policy"]["passes"], 0)                        # no policy phase
+        self.assertTrue(all("pass" not in t for t in rec["tasks"]))
         self.assertEqual(rec["outcome"]["verdict"], {"value": "accepted", "issuer": "script", "evaluator_rev": rec["outcome"]["verdict"]["evaluator_rev"], "improved": True})
         self.assertEqual(rec["outcome"]["width"], 2)
         sess = {s["issue"]: s for s in rec["outcome"]["sessions"]}
@@ -129,6 +131,17 @@ class FirstIterationTest(Flow):
         self.assertEqual(state["iterations"][0]["improved"], True)
         self.assertNotIn("aim", state["iterations"][0])
         self.assertEqual(state["no_progress"], 0)
+
+    def test_an_old_format_record_stays_as_it_is_and_the_next_iteration_reads_it(self):
+        old = json.dumps({"schema_version": 1, "iteration": 0, "status": "closed", "policy": {"orders_refused": None},
+                          "tasks": [{"id": "x", "issue": 1}], "outcome": {"verdict": {"value": "accepted", "improved": True}}}, indent=1) + "\n"
+        self.w.push_main({it.record_path(0): old}, "an old record")
+        c.sync_main()
+        self.assertEqual(it.start_iteration(), 1)
+        self.finish(1)
+        self.assertEqual(self.w.origin_file(it.record_path(0)), old)
+        self.assertEqual(self.record(1)["policy"]["passes"], 0)
+        self.assertEqual([x["n"] for x in it.index_lines()], [0, 1])
 
     def test_only_one_iteration_is_open_at_a_time(self):
         it.start_iteration()
@@ -430,6 +443,8 @@ class PolicymakerTest(Flow):
         rec = self.record(0)
         self.assertEqual(sorted(t["id"] for t in rec["tasks"]), ["order-%s-e" % pol, "t0"])
         self.assertEqual(rec["outcome"]["width"], 2)
+        self.assertEqual(rec["policy"]["passes"], 2)
+        self.assertEqual({t["id"]: t.get("pass") for t in rec["tasks"]}, {"order-%s-e" % pol: 1, "t0": None})    # the shaper's task has no pass
 
     def test_an_order_of_a_role_outside_policymaker_only_roles_is_refused(self):
         it.start_iteration()
@@ -463,6 +478,7 @@ class PolicyPhaseTest(Flow):
     """The policy phase is one step: the Policymaker's session ends, its orders start and their dependencies set the order
     of work. With `wake` the same issue runs again after the ordered tasks end."""
     FIRST = True
+    YML = SCRIPT_GATE + "policy_passes_notice: 3\n"
     E = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
     A = tasks_json(task("a", role="audit", title="Audit"))
     WAKE_E = json.dumps({"tasks": [task("e", role="evaluator", title="Fix evaluator")], "wake": True})
@@ -551,6 +567,35 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.phase(), "shape")
         self.assertEqual(it.read_state(self.open_iteration()["number"])["policy_params"]["criterion"], "two")
 
+    def test_a_pass_may_defer_its_changes_to_the_end_of_the_policy_phase(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        later = json.dumps({"merge": "later", "wake": True, "tasks": json.loads(self.E)["tasks"]})
+        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)}, session_files={"orders.json": later})
+        self.assertNotIn("criterion: one", self.w.origin_file("policy/params.yml"))      # the ordered session sees the old organization
+        self.assertEqual(self.hub.issues[pol]["state"], "open")
+        self.w.session(self.task_issue("order-%s-e" % pol))
+        self.assertEqual(len(self.runs_of(pol)), 2)
+        self.assertNotIn("criterion: one", self.w.origin_file("policy/params.yml"))
+        self.w.session(pol, files={"policy/other.txt": "two"}, base="origin/task/%s" % pol)                           # the branch still carries the first change
+        self.assertEqual(self.phase(), "shape")
+        self.assertIn("criterion: one", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.hub.issues[pol]["state"], "closed")
+        self.assertEqual(it.read_state(self.open_iteration()["number"])["policy_params"]["criterion"], "one")
+
+    def test_a_deferred_change_of_the_evaluator_is_refused_at_the_end_of_the_phase_with_the_rest_of_the_branch(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        later = json.dumps({"merge": "later", "wake": True, "tasks": json.loads(self.E)["tasks"]})
+        self.w.session(pol, files={"policy/evaluator/gate.sh": "echo hacked", "policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)},
+                       session_files={"orders.json": later})
+        self.w.session(self.task_issue("order-%s-e" % pol))
+        self.w.session(pol, base="origin/task/%s" % pol)
+        self.assertEqual(self.hub.report(pol)["status"], "blocked")
+        self.assertNotIn("hacked", self.w.origin_file("policy/evaluator/gate.sh"))
+        self.assertNotIn("criterion: one", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.phase(), "shape")
+
     def test_a_woken_run_may_wake_again(self):
         it.start_iteration()
         pol = self.session_issue("policymaker")
@@ -576,6 +621,33 @@ class PolicyPhaseTest(Flow):
         self.w.push_main({"audit/latest.md": "changed"}, "a later audit")
         c.sync_main()
         self.assertEqual(it.policymaker_due(2), "a new audit report")
+
+    def test_a_long_policy_phase_opens_one_informational_notice_that_blocks_nothing(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        notices = lambda: self.hub.by_label("owner-request:notice", "all")
+        for k, (orders, tid) in enumerate([(self.WAKE_E, "e"), (self.WAKE_A, "a")] * 3, 1):
+            self.w.session(pol, session_files={"orders.json": orders})
+            self.assertEqual(len(notices()), 1 if k >= 3 else 0)                 # nothing below the threshold, once at it
+            if k == 3:
+                self.hub.close_issue(notices()[0]["number"])                      # answered: the iteration is unaffected
+            self.assertEqual(self.phase(), "policy")
+            self.w.session(self.task_issue("order-%s-%s%s" % (pol, "" if k == 1 else "%s-" % k, tid)))
+        self.assertEqual(len(notices()), 1)                                      # not opened again, not even after it was answered
+        self.w.session(pol)
+        self.assertEqual(self.phase(), "shape")
+        self.assertIsNotNone(self.session_issue("orchestrator"))
+
+    def test_the_record_gives_the_pass_that_placed_each_order(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, session_files={"orders.json": self.WAKE_E})
+        self.w.session(self.task_issue("order-%s-e" % pol))
+        self.w.session(pol, session_files={"orders.json": self.A})
+        rec = self.record_after_finish()
+        self.assertEqual(rec["policy"]["passes"], 2)
+        self.assertEqual({t["id"]: t.get("pass") for t in rec["tasks"]},
+                         {"order-%s-e" % pol: 1, "order-%s-2-a" % pol: 2, "t0": None})
 
     def test_refused_orders_end_the_policy_phase(self):
         it.start_iteration()

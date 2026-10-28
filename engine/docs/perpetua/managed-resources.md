@@ -93,10 +93,10 @@ A layered revision has a `layered-v1:` identity over both managed roots and the
 accepted evaluator paths. Change records in the iteration record carry this same before/after identity;
 historical iteration records remain readable.
 
-A finished Policymaker session queues its entire candidate for the next
-iteration boundary. Only `apply_policy` activates that candidate. Independent
+A finished Policymaker pass queues its entire candidate for the pass boundary
+(with `"merge": "later"`, the end of the policy phase). Only `apply_policy` activates that candidate. Independent
 evaluator verification and owner acceptance can release a held candidate back
-to that queue, but neither completion activates it during an iteration. At the
+to that queue, but neither completion activates it. At the
 boundary the engine rechecks the pinned evaluator snapshot, permissions,
 accepted-tree change gate and complete shaper profile/skill before publishing
 the candidate in one ref update. Pending, rejected or stale

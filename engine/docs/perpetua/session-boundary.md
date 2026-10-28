@@ -46,7 +46,7 @@ runs from the accepted tree with the full candidate and baseline required by ADR
 ## Model process and network access
 
 There is no sandbox around a session. The boundary is the machine
-([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-boundary.md)): the agent, its scripts and the
+([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md)): the agent, its scripts and the
 candidate commands run in the `session` job, which has no GitHub permissions and never shares a machine with the GitHub
 token. The Claude token and the secrets the owner approved for the task are readable by the session; the response to a
 leak is revoking them.

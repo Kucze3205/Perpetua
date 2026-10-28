@@ -64,12 +64,17 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    prints `{"reason": "..."}` or `{"reason": null}` (at most 4 KB). Invalid output fails the iteration and rolls `execution/` and
    `policy/` back. Whatever the script returns, the engine keeps one open Policymaker at a time and calls one at every iteration
    until a session ended `done`.
-2. **Policymaker.** When due, its session opens the iteration and writes proposed
-   definitions and orders. `apply_policy` admits the completed candidate at the
-   iteration boundary before work begins; completion alone does not activate it.
-   A failure leaves the accepted organization in force; two consecutive failures
-   roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
-3. **Shape.** The optional execution shaper reads the staged state and writes
+2. **Policy phase.** When due, the Policymaker session opens the iteration and writes proposed
+   definitions and orders. `apply_policy` admits the completed candidate when the session ends
+   (or, if it says `"merge": "later"` and waits for its orders, at the end of the phase); completion alone does not activate it.
+   The engine starts all valid orders at once; `blocked_by` sets their order. With `"wake": true` the issue waits
+   (`awaiting:orders`) and, when all have ended in any status, runs again on the same branch with a fresh context,
+   as often as the Policymaker wakes; the engine sets no limit and only opens a
+   `notice` owner request at `policy_passes_notice` passes. A session without `wake` ends the phase.
+   A failure leaves the accepted organization in force; two consecutive failed sessions (many passes count
+   once) roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
+   With no trigger due there is no policy phase.
+3. **Shape.** The execution phase. The optional execution shaper reads the staged state and writes
    `.session/tasks.json`. It may be a model orchestrator or a script. The engine
    validates and creates graph issues, blocking edges and consent requests. A graph the engine accepts also goes to
    `policy/graph-rules.py`, if present, which may add refusals (see [layer rules](managed-resources.md#layer-rules-and-activation-validation)).
@@ -100,7 +105,7 @@ report carrying the error, up to two times (`fixes`). A gate verdict is not retr
 - `owner`: the engine opens a `merge-acceptance` request and the task waits (`awaiting:owner`). Completed merges, not
   planned discards (the branch is kept and tagged `iter/NNNN/<issue>`). This is the default until the setup decides.
 - `script`: `gate.command` runs in the **tokenless job** (`tokenless.yml`: `permissions: {}`, no GitHub secret, one
-  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-boundary.md))
+  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md))
   from the **accepted tree**, never from the candidate, with `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`,
   `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no secrets (`gate.env_passthrough` does not reach it).
   The epilogue runs no gate command itself; it reads the verdict back. It prints a JSON object as its last line:

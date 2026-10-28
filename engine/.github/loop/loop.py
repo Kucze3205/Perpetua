@@ -828,16 +828,22 @@ def hold_policymaker_output(n, work):
         prose = ""
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     wake = isinstance(doc, dict) and doc.get("wake") is True
-    it.store_state(n, {"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, it.ORDERS_MARK)
+    later = {"merge": "later"} if isinstance(doc, dict) and doc.get("merge") == "later" else {}
+    it.store_state(n, dict({"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, **later), it.ORDERS_MARK)
     return prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
 
 
-def apply_policy(keeps_open=lambda number: False):
+def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):
     """Merge the finished Policymaker sessions, oldest first, and return the numbers of those that merged. An unmerged one
     counts as a failed Policymaker session. A merged one is closed, unless `keeps_open(number)`: it is relaunched after
-    the tasks it ordered with `wake`, so it waits (`awaiting:orders`)."""
+    the tasks it ordered with `wake`, so it waits (`awaiting:orders`). One that `defers(number)` is not merged yet: it waits
+    the same way."""
     merged = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
+        if defers(x["number"]):
+            c.update_report(x["number"], {"status": "done", "deferred": "true"}, "Its changes merge at the end of the policy phase.")
+            c.edit_labels(x["number"], add=["awaiting:orders"], remove=["awaiting:iteration"])
+            continue
         fields = c.report_fields(x["number"])
         verified = resources.layered() and fields.get("verifier_passed") == "true"
         verification = {}

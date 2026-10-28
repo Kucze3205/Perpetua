@@ -1,0 +1,120 @@
+{
+ "stream": {
+  "events": 4,
+  "model": "claude-haiku-5-5",
+  "tools_offered": [
+   "Read",
+   "Write",
+   "Bash"
+  ],
+  "cli_version": "test",
+  "permission_mode": null,
+  "skills_seen": null,
+  "mcp_servers": null,
+  "tool_calls": {
+   "Read": 2,
+   "Edit": 1
+  },
+  "calls": [
+   [
+    "Read",
+    {
+     "file_path": ".session/issue.md"
+    }
+   ],
+   [
+    "Read",
+    {
+     "file_path": ".session/issue.md"
+    }
+   ],
+   [
+    "Edit",
+    {
+     "file_path": "policy/params.yml"
+    }
+   ]
+  ],
+  "tool_errors": [
+   {
+    "tool": "Read",
+    "input": {
+     "file_path": ".session/issue.md"
+    },
+    "error": "\"Permission denied\""
+   }
+  ],
+  "sandbox_or_denial_mentions": [
+   "\"Permission denied\""
+  ],
+  "unanswered_calls": 1,
+  "repeated_calls": {
+   "[\"Read\", {\"file_path\": \".session/issue.md\"}]": 2
+  },
+  "context_fill_by_model_call": [
+   1000
+  ],
+  "first_call_context_tokens": 1000,
+  "peak_context_tokens": 1000,
+  "model_calls": 1,
+  "result": {
+   "type": "result",
+   "num_turns": 2,
+   "modelUsage": {
+    "claude-haiku-5-5": {
+     "inputTokens": 1000
+    }
+   }
+  }
+ },
+ "stream_bytes": 805,
+ "has_stream": true,
+ "staged": {
+  "files": {
+   "artifacts/result.txt": 6,
+   "issue.md": 5,
+   "loop-state.json": 2,
+   "report.md": 4,
+   "reports/7.md": 12,
+   "role/SKILL.md": 46
+  },
+  "inputs": {
+   "issue.md": 5,
+   "loop-state.json": 2,
+   "reports/7.md": 12,
+   "role/SKILL.md": 46
+  },
+  "outputs": [
+   "artifacts/result.txt",
+   "report.md"
+  ],
+  "tokens_estimated": {
+   "inputs": 18,
+   "by_category": {
+    "other": 2,
+    "state": 1,
+    "history": 3,
+    "role skill": 12
+   }
+  }
+ },
+ "trusted": {
+  "files": [
+   "contract.md",
+   "prompt.md",
+   "tools.json"
+  ],
+  "tokens_estimated": {
+   "prompt.md": 2,
+   "contract.md": 2
+  },
+  "unapproved_file": false,
+  "secrets_file": false
+ },
+ "files_created_by_session_outside_session_dir": [
+  "src/output.txt"
+ ],
+ "agent_exit": "0",
+ "claude_stderr": "warning\n",
+ "has_capture": true
+}

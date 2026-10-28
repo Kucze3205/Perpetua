@@ -27,7 +27,7 @@ issue>` keeps the change issue, verifier issue, session status (`done`, `blocked
 An owner decision after a passing verification adds a separate
 `verification-<verifier issue>-owner` event, preserving the original verdict and pending
 application outcome. Owner approval still checks the pinned snapshot. Repeated terminal
-events cannot overwrite entries. Policymaker sessions retain the existing iteration-boundary
+events cannot overwrite entries. Policymaker sessions retain the existing pass-boundary
 application of their policy changes and orders. The evaluator role owns evaluator changes;
 the Policymaker cannot write evaluator files directly.
 

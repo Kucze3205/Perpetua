@@ -55,3 +55,5 @@ jobs:
         run: /usr/bin/python3 -m unittest discover -s engine/.github/loop/tests -v
       - name: Run update tests
         run: python3 -m unittest discover -s skills/update -p test_engine_update.py -v
+      - name: Run offline E2E tool tests
+        run: python3 -m unittest discover -s e2e -v

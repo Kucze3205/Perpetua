@@ -63,8 +63,9 @@ See [validation](validation.md) for prerequisites and limits of this verificatio
 - `iteration.begin_work` imports and calls `loop.apply_policy` when work begins.
   This local import keeps the dependency explicit without requiring callers to
   import `loop.py` first; the two modules still depend on each other.
-- A Policymaker session's iteration label identifies its trigger. Accepted orders
-  and policy changes take effect at a later iteration start. Completion and
+- A Policymaker session's iteration label identifies its trigger. Policy changes
+  take effect when its pass ends (or at the end of the policy phase); implementation-layer
+  orders start in the execution phase. Completion and
   application are distinct events.
 - Graph `width` measures the largest dependency-depth level. It is a record
   statistic, not a concurrency cap or a prediction of simultaneous running jobs.
@@ -72,3 +73,13 @@ See [validation](validation.md) for prerequisites and limits of this verificatio
   and iteration records; `managed_resources.evaluator_revision` maps paths to hashes for
   change and verification records. Preserve these persisted shapes unless migrating
   their readers and schema deliberately.
+
+## Plugin E2E tool
+
+In the plugin source, [`e2e/README.md`](../../../e2e/README.md) owns the live
+experiment procedure and offline replay instructions. `e2e/live.py` dispatches
+commands; `experiment.py` controls the real loop, `collection.py` downloads
+evidence, and `analysis.py` computes reports from saved data. For a statistic fix,
+start with `analysis.py` and the saved collection; use `live.py analyze OUT`
+without GitHub or local live-run state. Tests: `python -m unittest discover -s e2e`.
+These tools are not copied into a loop repository by setup.

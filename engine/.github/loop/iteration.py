@@ -460,9 +460,12 @@ def policy_pass(n, it):
     """A Policymaker session is over: merge its changes and start the tasks it ordered; their dependencies set the order
     of work. With `wake` the session waits for them and runs again in this iteration; otherwise the policy phase ends."""
     from loop import apply_policy
-    kept = []
+    placed = {}         # session -> whether it waits for the tasks it ordered
 
     def settle(p):
+        if p in placed:
+            return placed[p]
+        placed[p] = False
         orders = read_orders(p)
         if not orders:
             return False
@@ -477,13 +480,39 @@ def policy_pass(n, it):
         if not read_wake(p):
             return False
         c.update_report(p, {"ordered": " ".join(map(str, numbers))})
-        kept.append(p)
+        placed[p] = True
         return True
-    for p in apply_policy(settle):
-        if p not in kept:
+
+    def defer(p):
+        """The pass said its changes merge at the end of the policy phase, and it waits for the tasks it ordered: they wait."""
+        if not defers(p) or not settle(p):
+            return False
+        note_long_policy_phase(n, policy_pass_of(p))
+        return True
+    for p in apply_policy(settle, defer):
+        note_long_policy_phase(n, policy_pass_of(p))
+        if not placed.get(p):
             store_state(p, {"audit_rev": audit_revision()}, SEEN_MARK)       # the audit it ordered and read is not new
-    if not kept:
+    if not any(placed.values()):
         begin_work(n, it)
+
+
+def note_long_policy_phase(n, passes):
+    """Informational only: nothing waits on it, and the owner's answer changes nothing. Once per iteration, even if answered."""
+    k, ref = c.cfg()["policy_passes_notice"], "policy-passes-%s" % n
+    if not k or passes < k or any(c.marker(x["body"], "request-ref") == ref
+                                  for s in ("open", "closed") for x in c.list_issues(state=s, labels=(REQ + ":notice",))):
+        return
+    open_request("notice", "Policy phase of iteration %s: %s passes" % (n, passes),
+                 "The Policymaker has run %s passes in this iteration's policy phase; each pass is a session with its ordered sessions." % passes,
+                 "The engine caps nothing; a long policy phase costs time and quota, so you can see it.",
+                 "Nothing is blocked. The iteration continues; closing this request changes nothing.", ref=ref, iteration=n)
+
+
+def defers(p):
+    """Whether the latest pass of Policymaker session p stated `"merge": "later"` in its orders: its changes wait for the end of the policy phase."""
+    raw = read_state(p, ORDERS_MARK, last=True)
+    return isinstance(raw, dict) and raw.get("merge") == "later"
 
 
 def policy_pass_of(p):
@@ -503,11 +532,20 @@ def resume_policymaker(p):
     ordered = [{"issue": int(x), "role": (c.roles_of(c.label_names(c.issue(int(x)))) or [""])[0],
                 "status": c.report_fields(int(x)).get("status")} for x in (f.get("ordered") or "").split()]
     store_state(p, {"pass": k, "ordered": ordered}, PASS_MARK)
-    spent = ("status", "commit", "fixes", "merged", "verdict", "improved", "detail", "verifier_issue", "verified_commit",
+    spent = ("deferred", "status", "commit", "fixes", "merged", "verdict", "improved", "detail", "verifier_issue", "verified_commit",
              "verifier_passed", "owner_accepted", "owner_accepted_commit", "ordered")
     c.update_report(p, dict({x: None for x in spent}, **{"pass": k}), "Pass %s: the ordered sessions ended, the Policymaker runs again." % k)
     c.sync_main()
-    c.git(".", "push", "-q", "-f", "origin", "origin/%s:refs/heads/task/%s" % (c.default_branch(), p), remote=True)
+    if f.get("deferred") == "true":          # its changes have not merged: the branch keeps them and moves onto what has
+        from loop import Tree
+        c.git(".", "fetch", "-q", "origin", "+refs/heads/task/%s:refs/remotes/origin/task/%s" % (p, p), remote=True)
+        with Tree("origin/task/%s" % p) as cand:
+            if c.git(cand, "rebase", "origin/%s" % c.default_branch(), check=False).returncode:
+                c.git(cand, "rebase", "--abort", check=False)           # the end of the phase reports the conflict
+            else:
+                c.git(cand, "push", "-q", "-f", "origin", "HEAD:refs/heads/task/%s" % p, remote=True)
+    else:
+        c.git(".", "push", "-q", "-f", "origin", "origin/%s:refs/heads/task/%s" % (c.default_branch(), p), remote=True)
     c.edit_labels(p, remove=["awaiting:orders"])
     c.launch(p)
 
@@ -651,7 +689,7 @@ def read_orders(p):
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     k = raw.get("pass", 1) if isinstance(raw, dict) else 1
     pre = "order-%s-%s" % (p, "%s-" % k if k > 1 else "")
-    return [dict(o, id=pre + str(o.get("id")), blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
+    return [dict(o, id=pre + str(o.get("id")), **{"pass": k}, blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
             for o in (tasks if isinstance(tasks, list) else []) if isinstance(o, dict)]
 
 
@@ -741,7 +779,7 @@ def validate_tasks(doc, ordered=False, taken=()):
         if task_id in task_ids or task_id in taken:
             errors.append("task id missing or duplicated: %r" % task_id)
         task_ids.add(task_id)
-        extra = set(task) - TASK_FIELDS
+        extra = set(task) - TASK_FIELDS - ({"pass"} if ordered else set())   # `pass`: set by the engine on orders
         if extra:
             errors.append("task %s: unknown fields %s" % (task_id, sorted(extra)))
         if "exports" in task:
@@ -1034,7 +1072,8 @@ def close_iteration(n, status, failure=None):
             "input_state": {k: v for k, v in (read_state(it["number"]) or {}).items() if k != "iterations"},
             "policy": {"rev_start": f.get("policy_rev_start"), "rev_end": policy_rev(), "commit_end": c.head(),
                        "orders_refused": f.get("orders_refused"), "session": int(f["policy_issue"]) if f.get("policy_issue", "").isdigit() else None,
-                       "trigger": f.get("policy_trigger")},
+                       "trigger": f.get("policy_trigger"),
+                       "passes": policy_pass_of(int(f["policy_issue"])) if f.get("policy_issue", "").isdigit() else 0},
             "decided_by": f.get("shaper"),
             "tasks": tasks,
             "outcome": {"sessions": list(sessions.values()), "shaper": shp,

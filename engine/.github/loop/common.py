@@ -43,6 +43,7 @@ DEFAULTS = {
     "author": {"name": "", "email": ""},
     "owner": "",
     "idle_resumes": 3,
+    "policy_passes_notice": 10,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],

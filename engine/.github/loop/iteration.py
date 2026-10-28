@@ -544,7 +544,7 @@ def read_orders(p):
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     k = raw.get("pass", 1) if isinstance(raw, dict) else 1
     pre = "order-%s-%s" % (p, "%s-" % k if k > 1 else "")
-    return [dict(o, id=pre + str(o.get("id")), blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
+    return [dict(o, id=pre + str(o.get("id")), **{"pass": k}, blocked_by=[pre + str(d) for d in o.get("blocked_by") or []])
             for o in (tasks if isinstance(tasks, list) else []) if isinstance(o, dict)]
 
 
@@ -636,7 +636,7 @@ def validate_tasks(doc, ordered=False, taken=()):
         if task_id in task_ids or task_id in taken:
             errors.append("task id missing or duplicated: %r" % task_id)
         task_ids.add(task_id)
-        extra = set(task) - TASK_FIELDS
+        extra = set(task) - TASK_FIELDS - ({"pass"} if ordered else set())   # `pass`: set by the engine on orders
         if extra:
             errors.append("task %s: unknown fields %s" % (task_id, sorted(extra)))
         if "exports" in task:
@@ -920,7 +920,8 @@ def close_iteration(n, status, failure=None):
             "input_state": {k: v for k, v in (read_state(it["number"]) or {}).items() if k != "iterations"},
             "policy": {"rev_start": f.get("policy_rev_start"), "rev_end": policy_rev(), "commit_end": c.head(),
                        "orders_refused": f.get("orders_refused"), "session": int(f["policy_issue"]) if f.get("policy_issue", "").isdigit() else None,
-                       "trigger": f.get("policy_trigger")},
+                       "trigger": f.get("policy_trigger"),
+                       "passes": policy_pass_of(int(f["policy_issue"])) if f.get("policy_issue", "").isdigit() else 0},
             "decided_by": f.get("shaper"),
             "tasks": tasks,
             "outcome": {"sessions": list(sessions.values()), "shaper": shp,

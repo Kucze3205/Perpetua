@@ -107,6 +107,8 @@ class FirstIterationTest(Flow):
         self.assertNotIn("macro_plan", rec)
         self.assertEqual(rec["decided_by"], "orchestrator")
         self.assertEqual(len(rec["tasks"]), 3)
+        self.assertEqual(rec["policy"]["passes"], 0)                        # no policy phase
+        self.assertTrue(all("pass" not in t for t in rec["tasks"]))
         self.assertEqual(rec["outcome"]["verdict"], {"value": "accepted", "issuer": "script", "evaluator_rev": rec["outcome"]["verdict"]["evaluator_rev"], "improved": True})
         self.assertEqual(rec["outcome"]["width"], 2)
         sess = {s["issue"]: s for s in rec["outcome"]["sessions"]}
@@ -129,6 +131,17 @@ class FirstIterationTest(Flow):
         self.assertEqual(state["iterations"][0]["improved"], True)
         self.assertNotIn("aim", state["iterations"][0])
         self.assertEqual(state["no_progress"], 0)
+
+    def test_an_old_format_record_stays_as_it_is_and_the_next_iteration_reads_it(self):
+        old = json.dumps({"schema_version": 1, "iteration": 0, "status": "closed", "policy": {"orders_refused": None},
+                          "tasks": [{"id": "x", "issue": 1}], "outcome": {"verdict": {"value": "accepted", "improved": True}}}, indent=1) + "\n"
+        self.w.push_main({it.record_path(0): old}, "an old record")
+        c.sync_main()
+        self.assertEqual(it.start_iteration(), 1)
+        self.finish(1)
+        self.assertEqual(self.w.origin_file(it.record_path(0)), old)
+        self.assertEqual(self.record(1)["policy"]["passes"], 0)
+        self.assertEqual([x["n"] for x in it.index_lines()], [0, 1])
 
     def test_only_one_iteration_is_open_at_a_time(self):
         it.start_iteration()
@@ -339,6 +352,8 @@ class PolicymakerTest(Flow):
         rec = self.record(0)
         self.assertEqual(sorted(t["id"] for t in rec["tasks"]), ["order-%s-e" % pol, "t0"])
         self.assertEqual(rec["outcome"]["width"], 2)
+        self.assertEqual(rec["policy"]["passes"], 2)
+        self.assertEqual({t["id"]: t.get("pass") for t in rec["tasks"]}, {"order-%s-e" % pol: 1, "t0": None})    # the shaper's task has no pass
 
     def test_an_order_of_a_role_outside_policymaker_only_roles_is_refused(self):
         it.start_iteration()
@@ -481,7 +496,9 @@ class PolicyPhaseTest(Flow):
         self.assertIn(w, {int(i["issue"]) for _, i in self.hub.dispatched})
         self.assertEqual(self.phase(), "run")
         self.w.session(w, files={"src/w.txt": "w"})
-        self.assertEqual(sorted(t["id"] for t in self.record(0)["tasks"]), ["order-%s-e" % pol, "order-%s-w" % pol])
+        rec = self.record(0)
+        self.assertEqual(sorted(t["id"] for t in rec["tasks"]), ["order-%s-e" % pol, "order-%s-w" % pol])
+        self.assertEqual({t["id"]: t["pass"] for t in rec["tasks"]}, {"order-%s-e" % pol: 1, "order-%s-w" % pol: 1})
 
     def test_refused_orders_end_the_policy_phase(self):
         it.start_iteration()

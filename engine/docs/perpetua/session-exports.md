@@ -48,7 +48,7 @@ into the `iter-NNNN` release. They are a diagnostic copy, not a delivered result
 losing one costs little, and a second storage path would need its own pruning and
 download code. The upload step is `continue-on-error`, so a full account quota leaves the
 session job `success`, and the iteration record carries `stream` only for an artifact
-that exists. Retention (decision): `stream_retention_iterations` defaults to 8, twice the
+that exists. Retention (decision): `stream_retention_iterations` of `policy/params.yml` defaults to 8, twice the
 audit window of four iterations; the engine deletes older streams, so 50 iterations never
 hold more than 8 iterations' streams (about 8 KB per Haiku turn; far more for large
 Opus sessions). `null` leaves GitHub's 90 days. Quota itself is the owner's account concern.

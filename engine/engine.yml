@@ -10,7 +10,6 @@ author:                          # git author of the loop's commits (the bot sta
   name: ""
   email: ""
 idle_resumes: 3                 # consecutive resumes of a parked session that used the agent without progress: outage, no more resumes
-startup_token_warning: 100000   # initial documents of any model Session; diagnostics never block execution
 owner: ""                        # GitHub login owner requests are assigned to; empty = the repository owner
 
 # --- the change gate -------------------------------------------------------------------------------------------
@@ -29,7 +28,6 @@ protected: [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", 
 direct_paths: ["execution/", "policy/", "audit/", "journal/"]   # not work: merged without the change gate (role `write` paths still apply)
 notes_paths: ["journal/"]        # merged even when the session did not finish
 evaluator_paths: ["policy/evaluator/"]            # only a role whose profile has `owns_evaluator`; merged only after the verifier
-policymaker_only_roles: [evaluator, audit]             # tasks of these roles come only from the Policymaker's `orders`
 verifier_role: evaluator-verifier
 large_file_bytes: 5000000        # bigger files go to `.session/artifacts/` (release assets), not into git
 
@@ -54,7 +52,6 @@ params:
   no_progress_iterations: null   # open a notice after this many iterations without an improving accepted change
   quiet_minutes: null            # no iteration closed this long: roll back both managed roots and start over
   owner_wait_counts: null        # does time spent waiting for the owner count toward quiet_minutes
-  stream_retention_iterations: 8   # keep raw session streams for this many iterations (null: GitHub's 90 days)
-cadence:
+cadence:                         # the owner's bound; policy/params.yml may only make it stricter (the stricter value applies)
   min_interval_minutes: null     # null: iteration after iteration
   daily_iterations: null

@@ -104,7 +104,7 @@ body: ... (the same sections as the issue: Goal, Acceptance, Verification, Conte
 ```
 
 The epilogue opens an issue of the same role starting from your branch. One successor, of the same kind. The generation
-counter (`generation:<n>`) stops at 3: a generation-3 task does not delegate, it reports `blocked`.
+counter (`generation:<n>`) stops at the policy's `successor_generations` (3 by default): a task of the last generation does not delegate, it reports `blocked`.
 
 ### Requests to the owner
 

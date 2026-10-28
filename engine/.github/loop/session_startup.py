@@ -125,7 +125,7 @@ def prepare(n, role, model, work, trusted, shaper=False):
         else:
             documents[found] = text
     prompt_path = os.path.join(trusted, "prompt.md")
-    facts = {"role": role, "model": model, "limit": c.cfg()["startup_token_warning"], "shaper": shaper,
+    facts = {"role": role, "model": model, "limit": c.params()["startup_token_warning"], "shaper": shaper,
              "declared": declared, "defaults": defaults, "fixed": fixed, "documents": documents, "problems": problems,
              "contract": c.safe_read(trusted, "contract.md") or "", "prompt": c.safe_read(trusted, "prompt.md") or "",
              "pending_notices": pending()}

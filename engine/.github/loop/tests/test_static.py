@@ -215,9 +215,8 @@ class ConfigTest(unittest.TestCase):
 
     def test_the_setup_parameters_are_null_on_purpose(self):
         doc = self.load("engine.yml")
-        params = dict(doc["params"], stream_retention_iterations=None)    # #87: streams are pruned by default
-        self.assertEqual(doc["params"]["stream_retention_iterations"], 8)
-        self.assertEqual(set(params.values()) | set(doc["cadence"].values()), {None})
+        self.assertEqual(set(doc["params"].values()) | set(doc["cadence"].values()), {None})
+        self.assertEqual(self.load("policy", "params.yml")["stream_retention_iterations"], 8)     # #87: streams are pruned by default
 
     def test_template_is_layered_with_policy_roles_and_no_execution_roles(self):
         self.assertEqual(self.load('engine.yml')['resources'], {'format': 'layered'})

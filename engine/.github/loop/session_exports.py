@@ -10,6 +10,8 @@ import shutil
 
 import common as c
 
+MAX_WINDOW = 20      # kernel cap on the audit window policy sets
+
 SOURCES = {"streams", "actions", "records", "reports"}
 STREAM = re.compile(r"stream-(\d{4})-(\d+)$")
 
@@ -76,11 +78,13 @@ def stage(body, role, iteration, sess, defaults=None):
         elif os.path.exists(path):
             os.unlink(path)
     raw = c.marker(body, "exports")
+    window = c.params()["audit_exports_window"]
+    window = min(max(window, 0), MAX_WINDOW) if isinstance(window, int) and not isinstance(window, bool) else 3
     manifest = {"schema_version": 1, "results": []}
     results = manifest["results"]
     try:
         requests = json.loads(raw) if raw is not None else defaults if defaults is not None else ([{
-            "source": "streams", "iterations": list(range(max(0, iteration - 3), iteration + 1))
+            "source": "streams", "iterations": list(range(max(0, iteration - window), iteration + 1))
         }] if role == "audit" else [])
         errors = validate(requests)
     except (ValueError, TypeError):

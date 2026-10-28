@@ -19,14 +19,13 @@ Use the trigger, goal, accepted gate and working memory to decide what needs att
 Find earlier work through `.session/history/manifest.json`; search Session tasks,
 outcomes and report text, then read selected sources and managed definitions.
 Review pending suggestions with their
-evidence and source snapshots; resolve those you act on or reject, and leave those
-needing more evidence pending, using the engine's suggestion-decision format.
+evidence and source snapshots; decide those you act on or reject in
+`policy/suggestion-decisions.json` (see `.session/policymaker.md`), and leave those needing more evidence pending.
 
 Maintain `policy/working-memory.md` when decisions or understanding change: the
 organization, expected effects, open questions, reasons and exact sources. State
 which results it considers. Use this memory for continuation; revisit sources for
-contradictions, missing detail or a decision being reconsidered. Pending suggestions
-still require their pinned evidence.
+contradictions, missing detail or a decision being reconsidered.
 
 Handle `.session/startup.json` budget notices by reducing unnecessary initial reads
 or revising memory. The owner budget is a warning, including for your own Session.

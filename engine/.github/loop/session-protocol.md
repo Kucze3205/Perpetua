@@ -66,10 +66,7 @@ The epilogue uploads them as release assets and lists them in your report; a lat
 To propose a policy change to the Policymaker, write `.session/suggestions.json` as an array:
 `[{"kind":"role-change","what":"Change the role","why":"Reason","evidence":"Report section, path or measured result"}]`.
 All four fields are required nonempty strings; `kind` uses lowercase letters, digits
-and hyphens. The engine supplies the stable ID and source; agents cannot set those.
-Invalid entries get diagnostics while valid reports and valid entries survive.
-
-Only the Policymaker may write `.session/suggestion-decisions.json`.
+and hyphens. The engine archives the file as written; policy validates it and the Policymaker decides.
 
 `.session/report.md`, **overwritten** as you work, with the marker first. Make the first version (`wip`) right at the start.
 

@@ -4,11 +4,21 @@ and prints nothing else: one JSON object, {"reason": "<why>"} or {"reason": null
 Policymaker at a time; every iteration until the first session ended `done`) and validates the output; invalid output fails
 the iteration and rolls `policy/` back.
 
-facts.json: iteration, no_progress, audit_changed, new_suggestions, startup_pending, triggers (`policymaker_triggers` of
-`policy/params.yml`: every_iterations, no_progress).
+facts.json: iteration, no_progress, audit_changed, new_outboxes (the raw suggestion outboxes no Policymaker session has been
+shown yet: {issue, raw}), startup_pending, triggers (`policymaker_triggers` of `policy/params.yml`: every_iterations,
+no_progress). The script runs beside a copy of `policy/`.
 """
 import json
 import sys
+
+
+def has_suggestions(outbox):
+    try:
+        items = json.loads(outbox["raw"])
+    except ValueError:
+        return False
+    return isinstance(items, list) and any(isinstance(item, dict) for item in items)
+
 
 facts = json.load(open(sys.argv[1], encoding="utf-8"))
 t = facts.get("triggers") or {}
@@ -20,7 +30,7 @@ elif t.get("no_progress") and k and k % t["no_progress"] == 0:
     reason = "%s iterations without progress" % k
 elif facts.get("audit_changed"):
     reason = "a new audit report"
-elif facts.get("new_suggestions"):
+elif any(has_suggestions(x) for x in facts.get("new_outboxes", [])):
     reason = "new session suggestions"
 elif facts.get("startup_pending"):
     reason = "startup budget needs attention"

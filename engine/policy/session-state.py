@@ -7,9 +7,15 @@ iteration and rolls `policy/` back.
 
 facts.json: role, state (the Policymaker/shaper snapshot the engine stored, already limited to what the role may see; null
 for other roles), full (the whole history, or only what the task selected), checkout, records (iteration records), reports
-(report snapshots: {issue, source, snapshot, body}).
+(report snapshots: {issue, source, snapshot, body}), outboxes (the raw `.session/suggestions.json` of each session: {issue, raw}).
+
+Suggestions are handled here. A session proposes `[{"kind","what","why","evidence"}]`; the Policymaker decides them in
+`policy/suggestion-decisions.json`, {"<id>": {"status": "handled" | "rejected", "reason": "..."}}; the rest stay pending in
+`loop_state["suggestions"]`, with the diagnostics of the entries that were refused in `loop_state["suggestion_diagnostics"]`.
 """
+import hashlib
 import json
+import re
 import sys
 
 facts = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -49,10 +55,42 @@ for (issue, snapshot), report in snapshots.items():
                field(body, "status") or task.get("status", ""), field(body, "verdict") or task.get("verdict", ""),
                report["source"], snapshot))
     files["history/sessions/%s/%s.md" % (issue, snapshot)] = header + body
+latest = {issue: {"issue": issue, "source": r["source"], "snapshot": snapshot}
+          for (issue, snapshot), r in snapshots.items()}
 for issue, task in tasks.items():
     detail = {key: value for key, value in task.items() if key != "body"}
     files["history/sessions/%s/task.md" % issue] = ("# Session #%s task and result\n\n```json\n%s\n```\n\n%s\n" %
                                                     (issue, dump(detail), task.get("body", "")))
+
+def suggestions():
+    try:
+        decided = json.load(open("policy/suggestion-decisions.json", encoding="utf-8"))
+    except (OSError, ValueError):
+        decided = {}
+    pending, diagnostics = [], []
+    for outbox in facts.get("outboxes", []):
+        issue = outbox["issue"]
+        try:
+            items = json.loads(outbox["raw"])
+            if not isinstance(items, list) or len(items) > 100:
+                raise ValueError("an array of at most 100 objects")
+        except ValueError:
+            diagnostics.append("session #%s: suggestions.json must be an array of at most 100 objects" % issue)
+            continue
+        report = latest.get(issue)
+        for index, item in enumerate(items):
+            fields = ("kind", "what", "why", "evidence")
+            if (not isinstance(item, dict) or set(item) != set(fields)
+                    or any(not isinstance(item[k], str) or not item[k].strip() or len(item[k]) > 20000 for k in fields)
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", item["kind"])):
+                diagnostics.append("session #%s: suggestions.json item %s needs kind (lowercase words and hyphens), what, why "
+                                   "and evidence strings" % (issue, index))
+                continue
+            key = "suggestion-" + hashlib.sha256(json.dumps([issue, item], sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            if key not in decided:
+                pending.append(dict(item, id=key, status="pending", source=report))
+    return pending, diagnostics
+
 
 scope = "all permitted history in the prepared checkout" if full else "task-selected inputs"
 manifest = {"scope": scope, "checkout": facts.get("checkout"), "records": len(facts.get("records", [])),
@@ -70,4 +108,6 @@ if isinstance(facts.get("state"), dict):
     loop_state = dict(state, iterations=state.get("iterations", [])[-1:],
                       history={"manifest": ".session/history/manifest.json", "records": manifest["records"],
                                "report_snapshots": len(snapshots), "scope": scope})
+    if facts.get("role") == "policymaker":      # execution roles are not shown them
+        loop_state["suggestions"], loop_state["suggestion_diagnostics"] = suggestions()
 print(json.dumps({"loop_state": loop_state, "files": files}))

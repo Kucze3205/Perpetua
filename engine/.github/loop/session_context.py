@@ -50,7 +50,8 @@ def facts(directory, role, state, full):
                 report = json.load(fh)
             if isinstance(report, dict) and "body" in report and visible(report["issue"]):
                 reports.append(report)
-    return {"role": role, "state": state, "full": full, "checkout": c.head(), "records": records, "reports": reports}
+    outboxes = session_reports.outboxes(visible)
+    return {"role": role, "state": state, "outboxes": outboxes, "full": full, "checkout": c.head(), "records": records, "reports": reports}
 
 
 def stage(directory, role, state=None, full=True):

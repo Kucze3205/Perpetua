@@ -32,7 +32,6 @@ class InputBoundaryTest(LayeredSessionTest):
         c.update_report(policy, {'status': 'done'}, 'PRIVATE POLICY')
         state = {'schema_version': 1, 'iteration': 1, 'iterations': [{'n': 1}],
                  'goal': {'text': 'Build the product'}, 'policy_params': {'secret': 'PRIVATE POLICY'},
-                 'suggestions': [{'source': {'issue': policy, 'snapshot': 'PRIVATE POLICY'}}],
                  'owner_requests': {'open': [{'detail': 'PRIVATE POLICY'}]},
                  'audit_report': 'PRIVATE POLICY'}
         self.w.write(self.w.loop, 'execution/roles/worker/reference.md', 'USEFUL REFERENCE')
@@ -176,36 +175,27 @@ class InputBoundaryTest(LayeredSessionTest):
         self.assertEqual(it.topological({t['id']: t.get('blocked_by', []) for t in graph['tasks']}), ['build', 'check'])
         self.assertNotIn('audit', [entry['role'] for entry in catalog])
 
-    def test_layered_suggestion_reaches_policy_and_resolution_is_replay_safe(self):
+    def test_layered_suggestion_reaches_policy_and_its_decision_stays_out_of_execution_views(self):
         worker = self.started_issue()
-        work = self.w.session(worker, files={'src/result.txt': 'useful'},
-                              session_files={'suggestions.json': json.dumps([PROPOSAL])})
-        pending = reports.pending()
-        self.assertEqual(len(pending), 1)
-        reports.capture(worker, work)
-        self.assertEqual(reports.pending(), pending)
+        raw = json.dumps([PROPOSAL])
+        self.w.session(worker, files={'src/result.txt': 'useful'}, session_files={'suggestions.json': raw})
+        self.assertEqual(self.w.origin_file('iterations/suggestions/%s.json' % worker), raw)
         pol = it.start_policymaker(1, 'new session suggestions')
         policy_work = self.work()
         loop.stage(pol, policy_work, os.path.join(self.w.tmp, 'pol-trusted'))
         staged = json.loads(read(os.path.join(policy_work, '.session/loop-state.json')))
-        self.assertEqual(staged['suggestions'][0]['id'], pending[0]['id'])
-        evidence = read(os.path.join(policy_work, '.session/reports/%s-%s.json' %
-                                   (worker, pending[0]['source']['snapshot'])))
         self.assertEqual(staged['suggestions'][0]['what'], 'Reduce worker context')
+        self.assertEqual(staged['suggestions'][0]['source']['issue'], worker)
+        evidence = read(os.path.join(policy_work, '.session/history/sessions/%s/%s.md' %
+                                     (worker, staged['suggestions'][0]['source']['snapshot'])))
         self.assertIn('Prose of', evidence)
-        decision = [{'id': pending[0]['id'], 'status': 'handled', 'reason': 'PRIVATE POLICY rationale'}]
-        self.w.session(pol, files={'execution/roles/worker/reference.md': 'new guidance'},
-                       report_extra='PRIVATE POLICY',
-                       session_files={'suggestion-decisions.json': json.dumps(decision)})
-        self.assertEqual(len(reports.pending()), 1)
+        decision = {staged['suggestions'][0]['id']: {'status': 'handled', 'reason': 'PRIVATE POLICY rationale'}}
+        self.w.session(pol, files={'execution/roles/worker/reference.md': 'new guidance',
+                                   'policy/suggestion-decisions.json': json.dumps(decision)},
+                       report_extra='PRIVATE POLICY')
         loop.apply_policy()
-        self.assertEqual(reports.pending(), [])
-        final = reports.decisions()
-        reports.apply_decisions(pol)
-        self.assertEqual(reports.decisions(), final)
-        self.assertEqual(final[pending[0]['id']]['status'], 'handled')
-        _, sess, _ = self.stage_inputs(shaper=True, state={'iterations': [{'n': 1}],
-                                                         'suggestions': staged['suggestions']})
+        _, sess, _ = self.stage_inputs(shaper=True, state={'iterations': [{'n': 1}], 'suggestions': staged['suggestions']})
+        self.assertNotIn('suggestions', json.loads(read(os.path.join(sess, 'loop-state.json'))))
         for folder, _, names in os.walk(sess):
             for name in names:
                 self.assertNotIn('PRIVATE POLICY', read(os.path.join(folder, name)))

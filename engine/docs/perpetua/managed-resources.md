@@ -2,7 +2,7 @@
 
 The engine-owned `.github/loop/managed_resources.py` defines the supported
 layered format. Configuration loading, role resolution, staging, admission,
-receipts, iteration revisions and rollback use this boundary.
+iteration revisions and rollback use this boundary.
 
 New templates declare `resources: {format: layered}`. Omission uses that same
 format; explicit legacy formats are rejected. Existing loops keep their own
@@ -76,7 +76,7 @@ continue through protected/write checks and the accepted-tree change gate.
 ## Layered activation and recovery
 
 A layered revision has a `layered-v1:` identity over both managed roots and the
-accepted evaluator paths. Receipts record this same before/after identity;
+accepted evaluator paths. Change records in the iteration record carry this same before/after identity;
 historical iteration records remain readable.
 
 A finished Policymaker session queues its entire candidate for the next
@@ -85,7 +85,7 @@ evaluator verification and owner acceptance can release a held candidate back
 to that queue, but neither completion activates it during an iteration. At the
 boundary the engine rechecks the pinned evaluator snapshot, permissions,
 accepted-tree change gate and complete shaper profile/skill before publishing
-the candidate and its receipt in one ref update. Pending, rejected or stale
+the candidate in one ref update. Pending, rejected or stale
 verification and failed publication
 leave the accepted set in force. Products in a mixed candidate stay with the
 same candidate and retain their gate requirements.
@@ -93,7 +93,7 @@ same candidate and retain their gate requirements.
 Rollback restores both roots and accepted evaluator paths from the last closed
 iteration's commit, or `setup-baseline` before the first closed iteration. It
 restores deleted definitions and removes newly added definitions, retaining
-products, reports, receipts and Git history. Quiet time, consecutive failed
+products, reports and Git history. Quiet time, consecutive failed
 Policymaker sessions and owner-wait accounting retain their existing rules. A third trigger: an iteration closed
 without a record, or failed on invalid policy-supplied data (for example, no shaper and no valid Policymaker orders),
 rolls both roots back and opens a `notice` that the next Policymaker session sees.

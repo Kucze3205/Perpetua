@@ -207,7 +207,6 @@ class ManagedResourcesRegressionTest(SessionCase):
         accepted = loop.merge_branch(pol, "policymaker", self.hub.issue(pol), boundary=True)
         self.assertEqual((accepted["result"], accepted["verdict"]), ("merged", None))
         receipt = accepted["change"]
-        self.assertEqual(receipt["schema_version"], 1)
         self.assertEqual(receipt["policy_rev_before"], initial_revision)
         self.assertEqual(receipt["changed_paths"], ["execution/roles/worker/SKILL.md"])
         self.assertEqual(receipt["policy_rev_after"],
@@ -223,7 +222,6 @@ class ManagedResourcesRegressionTest(SessionCase):
         self.assertEqual(it.policy_rev(), initial_revision)
         self.assertEqual(self.w.origin_file("src/kept.txt"), "product")
         self.assertEqual(self.w.origin_file("journal/kept.md"), "report")
-        self.assertEqual(json.loads(self.w.origin_file("iterations/changes/change-%s.json" % pol)), receipt)
         self.assertFalse(it.revert_policy("already restored"))
 
 

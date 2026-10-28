@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import fakes
 from fakes import common as c, iteration as it, loop
 import managed_resources as resources
-import policy_changes
 from test_layered_resources import LayeredSessionTest
 
 
@@ -15,6 +14,7 @@ class ActivationTest(LayeredSessionTest):
         self.guard = patch.object(loop, 'reconcile')
         self.guard.start()
         self.addCleanup(self.guard.stop)
+        self.w.hub.create_issue('Iteration', '', labels=[it.MAP, c.ITER + '1'])
         self.w.push_main({'policy/params.yml': fakes.POLICY_PARAMS.replace('orchestrator', 'worker'),
                           'engine.yml': 'resources: {format: layered}\npolicymaker: {owns_evaluator: true}\n'})
         c.sync_main()
@@ -46,7 +46,7 @@ class ActivationTest(LayeredSessionTest):
         c.sync_main()
         self.assertIn('shaper: shaper-b', self.w.origin_file('policy/params.yml'))
         self.assertEqual(self.w.origin_file('execution/roles/shaper-b/SKILL.md'), 'Shaper B')
-        receipt = json.loads(self.w.origin_file(policy_changes.path(n)))
+        receipt = it.applied('changes', it.change_id(n))
         self.assertEqual(receipt['policy_rev_before'], initial)
         self.assertEqual(receipt['policy_rev_after'], resources.revision())
         self.w.push_main({'src/product.txt': 'keep', 'iterations/reports/evidence.json': '{}',
@@ -58,7 +58,7 @@ class ActivationTest(LayeredSessionTest):
         self.assertEqual(resources.revision(), initial)
         self.assertEqual(self.w.origin_file('src/product.txt'), 'keep')
         self.assertEqual(self.w.origin_file('iterations/reports/evidence.json'), '{}')
-        self.assertIsNotNone(self.w.origin_file(policy_changes.path(n)))
+        self.assertIsNotNone(it.applied('changes', it.change_id(n)))
         self.assertGreater(int(fakes.sh(self.w.origin, 'git', 'rev-list', '--count', 'main')), history)
 
     def test_execution_only_change_has_a_distinct_shared_revision(self):
@@ -87,7 +87,7 @@ class ActivationTest(LayeredSessionTest):
         self.assertEqual(self.w.origin_file('execution/roles/shaper-b/SKILL.md'), 'Shaper B')
         self.assertEqual(self.w.origin_file('policy/evaluator/new.txt'), 'B measurement')
         self.assertEqual(self.hub.issue(n)['state'], 'closed')
-        receipt = json.loads(self.w.origin_file(policy_changes.path(n)))
+        receipt = it.applied('changes', it.change_id(n))
         self.assertEqual(receipt['verifier_issue'], verifier)
 
     def test_negative_or_incomplete_verification_keeps_entire_bundle_inactive(self):
@@ -100,7 +100,7 @@ class ActivationTest(LayeredSessionTest):
                 loop.apply_policy()
                 self.assert_a()
                 self.assertIsNone(self.w.origin_file('policy/evaluator/new.txt'))
-                self.assertIsNone(self.w.origin_file(policy_changes.path(n)))
+                self.assertIsNone(it.applied('changes', it.change_id(n)))
 
     def test_stale_verification_cannot_activate_any_part_of_bundle(self):
         n = self.replacement(evaluator=True)
@@ -124,7 +124,7 @@ class ActivationTest(LayeredSessionTest):
         with patch.object(c, 'git', side_effect=reject):
             loop.apply_policy()
         self.assert_a()
-        self.assertIsNone(self.w.origin_file(policy_changes.path(n)))
+        self.assertIsNone(it.applied('changes', it.change_id(n)))
 
     def test_last_good_rollback_restores_both_roots_and_retains_history(self):
         n = self.replacement()
@@ -151,7 +151,7 @@ class ActivationTest(LayeredSessionTest):
         result = loop.merge_branch(n, 'policymaker', self.hub.issue(n))
         self.assertEqual(result['result'], 'awaiting-iteration')
         self.assert_a()
-        self.assertIsNone(self.w.origin_file(policy_changes.path(n)))
+        self.assertIsNone(it.applied('changes', it.change_id(n)))
 
     def test_owner_acceptance_waits_for_boundary_with_entire_candidate(self):
         # The owner permits a mixed product/definitions candidate, retaining the owner gate.

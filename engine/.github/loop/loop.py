@@ -25,7 +25,6 @@ import session_inputs
 import session_exports
 import session_reports
 import policymaker_session
-import policy_changes
 import executor_boundary
 import session_context
 import session_startup
@@ -491,7 +490,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
     for _ in range(PUSH_TRIES):
         c.sync_main()
         c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
-        existing = policy_changes.read(policy_changes.path(n, k))
+        existing = it.applied("changes", it.change_id(n, k))
         if existing:
             return dict(res, result="merged", change=existing)
         branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
@@ -523,7 +522,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                         resources.validate_activation(cand)
                 except ValueError as error:
                     return dict(res, result="invalid-resources", detail=str(error))
-            if checked_evaluator_rev and policy_changes.evaluator_rev("HEAD", cand) != checked_evaluator_rev:
+            if checked_evaluator_rev and resources.evaluator_revision("HEAD", cand) != checked_evaluator_rev:
                 return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
             # The accepted range contains this session's rebased commits only.
             changed = c.git(cand, "diff", "--name-only", "-z", baseline, "HEAD").stdout.split("\0")[:-1]
@@ -557,8 +556,10 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                     return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
             if resources.layered() and role == "policymaker" and not boundary:
                 return dict(res, result="awaiting-iteration")
-            change = policy_changes.receipt(cand, n, role, i, session_base, baseline, c.head(cand), changed, verifier, k)
+            change = it.record_change(cand, n, role, session_base, baseline, c.head(cand), changed, verifier, k)
             if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
+                if change:
+                    it.record_applied("changes", change)
                 return dict(res, result="merged", change=change)
     return dict(res, result="conflict")
 
@@ -956,7 +957,7 @@ def request_verifier(n, i, k, changed):
     role = c.cfg()["verifier_role"]
     c.ensure_label("role:" + role, "1D76DB")
     checked = c.git(".", "rev-parse", "origin/task/%s" % n).stdout.strip()
-    rev = policy_changes.evaluator_rev(checked)
+    rev = resources.evaluator_revision(checked)
     body = ("Verify the evaluator change of task #%s (branch `task/%s`).\n\nChanged evaluator files: %s\n\n"
             "Decide whether the changed evaluator still measures progress toward the goal; the accepted state in force is the default branch.\n\n"
             "<!-- verifies: %s -->\n<!-- start-branch: %s -->\n<!-- checked-commit: %s -->\n"
@@ -990,14 +991,14 @@ def settle_verification(n, i, status, result, prose):
             # Verification is evidence, not authority to activate during an iteration.
             # The boundary rechecks the entire pinned candidate and rebased measurement.
             r = {"result": "pending-iteration"}
-            policy_changes.verification(n, i, status, result, r)
+            it.record_verification(n, i, status, result, r)
             c.edit_labels(t, add=["awaiting:iteration"], remove=["awaiting:verifier"])
             c.update_report(t, {"merged": "pending-iteration", "verifier_passed": "true"},
                             "Verified; the complete managed set waits for the next iteration boundary.")
             return status, prose
         else:
             r = merge_branch(t, trole, ti, verified=True, checked_commit=checked, checked_evaluator_rev=rev, verifier=n)
-        policy_changes.verification(n, i, status, result, r)
+        it.record_verification(n, i, status, result, r)
         if r["result"] == "awaiting-owner":
             req = it.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (t, ti["title"]), "The evaluator change of task #%s was verified; its work paths still need your verdict." % t,
                                   "The change gate is set to you.", "Completed merges the branch.", ref="task-%s" % t, iteration=c.iteration_of(c.label_names(ti)))
@@ -1006,7 +1007,7 @@ def settle_verification(n, i, status, result, prose):
             return status, prose
         st, upd, pr = merge_outcome(r)
     else:
-        policy_changes.verification(n, i, status, result, {"result": "not-applied"})
+        it.record_verification(n, i, status, result, {"result": "not-applied"})
         st, upd, pr = "rejected", {"merged": "false", "verdict": "rejected"}, "The evaluator verifier did not pass the change (result: %s, status: %s)." % (result, status)
     c.edit_labels(t, remove=["awaiting:verifier"])
     close_out(t, ti, st, upd, pr)
@@ -1137,7 +1138,7 @@ def settle_owner_merge(t, yes):
                         "Accepted by the owner; the complete managed set waits for the next iteration boundary.")
         if verifier:
             vf = c.report_fields(verifier)
-            policy_changes.verification(verifier, vi, vf.get("status"), vf.get("result"), {"result": "pending-iteration"}, owner=True)
+            it.record_verification(verifier, vi, vf.get("status"), vf.get("result"), {"result": "pending-iteration"}, owner=True)
         return
     if yes:
         r = merge_branch(t, role, ti, override={"verdict": "accepted", "improved": True, "detail": "accepted by the owner"},
@@ -1148,7 +1149,7 @@ def settle_owner_merge(t, yes):
         r = {"result": "gate-rejected", "detail": "declined by the owner", "verdict": {"verdict": "rejected", "detail": "declined by the owner"}}
     if verifier:
         vf = c.report_fields(verifier)
-        policy_changes.verification(verifier, vi, vf.get("status"), vf.get("result"), r, owner=True)
+        it.record_verification(verifier, vi, vf.get("status"), vf.get("result"), r, owner=True)
     st, upd, pr = merge_outcome(r)
     k = c.iteration_of(c.label_names(ti)) or 0
     if st != "done":

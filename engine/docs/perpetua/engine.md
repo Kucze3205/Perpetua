@@ -14,7 +14,7 @@ Details have one home:
 - [Session context](session-context.md): startup reads and working memory.
 - [Session data exports](session-exports.md): historical inputs and recipient views.
 - [Reports and records](session-reports.md): session reports, iteration records and suggestions.
-- [Change provenance](policy-changes.md): immutable receipts and evaluator verification.
+- [Change provenance](policy-changes.md): accepted changes and evaluator verification in the iteration record.
 - [Validation](validation.md): test commands, host requirements and limits of the evidence.
 
 ## Setup and updates
@@ -90,7 +90,7 @@ accepted change.
 
 Evaluator changes additionally require an independent passing verifier pinned to
 that evaluator snapshot. See [activation](managed-resources.md#layered-activation-and-recovery)
-and [verification receipts](policy-changes.md).
+and [verification records](policy-changes.md).
 
 ## The goal gate and the end
 

@@ -815,9 +815,8 @@ def policymaker_mechanics(repo_dir, sessions, record):
     stream = pm["analysis"].get("stream") or {}
     managed = [x[1].get("file_path") for x in stream.get("calls", []) if x[0] in ("Write", "Edit") and re.search(r"(^|/)(execution|policy)/", str((x[1] or {}).get("file_path", "")))]
     diff = run(["git", "diff", "--stat", TAG, "HEAD", "--", "execution", "policy"], cwd=repo_dir, check=False).stdout
-    changes = sorted(p.relative_to(repo_dir).as_posix() for p in (repo_dir / "policy" / "changes").glob("*")) if (repo_dir / "policy" / "changes").is_dir() else []
     return {"policymaker_issue": pm["issue"], "report": pm["report"], "tools_offered": stream.get("tools_offered"), "tool_errors": stream.get("tool_errors"),
-            "tried_to_write_execution_or_policy": managed, "diff_of_execution_and_policy_since_baseline": diff, "change_receipts": changes,
+            "tried_to_write_execution_or_policy": managed, "diff_of_execution_and_policy_since_baseline": diff, "change_receipts": ((record or {}).get("policy") or {}).get("changes"),
             "orders_in_record": [t.get("id") for t in (record or {}).get("tasks", []) if str(t.get("id", "")).startswith("order-")],
             "orders_refused": ((record or {}).get("policy") or {}).get("orders_refused")}
 

@@ -13,7 +13,6 @@ from unittest.mock import patch
 import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 import managed_resources as resources
-import policy_changes
 import session_reports as reports
 import setup_roles
 from test_merge import GATE_SH
@@ -95,7 +94,7 @@ class TemplateFlowTest(unittest.TestCase):
             self.assertIsNone(self.w.origin_file('execution/roles/worker/reference.md'))
             loop.apply_policy()
         c.sync_main()
-        receipt = json.loads(self.w.origin_file(policy_changes.path(policymaker)))
+        receipt = it.applied('changes', it.change_id(policymaker))
         self.assertEqual(receipt['policy_rev_before'], self.initial)
         self.assertEqual(receipt['policy_rev_after'], resources.revision())
         self.assertEqual(reports.pending(), [])
@@ -106,4 +105,4 @@ class TemplateFlowTest(unittest.TestCase):
         self.assertIsNone(self.w.origin_file('policy/roles/policymaker/reference.md'))
         self.assertEqual(self.w.origin_file('src/product.txt'), 'accepted work')
         self.assertIsNotNone(self.w.origin_file(it.record_path(0)))
-        self.assertIsNotNone(self.w.origin_file(policy_changes.path(policymaker)))
+        self.assertIsNotNone(it.applied('changes', it.change_id(policymaker)))

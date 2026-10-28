@@ -35,14 +35,14 @@ The engine uses the accepted checkout; files left by a session (committed or not
 |---|---|---|
 | Session setup and outputs | `loop.resolve`, `loop.stage`, `loop.finalize` | `test_session.py` |
 | Iteration lifecycle and task graph | `iteration.start_iteration`, `validate_tasks`, `instantiate`, `advance`, `close_iteration` | `test_flow.py`, `test_pure.py` |
-| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate` | `test_merge.py`, `test_policy_changes.py` |
+| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate` | `test_merge.py`, `test_change_records.py` |
 | Policymaker tuning and applying finished sessions | `policymaker_session.profile`; `loop.apply_policy` | `test_exports.py`, `test_flow.py` |
 | Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
 | Setup role registration and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
-| Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py`, `test_policy_changes.py` |
-| Accepted-change receipts | `policy_changes.py` | `test_policy_changes.py` |
+| Managed definitions, locations and revision identity | `managed_resources.py` | `test_session.py`, `test_merge.py` |
+| Accepted-change and verifier records | `iteration.record_change`, `record_verification` | `test_change_records.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
 | Startup packages, token notices and offline history | `session_context.py`, `session_startup.py` | `test_context.py` |
 | Isolation, credentials and data-only admission | `session_security.py`, `executor_boundary.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_executor_boundary.py`, `test_model_boundary.py`, `test_static.py` |
@@ -69,6 +69,6 @@ See [validation](validation.md) for prerequisites and limits of this verificatio
 - Graph `width` measures the largest dependency-depth level. It is a record
   statistic, not a concurrency cap or a prediction of simultaneous running jobs.
 - `iteration.evaluator_rev` is a legacy comma-separated hash string for state
-  and iteration records; `policy_changes.evaluator_rev` maps paths to hashes for
-  receipts and verification. Preserve these persisted shapes unless migrating
+  and iteration records; `managed_resources.evaluator_revision` maps paths to hashes for
+  change and verification records. Preserve these persisted shapes unless migrating
   their readers and schema deliberately.

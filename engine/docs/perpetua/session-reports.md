@@ -48,4 +48,4 @@ snapshot at iteration start, without the index), `policy` (`rev_start`, `rev_end
 verdict, tokens in/out/cache and by model, turns, agent/gate/total/parked seconds, runner, branch, commit, stream name;
 the shaper; the iteration verdict; token sums; wall time; critical path; width; owner requests opened and open at close).
 
-See [change provenance](policy-changes.md) for separate accepted-change and verifier receipts; closed iteration records are never enriched later.
+See [change provenance](policy-changes.md) for the accepted changes and verifier events an iteration record carries; closed iteration records are never enriched later.

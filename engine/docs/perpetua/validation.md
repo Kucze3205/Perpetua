@@ -10,7 +10,7 @@ In a copied loop use `-s .github/loop/tests`. The suite never arms a real loop.
 `test_template_flow.py` copies the actual shipped template, writes and registers the execution
 roles, validates the committed setup baseline, stages the selected shaper, accepts
 a work product through the accepted-tree gate, delivers a suggestion to the
-Policymaker, activates changes to both layers and checks receipts and rollback.
+Policymaker, activates changes to both layers and checks the change records and rollback.
 Git and engine behavior are real; GitHub and provider session outputs are simulated.
 `test_activation.py` additionally checks pending, rejected, incomplete and stale
 independent evaluator verification and atomic activation of dependent definitions.

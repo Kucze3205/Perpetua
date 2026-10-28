@@ -10,7 +10,7 @@ baseline; the epilogue builds one commit on it from the final files of the worki
 (`executor_boundary.admit`, also used for execution sessions), without running the
 agent's git. New untracked files outside the role's write paths (CLI stubs, runner home
 files) are environment debris and are not admitted; symlinks, hard links and special files
-refuse the admission. Write-path, protected-path, size and receipt checks apply unchanged.
+refuse the admission. Write-path, protected-path, size and change checks apply unchanged.
 All sessions retain trust, reporting and owner-request rules. Only the Policymaker
 receives suggestion-decision instructions; only it and the shaper receive graph and
 report-reader instructions. There is no role-configurable contract selector.

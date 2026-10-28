@@ -19,7 +19,6 @@ import owner_requests as requests
 import session_exports
 import session_reports
 import session_startup
-import policy_changes
 
 MAP = "loop:map"
 REQ = "owner-request"
@@ -259,6 +258,59 @@ def find_iteration_issue(n, state="open"):
 def open_iteration():
     found = c.list_issues(labels=(MAP,))
     return found[0] if found else None
+
+
+def applied_list(fields, key):
+    raw = fields.get(key, "")
+    return json.loads(raw) if raw.startswith("[") else []
+
+
+def applied(key, ident):
+    """The entry `ident` of the open iteration's `changes` or `verifications`, or None."""
+    cur = open_iteration()
+    return next((e for e in applied_list(c.report_fields(cur["number"]), key) if e["id"] == ident), None) if cur else None
+
+
+def record_applied(key, entry):
+    """Add a change receipt or verifier event to the open iteration's report, which its record is built from.
+    An id is written once; a repeated epilogue or owner event cannot rewrite it."""
+    cur = open_iteration()
+    if not cur:
+        return
+    items = applied_list(c.report_fields(cur["number"]), key)
+    if all(e["id"] != entry["id"] for e in items):
+        c.update_report(cur["number"], {key: json.dumps(items + [entry], separators=(",", ":"), ensure_ascii=False)})
+
+
+def change_id(issue, k=1):
+    """The first pass of a Policymaker session keeps the session's plain id; later passes add theirs."""
+    return "change-%s" % issue + ("-%s" % k if k > 1 else "")
+
+
+def record_change(cand, n, role, session_base, baseline, candidate, changed, verifier=None, k=1):
+    """The receipt of an accepted policy/evaluator change, kept in the open iteration's record. `changed` is the diff
+    from `baseline` to `candidate`; concurrent changes by other roles are excluded. None for a change outside the
+    managed definitions."""
+    if not any(resources.is_managed(p) for p in changed):
+        return None
+    return dict(id=change_id(n, k), issue=n, role=role, base_commit=session_base, applied_base_commit=baseline,
+                accepted_commit=candidate, policy_rev_before=resources.revision(baseline, cand),
+                policy_rev_after=resources.revision(candidate, cand), changed_paths=changed,
+                verifier_issue=verifier, applied_at=c.iso())
+
+
+def record_verification(n, i, status, result, application, owner=False):
+    """A verifier verdict and an eventual owner decision are distinct events of the open iteration."""
+    target = int(c.marker(i["body"], "verifies"))
+    record = dict(id="verification-%s%s" % (n, "-owner" if owner else ""),
+                  issue=target, role=c.roles_of(c.label_names(c.issue(target)))[0], verifier_issue=n,
+                  session_status=status, result=result,
+                  checked_commit=c.marker(i["body"], "checked-commit"),
+                  checked_evaluator_rev=json.loads(c.marker(i["body"], "checked-evaluator-rev") or "null"),
+                  application_result=application["result"],
+                  application_detail=application.get("detail") or None,
+                  change_id=(application.get("change") or {}).get("id"), recorded_at=c.iso())
+    record_applied("verifications", record)
 
 
 def iteration_number(x):
@@ -935,9 +987,8 @@ def close_iteration(n, status, failure=None):
                         "critical_path_s": critical_path(list(sessions.values()), tasks), "width": int(f.get("width", 0) or 0),
                         "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in open_requests()]}},
         }
-        changes, verifications = policy_changes.for_iteration(n)
-        record["policy"]["change_ids"] = changes
-        record["evaluator_verifications"] = verifications
+        record["policy"]["changes"] = applied_list(f, "changes")
+        record["evaluator_verifications"] = applied_list(f, "verifications")
         c.commit_main({record_path(n): json.dumps(record, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: record (%s)" % (tag(n), status))
     c.update_report(it["number"], {"phase": "closed", "status": status})
     c.close_issue(it["number"], "completed" if status == "closed" else "not planned")

@@ -4,7 +4,7 @@
 Always run from a checkout of the default branch, never from a task branch. The agent's work arrives as commits
 fetched into this checkout; nothing is executed inside the agent's directory.
 
-Commands: guard, probe, resolve, stage, finalize, request-closed, watch, resume, start, git-identity.
+Commands: guard, probe, resolve, stage, epilogue, request-closed, watch, resume, start, git-identity.
 """
 import hashlib
 import json
@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,7 @@ import iteration as it
 import session_security as security
 import session_inputs
 import session_exports
+import session_artifact
 import session_reports
 import policymaker_session
 import executor_boundary
@@ -271,8 +273,10 @@ def stage(n, work, trusted):
         fh.write(",".join(security.tool_names(p)))
     with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:
         json.dump({"mcpServers": {}}, fh)
-    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py"):
+    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py", "sandbox.sh", "prepare.sh", "session_artifact.py"):
         shutil.copy(".github/loop/" + f, trusted)
+    with open(os.path.join(trusted, "cli-version"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(str(c.cfg()["cli_version"]) + "\n")
     if resources.layered() and p.get("agent") is not False:
         staged_role = os.path.join(sess, "role")
         shutil.rmtree(staged_role, ignore_errors=True)
@@ -410,7 +414,7 @@ def fetch_candidate(work, n):
     baseline = os.path.join(trusted, "executor-baseline.json")
     ref = "refs/heads/task/%s" % n
     try:
-        if not os.path.isfile(baseline):
+        if not os.path.isdir(work) or not os.path.isfile(baseline):
             print("Required session admission metadata unavailable")
             return None, []
         with open(baseline, encoding="utf-8") as fh:
@@ -726,6 +730,9 @@ def finalize(n, work):
         prose = "Script %s.\n" % ("finished" if status == "done" else "failed (exit %s)" % exit_code) + (c.safe_read(tmp, "script-output.txt") or "")[-1500:]
     else:
         cause, limited, reset = machine_cause(exec_path, exit_code)
+        if limited and status not in c.AGENT_STATUSES:
+            # the status files are the session's data: only the engine's own probe parks the loop, and it sets the clock
+            limited, reset = c.probe_limit()
         upd["cause"] = cause or None
         upd.update(usage_fields(exec_path))
         upd.update(model=os.environ.get("MODEL") or None, effort=os.environ.get("EFFORT") or None)
@@ -810,6 +817,31 @@ def finalize(n, work):
     if pending:
         session_reports.capture(n, work)
     after_session(n, i, labels, role, k, work, status, upd, prose, pending)
+
+
+def epilogue(n, artifact, baseline, digest):
+    """The epilogue job, on a fresh runner: takes the session job's artifact in as data (`session_artifact`), puts the
+    executor baseline from the channel the session cannot touch (`baseline/`, pinned by `digest`) where admission reads
+    it, and finalizes. A tree that cannot be taken in is as good as no tree."""
+    tmp = os.environ.get("RUNNER_TEMP", tempfile.gettempdir())
+    with open(os.path.join(baseline, "executor-baseline.json"), "rb") as fh:
+        raw = fh.read()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise SystemExit("the executor baseline does not match the one staged")
+    work = os.path.join(tmp, "work")
+    session_artifact.receive_status(artifact, tmp)
+    try:
+        session_artifact.receive_tree(artifact, work)
+    except (ValueError, OSError, tarfile.TarError) as error:
+        print("Session output refused: %s" % error)
+        shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(os.path.join(tmp, "trusted"), exist_ok=True)
+    meta = json.loads(raw)
+    meta["work"] = os.path.abspath(work)
+    with open(os.path.join(tmp, "trusted", "executor-baseline.json"), "w", encoding="utf-8") as fh:
+        json.dump(meta, fh)
+    session_artifact.receive_commits(artifact, ".", n)
+    finalize(n, work)
 
 
 def hold_policymaker_output(n, work):
@@ -1337,8 +1369,8 @@ def main(argv):
         resolve(int(args[0]))
     elif cmd == "stage":
         stage(int(args[0]), args[1], args[2])
-    elif cmd == "finalize":
-        finalize(int(args[0]), args[1])
+    elif cmd == "epilogue":
+        epilogue(int(args[0]), *args[1:4])
     elif cmd == "request-closed":
         on_request_closed(int(args[0]))
     elif cmd == "watch":

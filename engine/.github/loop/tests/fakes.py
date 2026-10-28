@@ -1,5 +1,6 @@
 """Test world: an in-memory GitHub (the thin functions of `common`) and real git repositories (a bare origin, the
 engine's checkout of the default branch, agent working copies). Nothing here talks to the network."""
+import hashlib
 import json
 import os
 import shutil
@@ -16,11 +17,12 @@ sys.path.insert(0, LOOP_DIR)
 import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
+import session_artifact  # noqa: E402
 import session_startup  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
-           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless"]
+           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless", "probe_limit"]
 
 
 class FakeHub:
@@ -37,6 +39,7 @@ class FakeHub:
         self.next_n = 1
         self.tokenless = []                 # (bundle files) of every command sent to the tokenless job
         self.tokenless_fault = None         # "no-artifact" | "failed": what the next tokenless job does wrong instead
+        self.limit = (True, None)           # the engine's own probe of a usage limit: (limited, reset)
 
     def ts(self):
         self.tick += 1
@@ -146,6 +149,9 @@ class FakeHub:
             with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
         return out
+
+    def probe_limit(self):
+        return self.limit
 
     def gh(self, *args, inp=None, check=True):
         self.gh_calls.append(args)
@@ -344,8 +350,22 @@ class World:
         common.LAUNCHED.clear()            # every epilogue is a fresh process
         if self.before_finalize:
             self.before_finalize()
-        loop.finalize(n, work)
+        self.epilogue(n, work, rt)
         return work
+
+    def epilogue(self, n, work, rt):
+        """The session job packs its results; the epilogue job, on a fresh runner, takes the artifact and the baseline
+        (a channel of its own) in."""
+        artifact, baseline = os.path.join(rt, "artifact"), os.path.join(rt, "baseline")
+        session_artifact.pack(work, rt, artifact)
+        os.makedirs(baseline)
+        shutil.move(os.path.join(rt, "trusted", "executor-baseline.json"), baseline)
+        with open(os.path.join(baseline, "executor-baseline.json"), "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        fresh = os.path.join(rt, "epilogue")
+        os.makedirs(fresh)
+        os.environ["RUNNER_TEMP"] = fresh
+        loop.epilogue(n, artifact, baseline, digest)
 
     def branch(self, n, files, base="origin/main", delete=()):
         """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""

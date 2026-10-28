@@ -53,7 +53,9 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    `.session/tasks.json`. It may be a model orchestrator or a script. The engine
    validates and creates graph issues, blocking edges and consent requests.
    Accepted Policymaker orders become tasks alongside it. With `shaper: null`,
-   orders are the only tasks; no valid orders means a failed iteration.
+   orders are the only tasks; no valid orders means a failed iteration and a rollback of both managed roots.
+   A graph holds at most 50 tasks (shaper output and orders together); a larger one is refused with that reason and
+   creates no issues.
    [Task graph](../../.github/loop/task-graph.md) defines the interface.
 4. **Execute.** Free tasks start parallel `session.yml` jobs. Each prepares and stages
    inputs, executes its role and hands outputs to the trusted epilogue. Closing a

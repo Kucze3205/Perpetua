@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The iteration layer: shaper -> task graph -> parallel sessions -> record; the Policymaker on triggers; owner
-requests; the goal gate; the rollback of `policy/`.
+requests; the goal gate; the rollback of `execution/` and `policy/`.
 
 An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the shaper, the tasks, the Policymaker's
 orders) are issues labelled `loop:iteration N` + `role:<name>`. The iteration issue carries the phase in a report
@@ -35,6 +35,7 @@ HELD_MARK = "<!-- policymaker-held-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
 SEEN_MARK = "<!-- policymaker-audit-seen -->"
 HANDLED = "request:handled"
+MAX_TASKS = 50          # the kernel's cap on the tasks of one iteration's graph: shaper output and Policymaker orders alike
 
 
 def tag(n):
@@ -312,6 +313,16 @@ def next_number():
     return max(done) + 1 if done else 0
 
 
+def closed_without_record():
+    """The number of the latest iteration when its issue was closed but no record was written (closed by hand, or the
+    closing died); else None."""
+    issues = c.list_issues(state="all", labels=(MAP,))
+    nums = [iteration_number(x) for x in issues]
+    if not nums or max(nums) in [iteration_number(x) for x in issues if x["state"] == "open"]:
+        return None
+    return None if os.path.exists(record_path(max(nums))) else max(nums)
+
+
 def cadence_ok():
     cad = c.cfg()["cadence"]
     recs = [r for r in records() if r]
@@ -334,6 +345,8 @@ def start_iteration():
     c.sync_main()
     if open_iteration():
         return None
+    if (lost := closed_without_record()) is not None:
+        revert_policy("iteration %s was closed without a record" % tag(lost))
     if not cadence_ok():
         c.say("cadence: next iteration not due yet")
         return None
@@ -375,7 +388,7 @@ def begin_work(n, it):
             place_orders(n, it, orders)
         return begin_shape(n, it)
     if not (orders and place_orders(n, it, orders)):
-        return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks")
+        return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks", rollback=True)
     c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(orders), "width": width(orders)})
 
 
@@ -613,6 +626,8 @@ def validate_tasks(doc, ordered=False, taken=()):
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     if not isinstance(tasks, list) or not tasks:
         return ["`tasks` must be a non-empty list"]
+    if len(tasks) + len(taken) > MAX_TASKS:
+        return ["the task graph would hold %s tasks; the cap is %s per iteration" % (len(tasks) + len(taken), MAX_TASKS)]
     # Validate shapes before membership checks or graph traversal: this is agent-authored JSON.
     # Only structurally valid tasks enter the graph; malformed tasks return diagnostics, not exceptions.
     errors, task_ids, graph = [], set(), {}
@@ -809,9 +824,12 @@ def advance():
     return n
 
 
-def fail_iteration(n, why):
+def fail_iteration(n, why, rollback=False):
+    """`rollback`: the iteration failed on data the policy supplied; `execution/` and `policy/` return to the last good state."""
     it = find_iteration_issue(n)
     if it:
+        if rollback:
+            revert_policy(why)
         for x in iteration_issues(n):
             if x["state"] == "open" and c.roles_of(c.label_names(x)):
                 for r in c.session_runs():
@@ -1054,10 +1072,10 @@ def run_gate(cand, base, ctx):
         shutil.rmtree(bundle, ignore_errors=True)
 
 
-# ---------------------------------------------------------------- rolling back policy/
+# ---------------------------------------------------------------- rolling back execution/ and policy/
 
 def revert_policy(why):
-    """Return `policy/` to the state in which the last iteration closed (at the start: the setup baseline), open a
+    """Return `execution/` and `policy/` (and the evaluator paths) to the state in which the last iteration closed (at the start: the setup baseline), open a
     notice for the owner. Does nothing when the tree is already there. The Policymaker's next session sees the notice."""
     c.sync_main()
     last = last_closed()
@@ -1072,8 +1090,8 @@ def revert_policy(why):
     if resources.revision() == resources.revision(target):
         return False
     c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, resources.restore_paths()))
-    open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
-                 "The loop was not progressing or the Policymaker failed twice in a row.",
+    open_request("notice", "policy/ rolled back", "The engine returned `execution/` and `policy/` to %s. Reason: %s." % (target[:8], why),
+                 "The iteration went wrong in a way policy/ or execution/ may have caused: %s." % why,
                  "Nothing is blocked. The Policymaker sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])
     return True
 

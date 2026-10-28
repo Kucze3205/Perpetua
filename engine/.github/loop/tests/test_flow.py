@@ -314,6 +314,30 @@ class FirstPolicymakerTest(Flow):
         self.assertEqual(rec["status"], "failed")
         self.assertIn("no shaper", rec["failure"])
 
+    def test_invalid_orders_without_a_shaper_roll_back_policy_and_tell_the_next_policymaker(self):
+        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
+        c.sync_main()
+        it.start_iteration()
+        self.w.session(self.session_issue("policymaker"), session_files={"orders.json": tasks_json(task("w", role="nobody"))})
+        self.assertEqual(self.record(0)["status"], "failed")
+        self.assertIn("shaper: orchestrator", self.w.origin_file("policy/params.yml"))          # back to the setup baseline
+        (note,) = self.hub.by_label("owner-request:notice")
+        self.assertIn("no shaper is set", note["body"])
+        state = it.read_state(self.open_iteration()["number"])
+        self.assertIn(note["number"], [x["number"] for x in state["owner_requests"]["open"]])
+
+    def test_an_iteration_closed_without_a_record_rolls_policy_back(self):
+        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
+        it.start_iteration()
+        self.w.push_main({"policy/params.yml": "criterion: broken\n"}, "what a Policymaker session merged")
+        c.sync_main()
+        self.hub.close_issue(self.open_iteration()["number"], "not planned")                   # closed by hand: no record
+        it.start_iteration()
+        self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))
+        self.assertIn("closed without a record", self.hub.by_label("owner-request:notice")[0]["body"])
+        self.assertEqual(it.iteration_number(self.open_iteration()), 1)
+
     def test_a_crashed_policymaker_fails_open_with_the_last_organization(self):
         it.start_iteration()
         pol = self.session_issue("policymaker")
@@ -594,6 +618,23 @@ class ShaperFailureTest(Flow):
         self.assertEqual([r["status"] for r in it.records()], ["failed"] * 3)
         self.assertIsNone(self.open_iteration())
         self.assertEqual(len(self.hub.by_label("outage")), 1)
+
+
+class TaskCapTest(Flow):
+    def test_a_graph_over_the_cap_is_refused_and_creates_no_issues(self):
+        it.start_iteration()
+        before = len(self.hub.list_issues("all"))
+        s = self.session_issue("orchestrator")
+        self.w.session(s, session_files={"tasks.json": tasks_json(*[task("t%s" % k) for k in range(it.MAX_TASKS + 1)])})
+        self.assertIn("the cap is %s" % it.MAX_TASKS, self.hub.prose(s))
+        self.assertIsNone(self.task_issue("t0"))
+        self.assertEqual(self.record(0)["status"], "failed")
+        self.assertEqual([x for x in self.hub.list_issues("all") if x["number"] > before + 2 and "role:worker" in c.label_names(x)], [])
+
+    def test_orders_over_the_cap_are_refused_too(self):
+        errors = it.validate_tasks({"tasks": [task("t%s" % k) for k in range(it.MAX_TASKS + 1)]}, ordered=True)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("cap", errors[0])
 
 
 class OwnerGateTest(Flow):

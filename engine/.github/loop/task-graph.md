@@ -10,7 +10,7 @@ Each report JSON has `issue`, `source` (comment URL), `snapshot`
 ## The task graph (shaper and Policymaker only)
 
 The shaper writes `.session/tasks.json`; the engine creates the issues and the blocking edges. A script role
-(a deterministic rule) writes the same file. The Policymaker writes its orders in the same format to `.session/orders.json`.
+(a deterministic rule) writes the same file. The Policymaker writes its orders in the same format to `.session/orders.json`, with an optional `"wake": true` (run again after the ordered tasks end).
 
 ```json
 {"tasks": [
@@ -29,7 +29,7 @@ engine asks the owner by itself when a role's profile is beyond the accepted lim
 (`^[A-Z][A-Z0-9_]*$`, no duplicates, never values) of the repository secrets this one session needs; the owner accepts
 or declines the whole list, and a changed list is a new request. The width of the iteration is the
 widest layer of the graph; it is computed, not a field. Tasks of the roles in `policymaker_only_roles` come only from the
-Policymaker's orders, and the orders only of those roles: the engine refuses either the other way. Every task fits **one
+Policymaker's orders, and with a shaper the orders only of those roles: the engine refuses either the other way. Every task fits **one
 session**.
 
 `## Verification` is run by the session itself before it reports `done` and again by the engine afterwards, so it must be

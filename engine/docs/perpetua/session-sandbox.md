@@ -64,12 +64,9 @@ result then passes the existing protected/write checks and merge path; the
 change gate still runs from the accepted tree with the reconstructed candidate
 and accepted baseline.
 
-Candidate-owned product checks and task verification for layered execution roles
-use the same offline namespace and narrow runtime after admission. Each command
-gets a disposable product-only snapshot with a new Git root; check writes do not
-alter the candidate. Missing isolation fails the check, without a host fallback.
-The accepted change gate still runs through its trusted measurement path with
-the full candidate and baseline required by ADR-0003.
+Candidate-owned product checks and task verification run in the tokenless job on a copy of the candidate tree
+without `.git`, like the change gate; a job that returns nothing fails the command. The accepted change gate still
+runs from the accepted tree with the full candidate and baseline required by ADR-0003.
 
 ## Model process and network access
 
@@ -143,7 +140,7 @@ A session sees a secret only when the owner approved its name for that task. Thr
   secret-missing:NAME` and a `capability` request (no value) goes to the owner. Closing it creates nothing.
 
 The GitHub token never reaches the agent. `gate.env_passthrough` in `engine.yml` is a separate owner list for the gate
-command only, never for an agent.
+command only, never for an agent (the tokenless job does not receive it yet).
 
 Script roles receive staged data and their configured command, without a protocol
 copy. Existing custom role skills must replace references to `.session/protocol.md`

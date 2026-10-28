@@ -6,7 +6,7 @@ enriches a closed iteration record later.
 
 `policy.changes` lists each policy/evaluator change accepted while the iteration was open. An
 entry names the actual authoring role and issue (`id` is `change-<session issue>`, with the
-pass appended after the first Policymaker pass), the branch's `base_commit`, the rebased
+run number appended after the first run of a woken Policymaker session), the branch's `base_commit`, the rebased
 `applied_base_commit`, and the checked code's `accepted_commit`. `changed_paths` is the diff
 of the latter two commits; concurrent changes by other roles are excluded.
 `policy_rev_before/after` describe the same trees as tree hashes, not commits.

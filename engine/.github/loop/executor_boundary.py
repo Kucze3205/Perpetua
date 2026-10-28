@@ -301,44 +301,6 @@ def launch(work, trusted, online=False, capture=False):
     return result if capture else result.returncode
 
 
-def run_candidate(command, candidate):
-    """Run candidate-owned checks in a disposable product-only namespace.
-
-    Snapshot committed regular blobs through trusted Git, never copy candidate
-    metadata or use its config/hooks. No policy or host path reaches the child.
-    Keep the full candidate untouched for the accepted measurement gate.
-    """
-    try:
-        with tempfile.TemporaryDirectory(prefix="candidate-check-") as tmp:
-            work, trusted = Path(tmp, "work"), Path(tmp, "trusted")
-            work.mkdir()
-            trusted.mkdir()
-            entries = git(candidate, "ls-tree", "-rz", "--full-tree", "HEAD").split(b"\0")
-            for entry in entries:
-                if not entry:
-                    continue
-                metadata, raw = entry.split(b"\t", 1)
-                mode, kind, oid = metadata.split()
-                rel = raw.decode("utf-8")
-                if not visible(rel) or rel.startswith(".session/"):
-                    continue
-                if mode not in (b"100644", b"100755") or kind != b"blob":
-                    raise ValueError("candidate check requires regular files")
-                destination = work / rel
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(git(candidate, "cat-file", "blob", oid.decode()))
-                destination.chmod(0o755 if mode == b"100755" else 0o644)
-            git(work, "init", "-q", "-b", "executor")
-            git(work, "add", "-f", "--all")
-            git(work, "commit", "-q", "--allow-empty", "-m", "Product check snapshot")
-            (trusted / "command.sh").write_text(command + "\n", encoding="utf-8")
-            shutil.copyfile(Path(__file__).with_name("offline_exec.py"), trusted / "offline_exec.py")
-            return launch(str(work), str(trusted), capture=True)
-    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
-        # Never return an exception containing private paths or subprocess output.
-        return subprocess.CompletedProcess(command, 1, "", "Required candidate check isolation unavailable")
-
-
 if __name__ == "__main__":
     try:
         if sys.argv[1] == "model":

@@ -454,11 +454,10 @@ def verification_rules(body):
     return ["Bash(%s)" % re.sub(r"([\\()*])", r"\\\1", cmd) for cmd in verification_commands(body) if "\n" not in cmd]
 
 
-def run_verification(cand, body, role=None):
-    """`## Verification` of the task: commands from code blocks or backticked lines. No secrets."""
+def run_verification(cand, body):
+    """`## Verification` of the task: commands from code blocks or backticked lines, run in the tokenless job."""
     for cmd in verification_commands(body):
-        r = (executor_boundary.run_candidate(cmd, cand) if role and session_inputs.restricted(role)
-             else c.run_command(cmd, cand))
+        r = c.run_command(cmd, cand)
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -530,8 +529,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                 return dict(res, result="large", detail=", ".join(big))
             if work_paths:
                 if cfg["check"]:
-                    t = (executor_boundary.run_candidate(cfg["check"], cand) if session_inputs.restricted(role)
-                         else c.run_command(cfg["check"], cand))
+                    t = c.run_command(cfg["check"], cand)
                     if t.returncode:
                         return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
                 if override:
@@ -760,7 +758,7 @@ def finalize(n, work):
         upload_artifacts(n, work, k)
     if status == "done" and sha and not script:
         with Tree("task/%s" % n) as cand:
-            ok, out = run_verification(cand, i["body"], role=role)
+            ok, out = run_verification(cand, i["body"])
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"
@@ -845,8 +843,8 @@ def epilogue(n, artifact, baseline, digest):
 
 
 def hold_policymaker_output(n, work):
-    """Keep a finished Policymaker pass's orders on its issue until the iteration continues; a pass without orders keeps
-    an empty entry, so the orders of an earlier pass are never read again. Returns the report prose."""
+    """Keep a finished Policymaker session's orders on its issue until the iteration continues; a run without orders keeps
+    an empty entry, so the orders of an earlier run are never read again. Returns the report prose."""
     session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
     text = c.safe_read(work, ".session/orders.json")
     try:
@@ -858,14 +856,15 @@ def hold_policymaker_output(n, work):
     else:
         prose = ""
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
-    it.store_state(n, {"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else []}, it.ORDERS_MARK)
+    wake = isinstance(doc, dict) and doc.get("wake") is True
+    it.store_state(n, {"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, it.ORDERS_MARK)
     return prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
 
 
 def apply_policy(keeps_open=lambda number: False):
     """Merge the finished Policymaker sessions, oldest first, and return the numbers of those that merged. An unmerged one
     counts as a failed Policymaker session. A merged one is closed, unless `keeps_open(number)`: it is relaunched after
-    the sessions it ordered, so it waits (`awaiting:orders`)."""
+    the tasks it ordered with `wake`, so it waits (`awaiting:orders`)."""
     merged = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
         fields = c.report_fields(x["number"])

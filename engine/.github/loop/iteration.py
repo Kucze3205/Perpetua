@@ -30,7 +30,6 @@ SESSION_KINDS = ("goal-gate", "goal-change", "question") + requests.KINDS
 VERDICT_BYTES = 64 * 1024        # what the engine reads of a tokenless job's output
 STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
-HELD_MARK = "<!-- policymaker-held-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
 SEEN_MARK = "<!-- policymaker-audit-seen -->"
 HANDLED = "request:handled"
@@ -434,13 +433,12 @@ def start_iteration():
 
 
 def begin_work(n, it):
-    """The execution phase: the policy phase is over. The shaper and the Policymaker's implementation-layer orders (held
-    from every pass) make the tasks. A Policymaker that failed twice in a row is reverted: the iteration runs on the last
-    good policy."""
+    """The execution phase: the policy phase is over. The shaper and the tasks the Policymaker ordered make the
+    iteration's graph. A Policymaker that failed twice in a row is reverted: the iteration runs on the last good policy."""
     from loop import apply_policy
 
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
-    orders = held_orders(it) + orders_of(apply_policy())      # apply_policy: a session left over from an earlier iteration
+    orders = orders_of(apply_policy())      # apply_policy: a session left over from an earlier iteration
     if policymaker_failures() >= 2:
         revert_policy("two Policymaker sessions in a row failed")
     store_state(it, build_state(n))
@@ -448,51 +446,41 @@ def begin_work(n, it):
         if orders:
             place_orders(n, it, orders)
         return begin_shape(n, it)
-    if not (orders and place_orders(n, it, orders)):
+    if orders:
+        place_orders(n, it, orders)
+    ordered = read_json(tasks_path(n)) or []
+    if not ordered:
         return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks", rollback=True)
-    c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(orders), "width": width(orders)})
-
-
-def held_orders(it):
-    """The implementation-layer orders the policy phase's passes held, in the order of the passes."""
-    held = {}
-    for x in c.comments(it):
-        if x["body"].startswith(HELD_MARK) and c.trusted(x) and (m := re.search(r"```json\n(.*?)\n```", x["body"], re.S)):
-            doc = json.loads(m.group(1))
-            held[doc["pass"]] = doc["tasks"]
-    return [o for k in sorted(held) for o in held[k]]
+    c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(ordered), "width": width(ordered)})
 
 
 def policy_pass(n, it):
-    """A Policymaker pass is over: merge its changes, hold its implementation-layer orders and start its policy-layer
-    orders. The issue waits for them; a pass that ordered no policy-layer work ends the policy phase."""
+    """A Policymaker session is over: merge its changes and start the tasks it ordered; their dependencies set the order
+    of work. With `wake` the session waits for them and runs again in this iteration; otherwise the policy phase ends."""
     from loop import apply_policy
-    placed = {}
+    kept = []
 
     def settle(p):
         orders = read_orders(p)
-        taken = {t["id"] for t in read_json(tasks_path(n)) or []} | {o["id"] for o in held_orders(it)}
-        errs = validate_tasks({"tasks": orders}, ordered=True, taken=taken) if orders else []
+        if not orders:
+            return False
+        taken = {t["id"] for t in read_json(tasks_path(n)) or []}
+        errs = validate_tasks({"tasks": orders}, ordered=True, taken=taken)
         if errs:
             c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
             return False
-        now, later = split_orders(orders)
-        if later:
-            ids = {o["id"] for o in now}
-            store_state(it, {"pass": policy_pass_of(p), "tasks": [dict(o, blocked_by=[d for d in o["blocked_by"] if d not in ids]) for o in later]}, HELD_MARK)
-        placed[p] = now
-        return bool(now)
-    waiting = False
+        numbers = create_tasks(n, orders)
+        for num in numbers:
+            c.launch(num)
+        if not read_wake(p):
+            return False
+        c.update_report(p, {"ordered": " ".join(map(str, numbers))})
+        kept.append(p)
+        return True
     for p in apply_policy(settle):
-        if placed.get(p):
-            numbers = create_tasks(n, placed[p])
-            c.update_report(p, {"ordered": " ".join(map(str, numbers))})
-            for num in numbers:
-                c.launch(num)
-            waiting = True
-        else:
+        if p not in kept:
             store_state(p, {"audit_rev": audit_revision()}, SEEN_MARK)       # the audit it ordered and read is not new
-    if not waiting:
+    if not kept:
         begin_work(n, it)
 
 
@@ -650,19 +638,19 @@ def read_orders(p):
             for o in (tasks if isinstance(tasks, list) else []) if isinstance(o, dict)]
 
 
+def read_wake(p):
+    """True when the latest run of a Policymaker session asked to be woken after the tasks it ordered end."""
+    raw = read_state(p, ORDERS_MARK, last=True)
+    return isinstance(raw, dict) and raw.get("wake") is True
+
+
 def orders_of(sessions):
     """The orders the given finished Policymaker sessions left, in the order of the sessions."""
     return [o for p in sessions for o in read_orders(p)]
 
 
-def split_orders(orders):
-    """Orders by layer: (policy-layer roles, implementation-layer roles)."""
-    layer = c.cfg()["policymaker_only_roles"]
-    return [o for o in orders if o.get("role") in layer], [o for o in orders if o.get("role") not in layer]
-
-
 def place_orders(n, it, orders):
-    """The Policymaker's held implementation-layer orders become tasks of iteration n, running beside the shaper and its graph. True when placed."""
+    """The orders of a Policymaker session left over from an earlier iteration become tasks of iteration n, running beside the shaper and its graph. True when placed."""
     errs = validate_tasks({"tasks": orders}, ordered=True)
     if errs:
         c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
@@ -1077,8 +1065,7 @@ def check_goal():
     gate = c.load_yaml("goal/gate.yml")
     if not gate or not gate.get("command"):
         return
-    r = c.run_command(gate["command"], ".", env=c.clean_env(gate.get("env_passthrough") or c.cfg()["gate"]["env_passthrough"]),
-                      timeout=3600)
+    r = c.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120))
     verdict = parse_verdict(r.stdout)
     if r.returncode or not verdict or not verdict.get("reached"):
         return

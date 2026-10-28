@@ -79,5 +79,14 @@ expired or failed inputs before drawing conclusions.
 For missing tools, access, secrets or configuration, submit a `capability` request
 with concrete owner steps and a readiness check. Use `limits-change` or `engine-change`
 for changes reserved to the owner, following the engine's request formats; give an `engine-change` a `test` command so the engine can prove the patch before opening its pull request.
-Explain what each request unblocks. For each order and change, state in your report
-the gain you expect toward the goal and how a later session will check it.
+Explain what each request unblocks.
+
+## Order the work
+
+Order work as a task graph in `.session/orders.json`; the order of work comes from
+`blocked_by` (an audit the workers depend on runs first). Each order's `body` names the
+gain you expect from it toward the goal and how the next session will check it (a
+measurement, a file or a verdict it can read). An order without an expected gain is
+busywork: do not place it. Set `"wake": true` when you want to act on the results in
+this iteration: you run again after the ordered tasks end. State the same expectations
+for each change in your report.

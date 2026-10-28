@@ -72,7 +72,7 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 
 Work enters the default branch after a verdict "not worse than what is accepted". After a task ends `done` the
 epilogue, in a throwaway worktree: checks the paths (protected, role `write`, file size), rebases on the default branch,
-runs `## Verification` and `check`, then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
+runs `## Verification` and `check` (each in the tokenless job, on a copy of the candidate tree), then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
 work and skip the check and the gate. A rejected push is retried from the new tip, up to three times.
 A failed `## Verification` or `check` is an error the agent can fix: the epilogue runs the same issue again, its
 report carrying the error, up to two times (`fixes`). A gate verdict is not retried: `rejected` and `inconclusive` go to the Policymaker.
@@ -101,7 +101,7 @@ and [verification records](policy-changes.md).
 
 `goal/goal.md` (the accepted goal text) and `goal/gate.yml` (`command`, `owner_confirms`) exist only when the owner has
 accepted them, in the setup or later through an owner request. After every closed iteration, if a gate command exists
-and prints `{"reached": true, ...}`: with `owner_confirms` the engine asks the owner to confirm (a `result-confirmation`
+and prints `{"reached": true, ...}` (the command runs in the tokenless job; a job that returns nothing is "not reached"): with `owner_confirms` the engine asks the owner to confirm (a `result-confirmation`
 request; completed writes `GOAL_REACHED`, not planned lets the loop continue and is not asked again for the same state);
 without it the engine writes `GOAL_REACHED` itself. **Without an accepted gate the loop never ends by itself**; only
 switching `AUTOPILOT` off stops it.
@@ -138,7 +138,7 @@ starts the session only when that request is closed as completed, and then only 
 The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
 secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with
 `secret-missing:NAME` (see [session secrets](session-sandbox.md#session-secrets)). There is no other path for a secret
-to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command.
+to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command (not yet passed to the tokenless job).
 
 ## The watchdog
 

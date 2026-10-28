@@ -35,7 +35,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 |---|---|---|
 | Session setup and outputs | `loop.resolve`, `loop.stage`, `loop.finalize` | `test_session.py` |
 | Iteration lifecycle and task graph | `iteration.start_iteration`, `validate_tasks`, `instantiate`, `advance`, `close_iteration` | `test_flow.py`, `test_pure.py` |
-| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate` | `test_merge.py`, `test_change_records.py` |
+| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | `test_merge.py`, `test_change_records.py` |
 | Policymaker tuning and applying finished sessions | `policymaker_session.profile`; `loop.apply_policy` | `test_exports.py`, `test_flow.py` |
 | Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and suggestions | `session_reports.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |

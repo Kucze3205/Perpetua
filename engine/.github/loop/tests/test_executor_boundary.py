@@ -169,8 +169,8 @@ echo result'
                 if expected == "gate-rejected":
                     command += "\necho \"echo '{\\\"verdict\\\":\\\"accepted\\\"}'\" > gate.sh"
                 gate = '''set -eu
-test "$(git -C "$CANDIDATE_DIR" rev-parse HEAD)" = "$CANDIDATE_SHA"
-test "$(git -C "$BASELINE_DIR" rev-parse HEAD)" = "$BASELINE_SHA"
+test -n "$CANDIDATE_SHA" -a -n "$BASELINE_SHA"
+test "$PWD" = "$BASELINE_DIR"
 test "$CANDIDATE_SHA" != "$BASELINE_SHA"
 test -f "$CANDIDATE_DIR/src/product.txt"
 test ! -f "$BASELINE_DIR/src/product.txt"

@@ -6,8 +6,8 @@ and the Policymaker's ownership/order contract in `.github/loop/policymaker.md`.
 `loop.session_contract` selects sections by the engine-selected role and shaper label,
 and adds verification/delivery instructions from shell access and execution isolation.
 Both layers deliver file bytes, committed or not. A policy session is staged with a
-baseline; the epilogue builds one commit on it from the final files of the working tree
-(`executor_boundary.admit`, also used for execution sessions), without running the
+baseline (`executor_boundary.record`); the epilogue builds one commit on it from the final files of the working tree
+(`executor_boundary.import_candidate`, the same import as for execution sessions), without running the
 agent's git. New untracked files outside the role's write paths (CLI stubs, runner home
 files) are environment debris and are not admitted; symlinks, hard links and special files
 refuse the admission. Write-path, protected-path, size and change checks apply unchanged.
@@ -117,8 +117,8 @@ One contract serves every role; what differs is the tools. The starting prompt a
 assume a branch, a commit or a verification command. With `Bash` among its tools a session runs `## Verification`
 itself before `done`. Without it (the shaper) it cannot, and `done` means the files the task asks for are written.
 Neither layer gets a `Work on branch task/<n>` line: the engine admits the files a session leaves and never reads its
-commits (`executor_boundary.import_candidate` for execution, `admit` with the write-path filter for policy). A policy
-contract says the epilogue publishes the files left in the write paths and no commit is needed. The engine runs `## Verification` in the epilogue for everyone.
+commits (`executor_boundary.import_candidate`, for execution and policy roles alike). Every contract says so and asks for no
+commit. The engine runs `## Verification` in the epilogue for everyone.
 
 A shaper reporting `partial` fails the iteration without retry; `after_session`
 reads its graph only on `done`. Covered by

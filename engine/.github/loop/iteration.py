@@ -12,6 +12,9 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import shutil
+import tempfile
 
 import common as c
 import managed_resources as resources
@@ -24,6 +27,7 @@ MAP = "loop:map"
 REQ = "owner-request"
 REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice") + requests.KINDS
 SESSION_KINDS = ("goal-gate", "goal-change", "question") + requests.KINDS
+VERDICT_BYTES = 64 * 1024        # what the engine reads of a tokenless job's output
 STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
 HELD_MARK = "<!-- policymaker-held-orders -->"
@@ -1063,27 +1067,60 @@ def parse_verdict(stdout):
 
 # ---------------------------------------------------------------- change gate
 
+def stage_bundle(cand, base, ctx, command):
+    """The data the tokenless job receives for the gate: the accepted tree (`baseline/`), the candidate tree
+    (`candidate/`), the changed paths and `run.sh`, which runs the command from the accepted tree."""
+    bundle = tempfile.mkdtemp(prefix="bundle-")
+    for name, src in (("baseline", base), ("candidate", cand)):
+        shutil.copytree(src, os.path.join(bundle, name), symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    with open(os.path.join(bundle, "changed.txt"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(ctx["changed"]) + "\n")
+    env = {"CANDIDATE_SHA": ctx["candidate_sha"], "BASELINE_SHA": ctx["baseline_sha"], "TASK": str(ctx["task"]), "ITERATION": str(ctx["iteration"])}
+    with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write('B="$(cd "$(dirname "$0")" && pwd)"\nexport CANDIDATE_DIR="$B/candidate" BASELINE_DIR="$B/baseline" CHANGED_FILES_FILE="$B/changed.txt"\n')
+        fh.writelines("export %s=%s\n" % (k, shlex.quote(v)) for k, v in env.items())
+        fh.write('cd "$BASELINE_DIR"\nbash -c %s\n' % shlex.quote(command))
+    return bundle
+
+
+def read_verdict(out):
+    """The change gate's verdict from the tokenless job's output directory. Anything but a well-formed verdict is
+    `inconclusive`, and an `accepted` needs a clean exit: a missing, failed or malformed output never passes."""
+    def read(name):
+        if out is None:
+            return None
+        try:
+            with open(os.path.join(out, name), encoding="utf-8", errors="replace") as fh:
+                return fh.read(VERDICT_BYTES)
+        except OSError:
+            return None
+    stdout, code = read("stdout.txt"), read("exit-code")
+    if stdout is None or code is None:
+        return {"verdict": "inconclusive", "detail": "the tokenless job returned no verdict artifact"}
+    v = parse_verdict(stdout)
+    if not isinstance(v, dict) or v.get("verdict") not in ("accepted", "rejected", "inconclusive"):
+        return {"verdict": "inconclusive", "detail": "malformed verdict from the gate command (exit %s): %s" % (code.strip(), stdout[-500:])}
+    if v["verdict"] == "accepted" and code.strip() != "0":
+        return {"verdict": "inconclusive", "detail": "the gate command accepted but exited with %s" % code.strip()}
+    v.setdefault("improved", v["verdict"] == "accepted")
+    return v
+
+
 def run_gate(cand, base, ctx):
     """The change gate's verdict for a candidate tree. `owner`: the owner decides (the caller opens the request).
-    `script`: the command runs from the accepted tree (never from the candidate) and prints a JSON object last:
-    {"verdict": "accepted|rejected|inconclusive", "improved": bool, "detail": "..."}."""
+    `script`: the command runs in the tokenless job from the accepted tree (never from the candidate) and prints a
+    JSON object last: {"verdict": "accepted|rejected|inconclusive", "improved": bool, "detail": "..."}."""
     g = c.cfg()["gate"]
     if g["kind"] == "owner":
         return {"verdict": "pending-owner"}
     if not g.get("command"):
         return {"verdict": "inconclusive", "detail": "the change gate has no command"}
-    env = c.clean_env(g.get("env_passthrough") or [])
-    extra = {"CANDIDATE_DIR": cand, "BASELINE_DIR": base, "CANDIDATE_SHA": ctx["candidate_sha"], "BASELINE_SHA": ctx["baseline_sha"],
-             "CHANGED_FILES_FILE": ctx["changed_file"], "TASK": str(ctx["task"]), "ITERATION": str(ctx["iteration"])}
+    minutes = int(g.get("timeout_minutes") or 120)
+    bundle = stage_bundle(cand, base, ctx, g["command"])
     try:
-        r = c.run_command(g["command"], base, env=env, extra_env=extra, timeout=int(g.get("timeout_minutes") or 120) * 60)
-    except Exception as e:      # timeout, missing shell
-        return {"verdict": "inconclusive", "detail": "gate command failed to run: %s" % e}
-    v = parse_verdict(r.stdout)
-    if not v or v.get("verdict") not in ("accepted", "rejected", "inconclusive"):
-        return {"verdict": "inconclusive", "detail": "no verdict from the gate command (exit %s): %s" % (r.returncode, (r.stdout + r.stderr)[-500:])}
-    v.setdefault("improved", v["verdict"] == "accepted")
-    return v
+        return read_verdict(c.run_tokenless(bundle, minutes))
+    finally:
+        shutil.rmtree(bundle, ignore_errors=True)
 
 
 # ---------------------------------------------------------------- rolling back execution/ and policy/

@@ -127,23 +127,23 @@ def files(work, skip=lambda rel: False):
 
 
 def record(work, trusted):
-    """Policy-layer staging: the session's baseline, written before any untrusted process (the tree is not rebuilt)."""
+    """Staging without a sanitized snapshot: the session's baseline, written before any untrusted process."""
     names = git(work, "ls-tree", "-rz", "--name-only", "--full-tree", "HEAD").split(b"\0")
-    Path(trusted, "policy-baseline.json").write_text(json.dumps({
+    Path(trusted, "executor-baseline.json").write_text(json.dumps({
         "baseline": git(work, "rev-parse", "HEAD").decode().strip(),
         "paths": [n.decode("utf-8") for n in names if n], "work": os.path.abspath(work)}), encoding="utf-8")
 
 
-def admit(work, metadata, trusted, ref, message, ignore=lambda rel, data, tracked: False,
-          skip=lambda rel, tracked: False):
+def import_candidate(work, metadata, trusted, ref, skip=lambda rel, tracked: False):
     """Write objects/index in the engine repo, without consulting worker .git: one commit on the baseline from the file
-    bytes the session left. Environment debris never reaches any check: `skip(rel, tracked)` by path, before the file is
-    inspected or read; `ignore(rel, data, tracked)` by content."""
+    bytes the session left, whether or not it committed. Environment debris never reaches any check: `skip(rel, tracked)`
+    by path, before the file is inspected or read. A sandbox stub is empty and was not in the baseline: nothing the
+    agent wrote; content or a baseline file makes it real."""
     if os.path.abspath(work) != metadata["work"]:
         raise ValueError("executor output does not match its staged origin")
     tracked = set(metadata["paths"])
     current = {rel: v for rel, v in files(Path(work), lambda rel: skip(rel, rel in tracked)).items()
-               if not ignore(rel, v[0], rel in tracked)}
+               if not (rel in SANDBOX_STUBS and not v[0] and rel not in tracked)}
     with tempfile.TemporaryDirectory(prefix="executor-admission-") as tmp:
         index = os.path.join(tmp, "index")
         env = {"GIT_INDEX_FILE": index}
@@ -155,17 +155,11 @@ def admit(work, metadata, trusted, ref, message, ignore=lambda rel, data, tracke
             oid = git(trusted, "hash-object", "-w", "--stdin", data=data).decode().strip()
             git(trusted, "update-index", "--add", "--cacheinfo", mode, oid, rel, env=env)
         tree = git(trusted, "write-tree", env=env).decode().strip()
-        commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"], data=message.encode(),
+        commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"], data=b"Session output admitted as data\n",
                      # fixed dates: the same output is the same commit, so "the head did not move" is observable
                      env={"GIT_AUTHOR_DATE": "@0 +0000", "GIT_COMMITTER_DATE": "@0 +0000"}).decode().strip()
     git(trusted, "update-ref", ref, commit)
     return commit
-
-
-def import_candidate(work, metadata, trusted, ref):
-    # A stub is empty and was not in the baseline: nothing the agent wrote. Content or a baseline file makes it real.
-    return admit(work, metadata, trusted, ref, "Executor output admitted as data\n",
-                 lambda rel, data, tracked: rel in SANDBOX_STUBS and not data and not tracked)
 
 
 def runtime_files(extra=()):

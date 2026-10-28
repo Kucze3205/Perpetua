@@ -148,12 +148,24 @@ when updating a loop.
 
 ## Session lifecycle and outputs
 
-`session.yml` runs `prep` (guard, credential probe, resolve), then the session job:
-trusted engine and worker checkouts, `.github/loop/prepare.sh`, staging, role
-execution and epilogue. The agent has no GitHub token, `gh` or push rights. The
-trusted checkout is removed while it works. Both layers publish final file bytes
-against their staged baseline as described above; the engine does not read worker
-commits or execute worker Git.
+`session.yml` runs `prep` (guard, credential probe, resolve), then three jobs:
+
+- `stage` (GitHub token): checks out the engine and the worker tree, stages the session and ships it as an artifact.
+  The executor baseline goes in an artifact of its own, pinned by its sha256 in a job output; the session never
+  receives it.
+- `session` (`permissions: {}`; only the Claude token and the secrets the owner consented to): unpacks the staged
+  bundle, runs `.github/loop/prepare.sh` and the role, and packs the results: status files, the working tree
+  (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.
+- `epilogue` (GitHub token, a fresh runner): `loop.epilogue` takes the artifact in as data
+  (`session_artifact.py`). It refuses a tree with a path that escapes, one written through a link, a special file or an
+  oversized file; links and hard links that stay are unpacked unfollowed and refused by the admission below. It checks
+  the baseline against the staged digest, reads the commits from the bundle (kept under `refs/session/<issue>/`, never
+  merged; it never fetches from the session's repository) and finalizes.
+
+Status files (start, end, exit code, turns, tokens) are trusted as data. A usage limit that parks the loop is not: the
+epilogue parks only when the engine's own probe (`common.probe_limit`) confirms it, and the probe sets the clock.
+Both layers publish final file bytes against their staged baseline as described above; the engine does not read worker
+commits or execute worker Git. The session sandbox is still on (ADR-0006 removes it in a later step).
 
 The [session protocol](../../.github/loop/session-protocol.md) defines input/output
 files, statuses and report field ownership. Agent and script roles use the same

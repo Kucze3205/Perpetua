@@ -57,8 +57,8 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    A graph holds at most 50 tasks (shaper output and orders together); a larger one is refused with that reason and
    creates no issues.
    [Task graph](../../.github/loop/task-graph.md) defines the interface.
-4. **Execute.** Free tasks start parallel `session.yml` jobs. Each prepares and stages
-   inputs, executes its role and hands outputs to the trusted epilogue. Closing a
+4. **Execute.** Free tasks start parallel `session.yml` jobs. Each stages inputs in a token job, executes its role in a job without
+   GitHub permissions and hands outputs, as data, to the epilogue job. Closing a
    task releases its consumers; a producer that did not deliver blocks them.
    [Session isolation](session-sandbox.md) defines how outputs are admitted.
 5. **Close.** Once no session remains open, the engine writes the immutable iteration

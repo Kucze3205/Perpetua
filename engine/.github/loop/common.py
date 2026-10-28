@@ -18,7 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import managed_resources as resources
 
@@ -425,6 +425,29 @@ def probe():
         return e.code
     except OSError:
         return 0    # a transient network failure is not a dead credential
+
+
+def probe_limit():
+    """The engine's own check of a usage limit a session claims: one token of output on the cheapest model. Returns
+    (limited, reset): `limited` only on HTTP 429, `reset` from the provider's headers (a datetime, or None). A session's
+    status files are data; they never park the loop alone."""
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", method="POST", data=json.dumps({
+        "model": "claude-haiku-5-5", "max_tokens": 1, "messages": [{"role": "user", "content": "ok"}]}).encode(), headers={
+        "Authorization": "Bearer " + os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", ""),
+        "anthropic-version": "2023-06-01", "anthropic-beta": "oauth-2025-04-20", "content-type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+        return False, None
+    except urllib.error.HTTPError as e:
+        if e.code != 429:
+            return False, None
+        reset = e.headers.get("anthropic-ratelimit-unified-reset") or ""
+        if reset.isdigit():
+            return True, datetime.fromtimestamp(int(reset), timezone.utc)
+        after = e.headers.get("retry-after") or ""
+        return True, now() + timedelta(seconds=int(after)) if after.isdigit() else None
+    except OSError:
+        return False, None
 
 
 def outage_open():

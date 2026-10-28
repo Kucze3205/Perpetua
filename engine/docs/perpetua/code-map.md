@@ -45,7 +45,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Accepted-change and verifier records | `iteration.record_change`, `record_verification` | `test_change_records.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
 | Startup packages, token notices and offline history | `session_context.py`, `session_startup.py` | `test_context.py` |
-| Isolation, credentials and data-only admission | `session_security.py`, `executor_boundary.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_executor_boundary.py`, `test_model_boundary.py`, `test_static.py` |
+| Isolation, credentials and data-only admission; the session artifact | `session_security.py`, `executor_boundary.py`, `session_artifact.py`, `agent.sh`, `offline_exec.py` | `test_security.py`, `test_session_artifact.py`, `test_executor_boundary.py`, `test_model_boundary.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | `test_watchdog.py`, `test_stream.py` |
 
 `managed_resources.py` describes the managed definition tree and its role, prompt,

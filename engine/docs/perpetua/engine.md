@@ -39,6 +39,9 @@ review/reconfiguration by repeating setup is not implemented.
 
 ## One iteration
 
+When a session is staged, `policy/session-state.py` builds its `loop-state.json` and history from the engine's facts
+(see `session-context.md`).
+
 Iterations run sequentially. Each is an issue labelled `loop:map` and
 `loop:iteration N`; its sessions carry `loop:iteration N` and `role:<name>`.
 

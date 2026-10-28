@@ -20,6 +20,7 @@ import common as c
 import managed_resources as resources
 import owner_requests as requests
 import session_exports
+import session_inputs
 import session_reports
 import session_startup
 
@@ -338,26 +339,23 @@ def read_state(it, mark=STATE_MARK, last=False):
     return json.loads(m.group(1)) if m else None
 
 
-def export_state(n, directory, role=None, full_history=True):
-    """`.session/loop-state.json`: the snapshot taken when the Policymaker session was opened, or, for the shaper, when
-    its iteration began."""
+def stored_state(n, directory, role=None):
+    """The snapshot taken when the Policymaker session was opened, or, for the shaper, when its iteration began, limited to
+    what the role may see; its reports are staged beside it. None when there is none. Policy shapes it into
+    `.session/loop-state.json` (session_context.stage)."""
     state = read_state(n)
     if state is None:
         k = c.iteration_of(c.label_names(c.issue(n)))
         it = find_iteration_issue(k, state="all") if k is not None else None
         state = read_state(it["number"]) if it else None
-    os.makedirs(directory, exist_ok=True)
-    if state is not None and role == "policymaker" and (passed := read_state(n, PASS_MARK, last=True)):
+    if state is None:
+        return None
+    if role == "policymaker" and (passed := read_state(n, PASS_MARK, last=True)):
         state = dict(state, policy_pass=passed)
-    if state is not None:
-        import session_inputs
-        if role and session_inputs.restricted(role):
-            state = dict(session_inputs.state(state), task_options=session_inputs.task_options())
-        session_reports.stage(state, directory, role=role)
-        import session_context
-        state = session_context.startup_state(state, directory, role, full=full_history)
-        with open(os.path.join(directory, "loop-state.json"), "w", encoding="utf-8") as fh:
-            json.dump(state, fh, indent=1, ensure_ascii=False)
+    if role and session_inputs.restricted(role):
+        state = dict(session_inputs.state(state), task_options=session_inputs.task_options())
+    session_reports.stage(state, directory, role=role)
+    return state
 
 
 # ---------------------------------------------------------------- starting an iteration
@@ -552,9 +550,9 @@ class PolicyScriptError(Exception):
     """A policy script returned data the engine refuses."""
 
 
-def run_policy_script(name, facts):
+def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
     """The JSON object `policy/<name>` prints for `facts`, run in the tokenless job (`python3 <script> facts.json`). Anything
-    else - no output, over POLICY_OUTPUT_BYTES, a failed run, not one JSON object - raises PolicyScriptError. None: no such script."""
+    else - no output, over `max_bytes`, a failed run, not one JSON object - raises PolicyScriptError. None: no such script."""
     path = "%s/%s" % (resources.ROOT, name)
     if not os.path.isfile(path):
         return None
@@ -572,13 +570,13 @@ def run_policy_script(name, facts):
         with open(os.path.join(out, "exit-code"), encoding="utf-8") as fh:
             code = fh.read().strip()
         with open(os.path.join(out, "stdout.txt"), encoding="utf-8", errors="replace") as fh:
-            text = fh.read(POLICY_OUTPUT_BYTES + 1)
+            text = fh.read(max_bytes + 1)
     except (OSError, TypeError):
         raise PolicyScriptError("policy/%s returned no output from the tokenless job" % name)
     if code != "0":
         raise PolicyScriptError("policy/%s exited with %s" % (name, code))
-    if len(text) > POLICY_OUTPUT_BYTES:
-        raise PolicyScriptError("policy/%s printed more than %s bytes" % (name, POLICY_OUTPUT_BYTES))
+    if len(text) > max_bytes:
+        raise PolicyScriptError("policy/%s printed more than %s bytes" % (name, max_bytes))
     try:
         value = json.loads(text)
     except ValueError:

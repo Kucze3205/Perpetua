@@ -400,7 +400,7 @@ class EpilogueTest(SessionCase):
 
     def test_a_verification_job_that_returns_nothing_fails_the_verification(self):
         n = self.issue(body="## Goal\nx\n## Verification\n`true`\n")
-        self.hub.tokenless_fault = "no-artifact"
+        self.w.before_finalize = lambda: setattr(self.hub, "tokenless_fault", "no-artifact")     # after staging, which runs the state script
         self.w.session(n, files={"src/a.txt": "A"})
         self.assertEqual(self.hub.report(n)["verification"], "fail")
 

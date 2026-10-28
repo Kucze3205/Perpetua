@@ -243,11 +243,16 @@ def stage(n, work, trusted):
     metadata = it.frontmatter(c.safe_read(".", resources.role_directory(role) + "/SKILL.md"))[0]
     fetch_inputs(i["body"], os.path.join(sess, "inputs"), role=role)
     session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess, defaults=metadata.get("exports"))
-    if role == "policymaker" or "loop:shaper" in labels:
-        full = c.marker(i["body"], "exports") is None and "exports" not in metadata
-        it.export_state(n, sess, role=role, full_history=full)
-    else:
-        session_context.history(sess, role)
+    sees_state = role == "policymaker" or "loop:shaper" in labels
+    full = sees_state and c.marker(i["body"], "exports") is None and "exports" not in metadata
+    state = it.stored_state(n, sess, role=role) if sees_state else None
+    try:
+        session_context.stage(sess, role, state, full=full)
+    except it.PolicyScriptError as e:
+        k = c.iteration_of(labels)
+        if k is not None:
+            it.fail_iteration(k, "invalid policy script output: %s" % e, rollback=True)
+        raise SystemExit("invalid policy script output: %s" % e)
     if "loop:shaper" in labels and session_inputs.restricted(role):
         with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
             json.dump(session_inputs.capabilities(), fh, indent=1)

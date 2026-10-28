@@ -22,6 +22,9 @@ summary = (st.get("summary") or "").strip()
 if st["status"] == "done":
     body = "Built in %s and merged into the integration branch as %s.\n\n%s\n\n```\n%s\n```" % (
         run, st.get("commit", "?")[:12], summary, st.get("diffstat", ""))
+    if st.get("workflows_patch"):
+        body += ("\n\n**For the owner:** the build cannot push changes to `.github/workflows/`, so this ticket's change there "
+                 "is not on the integration branch. Apply it with `git apply`:\n\n```diff\n%s\n```" % st["workflows_patch"])
     comment(ISSUE, body)
     gh("issue", "close", str(ISSUE), "--reason", "completed")
 elif st["status"] == "limited":

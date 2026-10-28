@@ -238,8 +238,32 @@ class DailyCapTest(WatchCase):
         self.assertIsNone(it.open_iteration())
 
 
+class PolicyCadenceTest(WatchCase):
+    YML = SCRIPT_GATE + "cadence:\n  min_interval_minutes: 60\n"
+    PARAMS = fakes.POLICY_PARAMS + "cadence:\n  min_interval_minutes: 10\n"
+
+    def test_a_looser_cadence_of_policy_has_no_effect(self):
+        self.run_iteration_zero()
+        self.later(30)
+        self.assertIsNone(it.start_iteration())
+        self.later(70)
+        self.assertEqual(it.start_iteration(), 1)
+
+
+class StricterPolicyCadenceTest(WatchCase):
+    YML = SCRIPT_GATE + "cadence:\n  min_interval_minutes: 10\n"
+    PARAMS = fakes.POLICY_PARAMS + "cadence:\n  min_interval_minutes: 60\n  daily_iterations: 1\n"
+
+    def test_a_stricter_cadence_of_policy_slows_the_iterations(self):
+        self.run_iteration_zero()
+        self.later(30)
+        self.assertIsNone(it.start_iteration())
+        self.later(70)
+        self.assertIsNone(it.start_iteration())      # the daily count of policy: one
+
+
 class StreamRetentionTest(WatchCase):
-    YML = SCRIPT_GATE + "params:\n  stream_retention_iterations: 2\n"
+    PARAMS = fakes.POLICY_PARAMS + "stream_retention_iterations: 2\n"
 
     def test_old_streams_are_deleted_and_recent_ones_stay(self):
         self.hub.artifacts = [{"id": 1, "name": "stream-0000-5"}, {"id": 2, "name": "stream-0001-6"},

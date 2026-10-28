@@ -65,7 +65,7 @@ remain independent. Memory organization and authorship are mutable policy choice
 
 Every model Session gets `.session/startup.json`: model, provider estimate,
 document paths/hashes/byte sizes and `ok`, `over_budget` or `unmeasured` status.
-Owner `engine.yml` `startup_token_warning` defaults to 100000, a warning threshold
+`startup_token_warning` of `policy/params.yml` defaults to 100000, a warning threshold
 and not a target. Script-only sessions have no token budget.
 
 Trusted staging makes one request to

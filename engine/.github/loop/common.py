@@ -43,13 +43,11 @@ DEFAULTS = {
     "author": {"name": "", "email": ""},
     "owner": "",
     "idle_resumes": 3,
-    "startup_token_warning": 100000,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],
     "notes_paths": ["journal/"],
     "evaluator_paths": [resources.EVALUATOR],
-    "policymaker_only_roles": ["evaluator", "audit"],
     "verifier_role": "evaluator-verifier",
     "large_file_bytes": 5000000,
     "gate": {"kind": "owner", "command": "", "timeout_minutes": 120, "env_passthrough": []},
@@ -57,8 +55,7 @@ DEFAULTS = {
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
-    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
-               "stream_retention_iterations": 8},
+    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
 }
 
@@ -86,11 +83,46 @@ def cfg():
     return merged(DEFAULTS, load_yaml("engine.yml"))
 
 
+# What `policy/params.yml` may tune, and the kernel's hard cap on each: a policy value above its cap is clamped.
+HARD_CAPS = {"fix_rounds": 5, "successor_generations": 5, "merge_conflict_retries": 5, "backoff_hours": 72, "backoff_steps": 6}
+
+
 def params():
     p = {"shaper": None, "criterion": "", "models": {"default": "claude-sonnet-5-5"}, "efforts": ["low", "medium", "high"],
          "ceilings": {"job_minutes": 240, "iteration_minutes": None, "max_turns": 150},
-         "policymaker_triggers": {"every_iterations": None, "no_progress": None}}
+         "policymaker_triggers": {"every_iterations": None, "no_progress": None},
+         "limits": {"fix_rounds": 2, "successor_generations": 3, "merge_conflict_retries": 3, "backoff_hours": [1, 5, 24]},
+         "cadence": {"min_interval_minutes": None, "daily_iterations": None},
+         "policymaker_only_roles": ["evaluator", "audit"], "audit_exports_window": 3,
+         "stream_retention_iterations": 8, "startup_token_warning": 100000}
     return merged(p, load_yaml(resources.PARAMS))
+
+
+def limits():
+    """The loop's retry limits from policy, each clamped to 0..its hard cap (a malformed value falls back to the default)."""
+    got, out = params()["limits"], {}
+    for key in ("fix_rounds", "successor_generations", "merge_conflict_retries"):
+        v = got.get(key)
+        out[key] = min(max(v, 0), HARD_CAPS[key]) if isinstance(v, int) and not isinstance(v, bool) else params_default(key)
+    steps = got.get("backoff_hours")
+    ok = isinstance(steps, list) and steps and all(isinstance(x, (int, float)) and not isinstance(x, bool) and x > 0 for x in steps)
+    out["backoff_hours"] = [min(x, HARD_CAPS["backoff_hours"]) for x in steps[:HARD_CAPS["backoff_steps"]]] if ok else [1, 5, 24]
+    return out
+
+
+def params_default(key):
+    return {"fix_rounds": 2, "successor_generations": 3, "merge_conflict_retries": 3}[key]
+
+
+def cadence():
+    """The cadence in force: policy may only slow iterations down, so each bound is the stricter of the owner's
+    (`engine.yml`) and policy's. None: no bound."""
+    owner, policy = cfg()["cadence"], params()["cadence"]
+    out = {}
+    for key, pick in (("min_interval_minutes", max), ("daily_iterations", min)):
+        vals = [v for v in (owner.get(key), policy.get(key)) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0]
+        out[key] = pick(vals) if vals else None
+    return out
 
 
 def profiles():

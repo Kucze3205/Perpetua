@@ -37,6 +37,19 @@ merges the plugin engine with the loop's local changes using the untouched
 `perpetua/engine` branch as the merge base. It is separate from fresh setup;
 review/reconfiguration by repeating setup is not implemented.
 
+## Parameters of policy
+
+`policy/params.yml` holds the values the Policymaker tunes, each below a kernel hard cap (a higher value is clamped):
+`limits.fix_rounds` (cap 5), `limits.successor_generations` (5), `limits.merge_conflict_retries` (5) and
+`limits.backoff_hours` (up to 6 steps of 72 h). It also holds the defaults of `policymaker_only_roles`,
+`audit_exports_window` (cap 20), `stream_retention_iterations` and `startup_token_warning`.
+
+`cadence` in `policy/params.yml` can only be stricter than the owner's in `engine.yml`: for each bound the engine takes the
+stricter value (the longer interval, the smaller daily count), so a looser policy value has no effect.
+
+Machine preparation is `policy/prepare.sh`: the engine stages the accepted copy and the tokenless session job runs it
+before the role (none: nothing is prepared).
+
 ## One iteration
 
 When a session is staged, `policy/session-state.py` builds its `loop-state.json` and history from the engine's facts

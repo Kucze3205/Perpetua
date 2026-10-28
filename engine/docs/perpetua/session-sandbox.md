@@ -130,7 +130,7 @@ when updating a loop.
   The executor baseline goes in an artifact of its own, pinned by its sha256 in a job output; the session never
   receives it.
 - `session` (`permissions: {}`; only the Claude token and the secrets the owner consented to): unpacks the staged
-  bundle, runs `.github/loop/prepare.sh` and the role, and packs the results: status files, the working tree
+  bundle, runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
   (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.
 - `epilogue` (GitHub token, a fresh runner): `loop.epilogue` takes the artifact in as data
   (`session_artifact.py`). It refuses a tree with a path that escapes, one written through a link, a special file or an

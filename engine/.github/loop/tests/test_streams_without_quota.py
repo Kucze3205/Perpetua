@@ -26,9 +26,6 @@ class StreamWithoutQuotaTest(SessionCase):
         name = "stream-%04d-%s" % (c.iteration_of(c.label_names(c.issue(n))) or 0, n)
         self.assertEqual(it.session_summary(c.issue(n), {name})["stream"], name)
 
-    def test_streams_are_pruned_by_default(self):
-        self.assertIsNotNone(c.DEFAULTS["params"]["stream_retention_iterations"])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -153,7 +153,7 @@ def prepare(n, role, model, work, trusted, shaper=False):
               (role, "\n".join("- " + json.dumps(path) for path in readable))) + prompt
     with open(prompt_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(prompt)
-    budget = {"model": model, "limit": c.cfg()["startup_token_warning"], "tokens": None,
+    budget = {"model": model, "limit": c.params()["startup_token_warning"], "tokens": None,
               "status": "unmeasured", "detail": "", "documents": documents,
               "measurement": "Provider estimate of the contract, bootstrap and declared documents; "
                              "excludes this diagnostic output, CLI internals and later reads."}

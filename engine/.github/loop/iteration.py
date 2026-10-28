@@ -378,7 +378,7 @@ def closed_without_record():
 
 
 def cadence_ok():
-    cad = c.cfg()["cadence"]
+    cad = c.cadence()
     recs = [r for r in records() if r]
     if cad.get("min_interval_minutes") and recs:
         if (c.now() - c.parse_time(recs[-1]["ended"])).total_seconds() < cad["min_interval_minutes"] * 60:
@@ -706,7 +706,7 @@ def validate_tasks(doc, ordered=False, taken=()):
     """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
     `policymaker_only_roles` and only of them, unless no shaper is set: then it orders any role. `taken`: ids the iteration already uses."""
     profiles, parameters, config = c.profiles(), c.params(), c.cfg()
-    policymaker_roles = config["policymaker_only_roles"]
+    policymaker_roles = parameters["policymaker_only_roles"]
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     if not isinstance(tasks, list) or not tasks:
         return ["`tasks` must be a non-empty list"]
@@ -1035,7 +1035,7 @@ def close_iteration(n, status, failure=None):
 
 
 def prune_streams(n):
-    keep = c.cfg()["params"].get("stream_retention_iterations")
+    keep = c.params()["stream_retention_iterations"]
     if not keep:
         return
     for a in c.list_artifacts():

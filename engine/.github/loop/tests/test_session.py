@@ -147,6 +147,17 @@ class StageTest(SessionCase):
         hook = json.loads(read(os.path.join(trusted, "settings.json")))
         self.assertIn("remaining.py", hook["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
 
+    def test_machine_preparation_is_the_script_of_policy(self):
+        n = self.issue()
+        trusted = os.path.join(self.w.tmp, "trusted-none")
+        loop.stage(n, self.work(), trusted)
+        self.assertNotIn("apt-get", read(os.path.join(trusted, "prepare.sh")))
+        self.w.push_main({"policy/prepare.sh": "#!/usr/bin/env bash\napt-get install -y jq\n"}, "policy installs jq")
+        c.sync_main()
+        trusted = os.path.join(self.w.tmp, "trusted-policy")
+        loop.stage(n, self.work(), trusted)
+        self.assertIn("apt-get install -y jq", read(os.path.join(trusted, "prepare.sh")))
+
     def test_the_audit_gets_the_streams_of_the_last_iterations(self):
         self.hub.artifacts = [{"id": 1, "name": "stream-0001-3", "workflow_run": {"id": 101}},
                               {"id": 2, "name": "stream-0004-9", "workflow_run": {"id": 104}},
@@ -445,6 +456,26 @@ class EpilogueTest(SessionCase):
         self.assertEqual(self.hub.issues[after]["state"], "open")
         self.assertEqual(self.hub.issues[n]["state"], "closed")
         self.assertEqual(self.hub.dispatched[-1][1]["issue"], succ)
+
+    def test_policy_values_above_the_kernel_caps_are_clamped(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "limits:\n  fix_rounds: 99\n  successor_generations: 99\n"
+                          "  merge_conflict_retries: -4\n  backoff_hours: [1, 500]\n"}, "policy tunes the limits")
+        c.sync_main()
+        self.assertEqual(c.limits(), {"fix_rounds": 5, "successor_generations": 5, "merge_conflict_retries": 0, "backoff_hours": [1, 72]})
+
+    def test_policy_may_allow_a_fourth_generation_and_more_fix_rounds(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "limits:\n  successor_generations: 4\n"}, "policy tunes the limits")
+        c.sync_main()
+        n = self.issue(labels=["generation:3"])
+        self.w.session(n, status="partial", report_extra="## What next\n- x\n\n## Successor\ntitle: More\nbody: x\n")
+        self.assertIn("More", [x["title"] for x in self.hub.issues.values()])
+
+    def test_policy_fix_rounds_end_the_correction_rounds(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "limits:\n  fix_rounds: 0\n"}, "policy tunes the limits")
+        c.sync_main()
+        n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/b.txt`\n")
+        self.w.session(n, files={"src/a.txt": "A"})
+        self.assertNotIn("Correction round", self.hub.prose(n))
 
     def test_the_third_generation_does_not_delegate(self):
         n = self.issue(labels=["generation:3"])

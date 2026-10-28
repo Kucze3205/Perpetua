@@ -31,15 +31,11 @@ import executor_boundary
 import session_context
 import session_startup
 
-BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
 MAX_AGE_DAYS = 30
 MAX_KICKS = 3
 CRASH_STREAK = 3                # consecutive `crashed` without a commit
 MAX_SLEEP_S = 340 * 60          # resume.yml: a job is limited to 360 min; a longer park is the watchdog's
 GRACE_MIN = 30                  # covers dispatch latency, never working time
-MAX_GEN = 3                     # successor generations
-MAX_CONFLICTS = 3
-MAX_FIXES = 2                   # correction rounds after a failed `## Verification` or `check`
 PUSH_TRIES = 3
 JOB_MAX_MIN = 355               # GitHub kills a job at 360 min; the epilogue must fit
 
@@ -276,8 +272,15 @@ def stage(n, work, trusted):
         fh.write(",".join(security.tool_names(p)))
     with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:
         json.dump({"mcpServers": {}}, fh)
-    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py", "sandbox.sh", "prepare.sh", "session_artifact.py"):
+    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py", "sandbox.sh", "session_artifact.py"):
         shutil.copy(".github/loop/" + f, trusted)
+    # Machine preparation is policy: `policy/prepare.sh` of the accepted tree (none: nothing to prepare).
+    prepare = os.path.join(resources.ROOT, "prepare.sh")
+    if os.path.isfile(prepare) and not os.path.islink(prepare):
+        shutil.copy(prepare, os.path.join(trusted, "prepare.sh"))
+    else:
+        with open(os.path.join(trusted, "prepare.sh"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("#!/usr/bin/env bash\n")
     with open(os.path.join(trusted, "cli-version"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(str(c.cfg()["cli_version"]) + "\n")
     if resources.layered() and p.get("agent") is not False:
@@ -435,12 +438,12 @@ def run_verification(cand, body):
 
 def fix_round(n, f, upd, why):
     """A failed `## Verification` or `check` is an error the agent can fix: run the same issue again, its report carrying
-    the error, up to MAX_FIXES times. False when the rounds are spent."""
-    kk = int(f.get("fixes", 0)) + 1
-    if kk > MAX_FIXES:
+    the error, up to the policy's `fix_rounds` times. False when the rounds are spent."""
+    kk, max_fixes = int(f.get("fixes", 0)) + 1, c.limits()["fix_rounds"]
+    if kk > max_fixes:
         return False
     upd["fixes"] = kk
-    c.update_report(n, dict(upd, status="partial"), "%s\nCorrection round %s of %s." % (why, kk, MAX_FIXES))
+    c.update_report(n, dict(upd, status="partial"), "%s\nCorrection round %s of %s." % (why, kk, max_fixes))
     c.launch(n)
     return True
 
@@ -745,7 +748,7 @@ def finalize(n, work):
         if r["result"] == "conflict":
             kk = int(f.get("conflicts", 0)) + 1
             upd["conflicts"] = kk
-            if kk < MAX_CONFLICTS:
+            if kk < c.limits()["merge_conflict_retries"]:
                 c.update_report(n, dict(upd, status="partial"), "Rebase on the default branch: conflict (attempt %s)." % kk)
                 c.edit_labels(n, add=["conflict"])
                 c.launch(n)
@@ -909,7 +912,8 @@ def park(n, i, f, upd, prose, reset, head):
                       "Each resume used the agent and produced no turn and no commit.",
                       "Look at the session's stream and report, fix the cause, then close this issue.")
         return "%s resumes in a row used the agent without progress." % idle
-    when = reset or c.now() + timedelta(hours=BACKOFF_H[min(kk - 1, len(BACKOFF_H) - 1)])
+    backoff = c.limits()["backoff_hours"]      # when the session result carries no limit reset time
+    when = reset or c.now() + timedelta(hours=backoff[min(kk - 1, len(backoff) - 1)])
     c.update_report(n, dict(upd, status="paused", attempts=kk, idle_resumes=idle, head=head, resume_after=c.iso(when), paused_at=c.iso()), prose)
     c.edit_labels(n, add=["blocked:rate-limit"])
     c.workflow_run("resume.yml", issue=n)      # the clock lives in a workflow: GitHub's cron lags by hours
@@ -1011,7 +1015,7 @@ def spawn_successor(n, i, report_body):
         return None
     labels = c.label_names(i)
     gen = max([int(l.split(":")[1]) for l in labels if l.startswith("generation:")] or [0])
-    if gen >= MAX_GEN:
+    if gen >= c.limits()["successor_generations"]:
         return None
     keep = [l for l in labels if l.startswith(("role:", "model:", "effort:", c.ITER, "loop:shaper"))] + ["generation:%s" % (gen + 1)]
     for l in keep:

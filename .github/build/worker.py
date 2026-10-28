@@ -113,6 +113,33 @@ def commit_leftovers():
         git("commit", "-q", "-m", "#%d: changes left uncommitted by the session" % ISSUE)
 
 
+def leave_workflows():
+    """The Actions token cannot push changes to .github/workflows/ (GitHub refuses them), so the ticket's changes there
+    are set aside as a patch for the owner and the files are restored to the integration branch's version."""
+    git("fetch", "-q", "origin", BRANCH, net=True)
+    base = git("merge-base", "FETCH_HEAD", "HEAD").stdout.strip()
+    paths = git("diff", "--name-only", base, "HEAD", "--", ":(top).github/workflows").stdout.split()
+    if not paths:
+        return
+    patch = git("diff", base, "HEAD", "--", ":(top).github/workflows").stdout
+    with open(os.path.join(OUT, "workflows.patch"), "w") as fh:
+        fh.write(patch)
+    for path in paths:
+        if git("cat-file", "-e", "%s:%s" % (base, path), check=False).returncode == 0:
+            git("checkout", base, "--", path)
+        else:
+            git("rm", "-q", "-f", "--", path)
+    git("commit", "-q", "-m", "#%d: leave changes to .github/workflows/ to the owner (the build cannot push them)" % ISSUE)
+
+
+def workflows_patch():
+    try:
+        with open(os.path.join(OUT, "workflows.patch")) as fh:
+            return fh.read()[-20000:]
+    except OSError:
+        return ""
+
+
 def tests():
     out = []
     for cmd in TESTS:
@@ -130,6 +157,7 @@ def green(why):
     """Tests pass, or fix rounds in the same session until they do."""
     for k in range(FIX_ROUNDS + 1):
         commit_leftovers()
+        leave_workflows()
         ok, log = tests()
         if ok:
             return True, ""
@@ -186,7 +214,7 @@ def main():
                 push_work(work_branch)
                 head = git("rev-parse", "HEAD").stdout.strip()
                 changed = git("diff", "--stat", base, head).stdout[-3000:]
-                finish("done", summary=summary, commit=head, diffstat=changed)
+                finish("done", summary=summary, commit=head, diffstat=changed, workflows_patch=workflows_patch())
             print("push to %s, attempt %d: %s" % (BRANCH, attempt + 1, pushed.stderr.strip()), flush=True)
             time.sleep(20 + 20 * attempt)
         push_work(work_branch)

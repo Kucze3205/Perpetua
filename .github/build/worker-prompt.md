@@ -32,6 +32,11 @@ state of the sibling tickets and the parent spec. Read it in full first.
 - You are on branch `{BRANCH}`. Commit your work in logical commits with clear English messages.
 - Do not add `Co-Authored-By` or any other attribution lines.
 - Do not push. Do not use `gh` and do not call GitHub. The build pushes and reports for you.
+- The build cannot push changes to `.github/workflows/` at the repository root (GitHub refuses them from the Actions
+  token). Make such a change normally if the ticket needs it: before the tests the build sets it aside as a patch for
+  the owner and restores those files. So the suites must pass with the workflow files as they are on the integration
+  branch. If a test asserts workflow content that your change affects, exempt that file in the test with a comment
+  naming the ticket; the owner removes the exemption when applying the patch.
 
 ## Final message
 

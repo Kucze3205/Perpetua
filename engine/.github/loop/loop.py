@@ -845,8 +845,8 @@ def epilogue(n, artifact, baseline, digest):
 
 
 def hold_policymaker_output(n, work):
-    """Keep a finished Policymaker pass's orders on its issue until the iteration continues; a pass without orders keeps
-    an empty entry, so the orders of an earlier pass are never read again. Returns the report prose."""
+    """Keep a finished Policymaker session's orders on its issue until the iteration continues; a run without orders keeps
+    an empty entry, so the orders of an earlier run are never read again. Returns the report prose."""
     session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
     text = c.safe_read(work, ".session/orders.json")
     try:
@@ -858,14 +858,15 @@ def hold_policymaker_output(n, work):
     else:
         prose = ""
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
-    it.store_state(n, {"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else []}, it.ORDERS_MARK)
+    wake = isinstance(doc, dict) and doc.get("wake") is True
+    it.store_state(n, {"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, it.ORDERS_MARK)
     return prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
 
 
 def apply_policy(keeps_open=lambda number: False):
     """Merge the finished Policymaker sessions, oldest first, and return the numbers of those that merged. An unmerged one
     counts as a failed Policymaker session. A merged one is closed, unless `keeps_open(number)`: it is relaunched after
-    the sessions it ordered, so it waits (`awaiting:orders`)."""
+    the tasks it ordered with `wake`, so it waits (`awaiting:orders`)."""
     merged = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
         fields = c.report_fields(x["number"])

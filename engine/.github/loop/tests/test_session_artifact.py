@@ -40,6 +40,7 @@ class ReceiveTreeTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def refused(self, *members):
+        shutil.rmtree(self.work, ignore_errors=True)
         tar_of(self.tmp, members)
         with self.assertRaises(ValueError):
             artifact.receive_tree(self.tmp, self.work)

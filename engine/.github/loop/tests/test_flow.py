@@ -440,6 +440,35 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.phase(), "shape")
         self.assertEqual(it.read_state(self.open_iteration()["number"])["policy_params"]["criterion"], "two")
 
+    def test_a_pass_may_defer_its_changes_to_the_end_of_the_policy_phase(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        later = json.dumps({"merge": "later", "tasks": json.loads(self.E)["tasks"]})
+        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)}, session_files={"orders.json": later})
+        self.assertNotIn("criterion: one", self.w.origin_file("policy/params.yml"))      # the ordered session sees the old organization
+        self.assertEqual(self.hub.issues[pol]["state"], "open")
+        self.w.session(self.task_issue("order-%s-e" % pol))
+        self.assertEqual(len(self.runs_of(pol)), 2)
+        self.assertNotIn("criterion: one", self.w.origin_file("policy/params.yml"))
+        self.w.session(pol, files={"policy/other.txt": "two"}, base="origin/task/%s" % pol)                           # the branch still carries the first change
+        self.assertEqual(self.phase(), "shape")
+        self.assertIn("criterion: one", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.hub.issues[pol]["state"], "closed")
+        self.assertEqual(it.read_state(self.open_iteration()["number"])["policy_params"]["criterion"], "one")
+
+    def test_a_deferred_change_of_the_evaluator_is_refused_at_the_end_of_the_phase_with_the_rest_of_the_branch(self):
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        later = json.dumps({"merge": "later", "tasks": json.loads(self.E)["tasks"]})
+        self.w.session(pol, files={"policy/evaluator/gate.sh": "echo hacked", "policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)},
+                       session_files={"orders.json": later})
+        self.w.session(self.task_issue("order-%s-e" % pol))
+        self.w.session(pol, base="origin/task/%s" % pol)
+        self.assertEqual(self.hub.report(pol)["status"], "blocked")
+        self.assertNotIn("hacked", self.w.origin_file("policy/evaluator/gate.sh"))
+        self.assertNotIn("criterion: one", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.phase(), "shape")
+
     def test_a_pass_may_order_again_and_nothing_caps_the_passes(self):
         it.start_iteration()
         pol = self.session_issue("policymaker")

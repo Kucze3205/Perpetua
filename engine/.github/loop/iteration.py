@@ -392,11 +392,14 @@ def policy_pass(n, it):
     placed = {}
 
     def settle(p):
+        if p in placed:
+            return bool(placed[p])
         orders = read_orders(p)
         taken = {t["id"] for t in read_json(tasks_path(n)) or []} | {o["id"] for o in held_orders(it)}
         errs = validate_tasks({"tasks": orders}, ordered=True, taken=taken) if orders else []
         if errs:
             c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
+            placed[p] = []
             return False
         now, later = split_orders(orders)
         if later:
@@ -404,18 +407,27 @@ def policy_pass(n, it):
             store_state(it, {"pass": policy_pass_of(p), "tasks": [dict(o, blocked_by=[d for d in o["blocked_by"] if d not in ids]) for o in later]}, HELD_MARK)
         placed[p] = now
         return bool(now)
-    waiting = False
-    for p in apply_policy(settle):
+
+    def start(p):
+        numbers = create_tasks(n, placed[p])
+        c.update_report(p, {"ordered": " ".join(map(str, numbers))})
+        for num in numbers:
+            c.launch(num)
+
+    def defer(p):
+        """The pass said its changes merge at the end of the policy phase, and it ordered policy-layer work: they wait."""
+        if not defers(p) or not settle(p):
+            return False
+        note_long_policy_phase(n, policy_pass_of(p))
+        start(p)
+        return True
+    for p in apply_policy(settle, defer):
         note_long_policy_phase(n, policy_pass_of(p))
         if placed.get(p):
-            numbers = create_tasks(n, placed[p])
-            c.update_report(p, {"ordered": " ".join(map(str, numbers))})
-            for num in numbers:
-                c.launch(num)
-            waiting = True
+            start(p)
         else:
             store_state(p, {"audit_rev": audit_revision()}, SEEN_MARK)       # the audit it ordered and read is not new
-    if not waiting:
+    if not any(placed.values()):
         begin_work(n, it)
 
 
@@ -429,6 +441,12 @@ def note_long_policy_phase(n, passes):
                  "The Policymaker has run %s passes in this iteration's policy phase; each pass is a session with its ordered sessions." % passes,
                  "The engine caps nothing; a long policy phase costs time and quota, so you can see it.",
                  "Nothing is blocked. The iteration continues; closing this request changes nothing.", ref=ref, iteration=n)
+
+
+def defers(p):
+    """Whether the latest pass of Policymaker session p stated `"merge": "later"` in its orders: its changes wait for the end of the policy phase."""
+    raw = read_state(p, ORDERS_MARK, last=True)
+    return isinstance(raw, dict) and raw.get("merge") == "later"
 
 
 def policy_pass_of(p):
@@ -448,11 +466,20 @@ def resume_policymaker(p):
     ordered = [{"issue": int(x), "role": (c.roles_of(c.label_names(c.issue(int(x)))) or [""])[0],
                 "status": c.report_fields(int(x)).get("status")} for x in (f.get("ordered") or "").split()]
     store_state(p, {"pass": k, "ordered": ordered}, PASS_MARK)
-    spent = ("status", "commit", "fixes", "merged", "verdict", "improved", "detail", "verifier_issue", "verified_commit",
+    spent = ("deferred", "status", "commit", "fixes", "merged", "verdict", "improved", "detail", "verifier_issue", "verified_commit",
              "verifier_passed", "owner_accepted", "owner_accepted_commit", "ordered")
     c.update_report(p, dict({x: None for x in spent}, **{"pass": k}), "Pass %s: the ordered sessions ended, the Policymaker runs again." % k)
     c.sync_main()
-    c.git(".", "push", "-q", "-f", "origin", "origin/%s:refs/heads/task/%s" % (c.default_branch(), p), remote=True)
+    if f.get("deferred") == "true":          # its changes have not merged: the branch keeps them and moves onto what has
+        from loop import Tree
+        c.git(".", "fetch", "-q", "origin", "+refs/heads/task/%s:refs/remotes/origin/task/%s" % (p, p), remote=True)
+        with Tree("origin/task/%s" % p) as cand:
+            if c.git(cand, "rebase", "origin/%s" % c.default_branch(), check=False).returncode:
+                c.git(cand, "rebase", "--abort", check=False)           # the end of the phase reports the conflict
+            else:
+                c.git(cand, "push", "-q", "-f", "origin", "HEAD:refs/heads/task/%s" % p, remote=True)
+    else:
+        c.git(".", "push", "-q", "-f", "origin", "origin/%s:refs/heads/task/%s" % (c.default_branch(), p), remote=True)
     c.edit_labels(p, remove=["awaiting:orders"])
     c.launch(p)
 

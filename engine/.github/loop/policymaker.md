@@ -40,7 +40,9 @@ With a shaper, you order only roles in `policymaker_only_roles` (the evaluator, 
 the iteration's other work. Orders of those roles start when your pass ends. The shaper starts after they have
 all ended, and you run again on the same issue and branch, with a fresh context, to see how they ended
 (`policy_pass` in the state, the merged files in the repository) and decide: order more of them, or finish.
-A pass that orders none of them ends the policy phase. Orders of other roles wait for the iteration's work and
+A pass that orders none of them ends the policy phase.
+Your changes to managed definitions take effect before those orders start. To let them wait for the end of the policy phase
+(the ordered sessions run on the previous organization), add `"merge": "later"` next to `tasks`. Orders of other roles wait for the iteration's work and
 run beside the shaper's graph. With `shaper: null`, you plan the iteration through orders of any registered
 role except yourself; the orders of other roles are the iteration's only tasks. No shaper and no valid orders
 fails the iteration.

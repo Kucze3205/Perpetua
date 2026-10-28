@@ -181,14 +181,16 @@ def main():
             if not ok:
                 push_work(work_branch)
                 finish("failed", "engine tests fail after merging %s:\n%s" % (BRANCH, log), summary=summary)
-            if git("push", "-q", "origin", "HEAD:" + BRANCH, net=True, check=False).returncode == 0:
+            pushed = git("push", "-q", "origin", "HEAD:" + BRANCH, net=True, check=False)
+            if pushed.returncode == 0:
                 push_work(work_branch)
                 head = git("rev-parse", "HEAD").stdout.strip()
                 changed = git("diff", "--stat", base, head).stdout[-3000:]
                 finish("done", summary=summary, commit=head, diffstat=changed)
+            print("push to %s, attempt %d: %s" % (BRANCH, attempt + 1, pushed.stderr.strip()), flush=True)
             time.sleep(20 + 20 * attempt)
         push_work(work_branch)
-        finish("failed", "could not push to %s (raced six times)" % BRANCH, summary=summary)
+        finish("failed", "could not push to %s in six attempts; last error:\n%s" % (BRANCH, pushed.stderr.strip()), summary=summary)
     except Limited as e:
         commit_leftovers()
         push_work(work_branch)
@@ -197,7 +199,9 @@ def main():
 
 def push_work(work_branch):
     """The ticket's branch stays on origin: a later attempt continues from it, and the owner can read it."""
-    git("push", "-q", "-f", "origin", "HEAD:refs/heads/" + work_branch, net=True, check=False)
+    r = git("push", "-q", "-f", "origin", "HEAD:refs/heads/" + work_branch, net=True, check=False)
+    if r.returncode:
+        print("push of %s failed: %s" % (work_branch, r.stderr.strip()), flush=True)
 
 
 if __name__ == "__main__":

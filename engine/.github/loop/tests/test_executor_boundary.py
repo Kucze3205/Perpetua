@@ -12,13 +12,11 @@ from unittest.mock import patch
 import executor_boundary as boundary
 import fakes
 from fakes import common as c, loop
-import test_session as sessions
+import session_fixtures as sessions
 
 
 @unittest.skipUnless(sys.platform == "linux" and shutil.which("bwrap"), "requires Linux bubblewrap namespaces")
 class OfflineExecutorTest(sessions.SessionCase):
-    work = sessions.StageTest.work
-
     def setUp(self):
         super().setUp()
         for path, text in {
@@ -324,7 +322,6 @@ PY
 
 class SandboxStubTest(sessions.SessionCase):
     """The CLI sandbox creates empty placeholder files beside the agent's work; real stage -> real admission."""
-    work = sessions.StageTest.work
     STUBS = (".env", ".env.local", ".env.development", ".env.development.local", ".env.test", ".env.test.local",
              ".env.production", ".env.production.local", ".npmrc", ".yarnrc", ".yarnrc.yml", "bunfig.toml",
              "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".gitmodules")

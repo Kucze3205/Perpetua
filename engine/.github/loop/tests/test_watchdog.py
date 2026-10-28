@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
-from test_merge import GATE_SH, SCRIPT_GATE
+from gate_fixtures import GATE_SH, SCRIPT_GATE
 
 
 class WatchCase(unittest.TestCase):

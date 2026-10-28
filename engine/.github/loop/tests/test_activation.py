@@ -6,10 +6,10 @@ import fakes
 from fakes import common as c, iteration as it, loop
 import managed_resources as resources
 import policy_changes
-from test_layered_resources import LayeredSessionTest
+from session_fixtures import LayeredSessionCase
 
 
-class ActivationTest(LayeredSessionTest):
+class ActivationTest(LayeredSessionCase):
     def setUp(self):
         super().setUp()
         self.guard = patch.object(loop, 'reconcile')
@@ -206,8 +206,3 @@ class ActivationTest(LayeredSessionTest):
         loop.apply_policy()
         self.assert_a()
         self.assertEqual(self.hub.report(n)['status'], 'blocked')
-
-
-def load_tests(loader, tests, pattern):
-    import unittest
-    return unittest.TestSuite(ActivationTest(name) for name in ActivationTest.__dict__ if name.startswith("test_"))

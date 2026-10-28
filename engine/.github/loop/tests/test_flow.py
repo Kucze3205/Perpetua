@@ -315,6 +315,7 @@ class FirstPolicymakerTest(Flow):
         self.assertIn("no shaper", rec["failure"])
 
     def test_invalid_orders_without_a_shaper_roll_back_policy_and_tell_the_next_policymaker(self):
+        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()
         it.start_iteration()
@@ -327,7 +328,7 @@ class FirstPolicymakerTest(Flow):
         self.assertIn(note["number"], [x["number"] for x in state["owner_requests"]["open"]])
 
     def test_an_iteration_closed_without_a_record_rolls_policy_back(self):
-        self.finish(0)
+        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
         it.start_iteration()
         self.w.push_main({"policy/params.yml": "criterion: broken\n"}, "what a Policymaker session merged")
         c.sync_main()
@@ -335,7 +336,7 @@ class FirstPolicymakerTest(Flow):
         it.start_iteration()
         self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))
         self.assertIn("closed without a record", self.hub.by_label("owner-request:notice")[0]["body"])
-        self.assertEqual(it.iteration_number(self.open_iteration()), 2)
+        self.assertEqual(it.iteration_number(self.open_iteration()), 1)
 
     def test_a_crashed_policymaker_fails_open_with_the_last_organization(self):
         it.start_iteration()

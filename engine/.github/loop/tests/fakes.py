@@ -412,7 +412,6 @@ worker:
   write: ["src/**", "docs/**"]
   tools: [Read, Grep, Glob, Write, Edit]
 net:
-  internet: true
   write: ["src/**"]
   tools: [Read, WebSearch, Write]
 evaluator:

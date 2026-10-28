@@ -1,4 +1,4 @@
-"""Engine-owned tool and network settings. Role profiles in policy cannot weaken these."""
+"""Engine-owned tool settings. Role profiles in policy cannot weaken these."""
 import os
 import shlex
 
@@ -26,8 +26,6 @@ def check_session_directory(work):
 
 
 def profile_error(profile):
-    if "internet" in profile and type(profile["internet"]) is not bool:
-        return "internet must be a boolean"
     if "agent" in profile and type(profile["agent"]) is not bool:
         return "agent must be a boolean"
     tools = profile.get("tools") or []
@@ -37,8 +35,6 @@ def profile_error(profile):
         name = tool.split("(", 1)[0]
         if name not in LOCAL_TOOLS | WEB_TOOLS:
             return "unsupported tool: " + name
-        if not profile.get("internet", False) and name in WEB_TOOLS:
-            return "internet:false conflicts with tool " + name
     return None
 
 
@@ -50,7 +46,5 @@ def settings(profile, trusted):
 
 
 def tool_names(profile):
-    names = {t.split("(", 1)[0] for t in profile.get("tools", [])} | {"Skill"}
-    if not profile.get("internet", False):
-        names.discard("Skill")  # staged role instructions replace executable skill discovery
-    return sorted(names)
+    # Staged role instructions replace executable skill discovery: Skill is available only when listed.
+    return sorted({t.split("(", 1)[0] for t in profile.get("tools", [])})

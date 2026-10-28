@@ -58,7 +58,7 @@ in either layer, including its own skill. Protected engine paths and evaluator
 ownership/independent verification still take precedence.
 
 The engine stages each model role's complete local skill and references at
-`.session/role/`, including the Policymaker, for both network modes. Staging
+`.session/role/`, including the Policymaker. Staging
 uses the accepted checkout and the selected layer, with no fallback to the
 other layer and no writes to global skill installations. Script roles receive
 their own profile's command. Layer selection does not grant additional tools
@@ -118,7 +118,7 @@ The shipped template has an empty `execution/profiles.yml`, no execution skills 
 
 The setup map writes each execution role's complete skill in `execution/roles/<role>/`, inspired by the Skill reference library (Matt Pocock's skills) rather than copied from it. `setup_roles.py install` then registers the explicitly supplied profile for a skill already written in one layer; it copies nothing. The shipped policy roles are edited in place when the goal needs it. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
 
-Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no `internet` together with writing code beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: the engine contract in system instructions; terms: `CONTEXT.md`.
+Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no tool beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: the engine contract in system instructions; terms: `CONTEXT.md`.
 
 Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline whose managed definitions and configuration match HEAD. `shaper: null` is valid; if selected, the shaper must be a complete execution role. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This is fresh-setup validation; it does not migrate formats or reconfigure an existing loop.
 

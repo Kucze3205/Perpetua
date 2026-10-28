@@ -691,11 +691,6 @@ def limits_exceeded(profile):
     for t in profile.get("tools", []) or []:
         if not any(fnmatch.fnmatchcase(t, a) for a in allowed):
             why.append("tool `%s`" % t)
-    if profile.get("internet"):
-        ok = lim.get("internet_write") or []
-        for g in profile.get("write", []) or []:
-            if not any(g.startswith(p) for p in ok):
-                why.append("internet together with writing `%s`" % g)
     return why
 
 

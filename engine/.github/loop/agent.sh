@@ -11,9 +11,6 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git checkout -q -B "task/$ISSUE"
 date +%s > "$OUT/agent-start"
 
-NETWORK_MODE="$(cat "$TRUSTED/network-mode")"
-case "$NETWORK_MODE" in online|offline) ;; *) echo "Invalid staged network mode" >&2; exit 1 ;; esac
-
 # Secrets: `resolve` only proves an approved name has a line in the pool, not that the repository secret has a value.
 # `stage` writes the approved names (from the frozen consent) to $TRUSTED/secrets; an empty one stops the start before
 # any agent code runs, and the epilogue turns the marker into `blocked: secret-missing:NAME`. Unapproved pool names
@@ -38,8 +35,6 @@ if [ "$KIND" = script ]; then
 fi
 
 AVAILABLE_TOOLS="$(cat "$TRUSTED/tools")"
-SKILL_FLAGS=()
-[ "$NETWORK_MODE" != offline ] || SKILL_FLAGS=(--disable-slash-commands)
 
 # the end of a turn in -p is the end of the session: background work and Monitor die with the runner
 export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
@@ -59,7 +54,7 @@ CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" timeout "${AGENT_TIMEOUT}m" claude -p \
   --model "$MODEL" --effort "$EFFORT" \
   --permission-mode acceptEdits --allowedTools "$TOOLS" --disallowedTools Monitor \
   --tools "$AVAILABLE_TOOLS" --strict-mcp-config --mcp-config "$TRUSTED/mcp.json" \
-  "${SKILL_FLAGS[@]}" \
+  --disable-slash-commands \
   --setting-sources '' --append-system-prompt-file "$TRUSTED/contract.md" \
   --settings "$TRUSTED/settings.json" \
   --max-turns "$MAX_TURNS" --output-format stream-json --verbose \

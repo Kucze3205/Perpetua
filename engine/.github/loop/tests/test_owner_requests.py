@@ -9,9 +9,9 @@ import owner_requests as req
 
 
 class OwnerRequestsTest(unittest.TestCase):
-    CONFIG = ("# retained header\nowner: ow\nlimits:\n  tools: [Read]\n  internet_write: []\n"
+    CONFIG = ("# retained header\nowner: ow\nlimits:\n  tools: [Read]\n"
               "\n# retained policymaker comment\npolicymaker: {max_turns: 12}\ncadence: {daily_iterations: 4}\n")
-    LIMITS = "tools: [Read, Grep]\ninternet_write: []\n"
+    LIMITS = "tools: [Read, Grep]\n"
 
     def setUp(self):
         self.w = fakes.World(engine_yml=self.CONFIG)
@@ -65,7 +65,7 @@ class OwnerRequestsTest(unittest.TestCase):
 
     def test_editing_both_proposal_and_displayed_hash_is_rejected(self):
         n = self.proposal()
-        self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(self.LIMITS, "tools: [Bash]\ninternet_write: []\n")
+        self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(self.LIMITS, "tools: [Bash]\n")
         self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(it.sha256(self.LIMITS), "forged-hash")
         self.answer(n)
         self.assertEqual(req.read(n)["status"], "invalid")
@@ -269,7 +269,7 @@ class OwnerRequestsTest(unittest.TestCase):
         self.assertEqual(len(it.process_proposals(json.dumps(fresh), 0, source=100)), 1)
 
     def test_yaml_flow_limits_preserves_other_fields(self):
-        original = "limits: {tools: [Read], internet_write: []}\n# keep\npolicy: {max_turns: 2}\n"
+        original = "limits: {tools: [Read]}\n# keep\npolicy: {max_turns: 2}\n"
         after = req.replace_limits(original, self.LIMITS)
         self.assertTrue(after.endswith("# keep\npolicy: {max_turns: 2}\n"))
 

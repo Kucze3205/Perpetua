@@ -150,8 +150,7 @@ keep trusted snapshots and durable decisions so repeated events cannot reapply a
 
 Closing a request wakes the loop (`owner-request.yml`); the watchdog sweeps requests whose event was lost.
 
-**Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list,
-internet with writes outside `internet_write`) gets a `consent` request that blocks it with a native edge. `resolve`
+**Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list) gets a `consent` request that blocks it with a native edge. `resolve`
 starts the session only when that request is closed as completed, and then only that one session runs with the profile.
 The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
 secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with

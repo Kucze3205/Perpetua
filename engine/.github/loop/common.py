@@ -51,7 +51,7 @@ DEFAULTS = {
     "verifier_role": "evaluator-verifier",
     "large_file_bytes": 5000000,
     "gate": {"kind": "owner", "command": "", "timeout_minutes": 120, "env_passthrough": []},
-    "limits": {"tools": DEFAULT_TOOLS, "internet_write": []},
+    "limits": {"tools": DEFAULT_TOOLS},
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,

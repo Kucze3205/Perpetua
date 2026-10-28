@@ -266,8 +266,6 @@ def stage(n, work, trusted):
         # Include it once, rather than loading the same instructions again through that pointer.
         fh.write("# Policy work rules (subordinate to the engine contract)\n\n"
                  + rules + "\n\n" + ("" if role == "policymaker" else template))
-    with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("online\n" if p.get("internet", False) else "offline\n")
     # The approved names, for agent.sh's empty-value check. Unapproved pool names need no file: the workflow expression
     # `contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || ''` already hands them over empty.
     granted = role != "policymaker" and consent_status(p, labels)[0]

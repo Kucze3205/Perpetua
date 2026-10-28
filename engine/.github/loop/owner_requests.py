@@ -44,9 +44,8 @@ def limits_block(text):
     block = yaml.safe_load(text)
     if not isinstance(block, dict) or not block or any(not isinstance(k, str) for k in block):
         raise ValueError("limits must be a nonempty mapping")
-    for key in ("tools", "internet_write"):
-        if key not in block or not isinstance(block[key], list) or any(not isinstance(x, str) for x in block[key]):
-            raise ValueError("limits.%s must be a list of strings" % key)
+    if "tools" not in block or not isinstance(block["tools"], list) or any(not isinstance(x, str) for x in block["tools"]):
+        raise ValueError("limits.tools must be a list of strings")
     # Bound the shape to plain configuration, including extensions such as owner ceilings.
     json.dumps(block, allow_nan=False)
     return block

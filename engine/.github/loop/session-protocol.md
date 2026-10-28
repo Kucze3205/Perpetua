@@ -127,7 +127,7 @@ Three additional kinds cover capabilities and changes outside a role's authority
   nothing: the owner must carry out the steps and post the proposal-specific `capability-ready` marker printed by
   the engine. Until then the request remains waiting and dependent sessions cannot start.
 - `limits-change`: `frozen` is the entire proposed YAML **contents of the limits mapping**, for example
-  `tools: [Read, Grep, Glob]\ninternet_write: []\n` (without an outer `limits:` key). Completed applies only that frozen
+  `tools: [Read, Grep, Glob]\n` (without an outer `limits:` key). Completed applies only that frozen
   mapping to `engine.yml`, after checking the proposal and base configuration. Not planned changes nothing.
   A changed proposal or newer engine configuration requires a fresh request.
 - `engine-change`: `frozen` is a concrete diff and application instructions; `test` (optional) is the command that proves

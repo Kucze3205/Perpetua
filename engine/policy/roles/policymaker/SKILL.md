@@ -59,8 +59,8 @@ roles belong to execution; Policymaker, audit, evaluator maintenance and verifie
 belong to policy.
 
 Use the Skill reference library (https://github.com/mattpocock/skills) when it would
-help. Reuse available findings or order research from a role with internet access;
-you are offline. Write skills inspired by useful findings, rather than copying them.
+help. Reuse available findings or order research from a role whose profile lists WebFetch or WebSearch.
+Write skills inspired by useful findings, rather than copying them.
 Research and source reporting are optional.
 
 ## Respond to what the loop needs

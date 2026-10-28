@@ -13,15 +13,15 @@ from test_session import SessionCase, read
 
 class SecurityTest(unittest.TestCase):
     def test_profiles_are_validated(self):
-        for profile in ({"internet": "false"}, {"agent": "false"}, {"tools": "Bash"},
-                        {"tools": ["WebFetch"]}, {"tools": ["mcp__server__exec"]}, {"tools": ["Agent"]}):
+        for profile in ({"agent": "false"}, {"tools": "Bash"},
+                        {"tools": ["mcp__server__exec"]}, {"tools": ["Agent"]}):
             self.assertIsNotNone(security.profile_error(profile), profile)
         self.assertIsNone(security.profile_error({}))
         self.assertIsNone(security.profile_error({"agent": False}))
-        self.assertIsNone(security.profile_error({"internet": True, "tools": ["WebFetch"]}))
+        self.assertIsNone(security.profile_error({"tools": ["WebFetch"]}))
 
     def test_the_allowlist_refuses_mcp_and_subagent_tools_for_every_profile(self):
-        for profile in ({}, {"internet": True}, {"tools": ["Bash", "Read"]}):
+        for profile in ({}, {"tools": ["WebFetch"]}, {"tools": ["Bash", "Read"]}):
             settings = security.settings(profile, "/trusted")
             self.assertNotIn("sandbox", settings)
             self.assertTrue({"Agent", "Task", "Monitor", "PowerShell"} <= set(settings["permissions"]["deny"]))
@@ -81,4 +81,4 @@ class CompositionTest(SessionCase):
                     self.assertNotIn("Untrusted contract", contract)
                     self.assertNotIn("Rules " + revision, contract)
                     self.assertNotIn("Required files, formats, field ownership", prompt)
-                    self.assertEqual(read(os.path.join(trusted, "network-mode")), "offline\n")
+                    self.assertFalse(os.path.exists(os.path.join(trusted, "network-mode")))

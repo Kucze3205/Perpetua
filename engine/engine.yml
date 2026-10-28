@@ -35,7 +35,6 @@ large_file_bytes: 5000000        # bigger files go to `.session/artifacts/` (rel
 # What a role's profile may have without asking the owner. Beyond it, each session needs a granted consent request.
 limits:
   tools: [Read, Grep, Glob, Write, Edit, Skill, "Bash(git:*)", "Bash(python3:*)", "Bash(echo:*)", "Bash(printf:*)", "Bash(mkdir:*)"]
-  internet_write: []             # path prefixes a profile with internet may write
 
 # --- the Policymaker's fixed permissions and owner ceilings -------------------------------------------------------
 policymaker:

@@ -57,9 +57,9 @@ rules, `--allowedTools` lists what the role may use, and `settings.json` denies 
 User and project settings are disabled. Subprocess environments scrub the provider credential
 (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). Script roles receive no model credential.
 
-`internet` must be a boolean and, until the profile key is removed, still decides whether a profile may list
-WebFetch/WebSearch and whether native skill and slash-command discovery are enabled. Sessions without it read their
-staged role skill tree from `.session/role/`. A session reaches the network like any process on the runner.
+A profile has no network key: it may list WebFetch/WebSearch, and a session reaches the network like any process on the
+runner. Native slash-command discovery is off and `Skill` is available only when a profile lists it; every session reads
+its staged role skill tree from `.session/role/`.
 
 Test commands, Linux requirements and opt-in live-provider evidence are in
 [validation](validation.md).

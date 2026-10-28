@@ -119,7 +119,7 @@ class PolicymakerSessionTest(unittest.TestCase):
 
     def test_disallowed_models_efforts_permissions_and_invalid_numbers_are_rejected(self):
         for tune in ({"model": "unapproved"}, {"effort": "unapproved"}, {"tools": ["Bash"]},
-                     {"internet": True}, {"max_turns": True}, {"timeout_minutes": -1}):
+                     {"max_turns": True}, {"timeout_minutes": -1}):
             with self.assertRaises(ValueError, msg=str(tune)):
                 self.profile(tune)
 
@@ -147,20 +147,20 @@ class ExportPipelineTest(SessionCase):
             with self.assertRaisesRegex(SystemExit, "configuration changed after prep"):
                 loop.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
 
-    def test_stage_blocks_network_permission_change_after_prep(self):
+    def test_stage_blocks_tool_change_after_prep(self):
         n = self.issue()
         environment = self.execution_environment(n)
         profiles = c.profiles()
-        profiles["worker"]["internet"] = True
+        profiles["worker"]["tools"] = profiles["worker"]["tools"] + ["WebFetch"]
         # Even when a consent is otherwise valid, the frozen prep profile must match.
         with patch.dict(os.environ, environment), patch.object(c, "profiles", return_value=profiles), patch.object(loop, "consent_status", return_value=(True, None)):
-            with self.assertRaisesRegex(SystemExit, "configuration changed after prep: PROFILE_DIGEST"):
+            with self.assertRaisesRegex(SystemExit, "configuration changed after prep: TOOLS"):
                 loop.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
 
     def test_stage_rechecks_current_owner_consent(self):
         n = self.issue()
         profiles = c.profiles()
-        profiles["worker"]["internet"] = True
+        profiles["worker"]["tools"] = profiles["worker"]["tools"] + ["WebFetch"]
         with patch.object(c, "profiles", return_value=profiles):
             with self.assertRaisesRegex(SystemExit, "consent is no longer valid"):
                 loop.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))

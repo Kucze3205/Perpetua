@@ -133,14 +133,13 @@ class LayeredSessionTest(sessions.SessionCase):
         audit = self.issue('audit')
         loop.resolve(audit)
         self.assertEqual(self.outputs()['tools'], 'Read,Skill')
-        # The policy layer does not itself grant internet or extra tools.
+        # The policy layer does not itself grant extra tools.
         self.w.write(self.w.loop, 'policy/profiles.yml',
-                     'audit: {tools: [Read, WebSearch], internet: true, write: [audit/**]}\n')
+                     'audit: {tools: [Read, WebSearch], write: [audit/**]}\n')
         with self.assertRaisesRegex(SystemExit, 'beyond the accepted limits'):
             loop.stage(audit, self.work(), os.path.join(self.w.tmp, 'beyond-limits'))
-        # The execution role still has its own unchanged offline profile.
+        # The execution role still has its own unchanged profile.
         loop.stage(n, self.work(), os.path.join(self.w.tmp, 'worker-after-audit-change'))
-        self.assertEqual(read(os.path.join(self.w.tmp, 'worker-after-audit-change/network-mode')), 'offline\n')
 
     def test_invalid_candidate_catalog_is_not_admitted(self):
         n = self.issue('policymaker')
@@ -150,18 +149,17 @@ class LayeredSessionTest(sessions.SessionCase):
         self.assertIn('both execution and policy', result['detail'])
         self.assertNotIn('worker:', self.w.origin_file('policy/profiles.yml'))
 
-    def test_layered_online_staging_preserves_global_source_installation(self):
+    def test_layered_staging_preserves_global_source_installation(self):
         global_skill = os.path.join(self.home, '.claude/skills/worker/SKILL.md')
         self.w.write(self.home, '.claude/skills/worker/SKILL.md', 'global source remains')
         self.w.write(self.w.loop, 'execution/profiles.yml',
-                     'worker: {tools: [Read, Write], internet: true, write: []}\n')
+                     'worker: {tools: [Read, Write], write: []}\n')
         n = self.issue()
         trusted = os.path.join(self.w.tmp, 'online-trusted')
         work = self.work()
         loop.stage(n, work, trusted)
         self.assertEqual(read(global_skill), 'global source remains')
         self.assertIn('execution role', read(os.path.join(work, '.session/role/SKILL.md')))
-        self.assertEqual(read(os.path.join(trusted, 'network-mode')), 'online\n')
         self.assertIn('.session/role/SKILL.md', read(os.path.join(trusted, 'prompt.md')))
 
     def test_layered_script_role_stages_command_and_admits_product(self):

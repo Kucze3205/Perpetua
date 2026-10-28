@@ -73,3 +73,13 @@ See [validation](validation.md) for prerequisites and limits of this verificatio
   and iteration records; `policy_changes.evaluator_rev` maps paths to hashes for
   receipts and verification. Preserve these persisted shapes unless migrating
   their readers and schema deliberately.
+
+## Plugin E2E tool
+
+In the plugin source, [`e2e/README.md`](../../../e2e/README.md) owns the live
+experiment procedure and offline replay instructions. `e2e/live.py` dispatches
+commands; `experiment.py` controls the real loop, `collection.py` downloads
+evidence, and `analysis.py` computes reports from saved data. For a statistic fix,
+start with `analysis.py` and the saved collection; use `live.py analyze OUT`
+without GitHub or local live-run state. Tests: `python -m unittest discover -s e2e`.
+These tools are not copied into a loop repository by setup.

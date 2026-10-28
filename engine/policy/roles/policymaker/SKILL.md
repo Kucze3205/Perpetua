@@ -78,6 +78,6 @@ expired or failed inputs before drawing conclusions.
 
 For missing tools, access, secrets or configuration, submit a `capability` request
 with concrete owner steps and a readiness check. Use `limits-change` or `engine-change`
-for changes reserved to the owner, following the engine's request formats.
+for changes reserved to the owner, following the engine's request formats; give an `engine-change` a `test` command so the engine can prove the patch before opening its pull request.
 Explain what each request unblocks. For each order and change, state in your report
 the gain you expect toward the goal and how a later session will check it.

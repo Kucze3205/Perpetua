@@ -122,10 +122,12 @@ protocol defines their fields and the kinds each role may propose.
 `capability` asks the owner to supply access, a tool or a named secret and confirm readiness; closing it alone does
 not create or verify a secret. `limits-change` automatically replaces only the frozen `limits` block after the owner
 accepts it, provided the proposal and its base configuration still match. `engine-change` records a concrete proposal
-and base; when the owner closes it as completed, trusted engine code applies the frozen diff to the current `main` and opens
-a PR from `engine-change/<proposal_sha12>` (needs "Allow GitHub Actions to create pull requests"). Merging the PR approves,
-closing it unmerged declines (the watchdog notices). A diff touching `.github/workflows/**`, or one that does not apply
-cleanly, gets no PR: the owner applies it manually and posts `engine-applied`. These requests
+and base; when the owner closes it as completed, the tokenless job applies the frozen diff to the current `main` and runs the
+request's optional test command there; the engine then commits the files it returns (validated as data) and opens
+a PR from `engine-change/<proposal_sha12>` (needs "Allow GitHub Actions to create pull requests"). The patch is never
+applied or tested on the machine that holds the token. Merging the PR approves, closing it unmerged declines (the watchdog
+notices). A diff touching `.github/workflows/**`, one that does not apply cleanly or one that fails its test gets no PR and
+the request says why: the owner applies it manually and posts `engine-applied`. These requests
 keep trusted snapshots and durable decisions so repeated events cannot reapply a proposal.
 
 Closing a request wakes the loop (`owner-request.yml`); the watchdog sweeps requests whose event was lost.

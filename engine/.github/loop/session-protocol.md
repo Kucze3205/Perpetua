@@ -133,11 +133,14 @@ Three additional kinds cover capabilities and changes outside a role's authority
   `tools: [Read, Grep, Glob]\ninternet_write: []\n` (without an outer `limits:` key). Completed applies only that frozen
   mapping to `engine.yml`, after checking the proposal and base configuration. Not planned changes nothing.
   A changed proposal or newer engine configuration requires a fresh request.
-- `engine-change`: `frozen` is a concrete diff and application instructions. The engine records its base commit and
-  hash. When the owner closes the request as completed, the engine applies the diff to the current `main` and opens a PR from
-  `engine-change/<first 12 hex of the proposal hash>`; merging it approves, closing it unmerged declines. A diff that touches
-  `.github/workflows/**` or does not apply cleanly gets no PR and a comment instead: the owner applies it manually and posts
-  the proposal-specific `engine-applied` confirmation. Write the diff against current `main`; there is no rebase.
+- `engine-change`: `frozen` is a concrete diff and application instructions; `test` (optional) is the command that proves
+  it, run from the repository root (for example `python3 -m unittest discover -s .github/loop/tests`). The engine records
+  its base commit and hash. When the owner closes the request as completed, the engine applies the diff to the current
+  `main` and runs `test` in a job that holds no GitHub token, then opens a PR from
+  `engine-change/<first 12 hex of the proposal hash>` and links it from the request; merging it approves, closing it
+  unmerged declines. A diff that touches `.github/workflows/**`, does not apply cleanly or fails its test gets no PR and a
+  comment saying why instead: the owner applies it manually and posts the proposal-specific `engine-applied`
+  confirmation. Write the diff against current `main`; there is no rebase.
 
 The engine prints the exact effects, hashes, base version and confirmation instructions on each request. It freezes
 the original proposal in the trusted engine tree, so editing the issue or its displayed hash cannot change what is

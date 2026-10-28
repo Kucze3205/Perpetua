@@ -173,6 +173,41 @@ class OwnerRequestsTest(unittest.TestCase):
         self.assertTrue(c.is_unblocked(worker))
         self.assertIn(req.APPROVED, c.label_names(c.issue(n)))
 
+    def test_engine_change_is_applied_and_tested_only_in_the_tokenless_job(self):
+        n = self.engine_change(test="grep -q 'a = 2' .github/loop/tune.py && echo tested >&2")
+        original_git = c.git
+        seen = []
+
+        def spy(cwd, *args, **kwargs):
+            seen.append(args)
+            return original_git(cwd, *args, **kwargs)
+
+        with patch.object(c, "git", spy):
+            self.answer(n)
+        self.assertEqual(len(self.h.tokenless), 1)
+        self.assertIn("run.sh", self.h.tokenless[0])
+        self.assertFalse([a for a in seen if a[:1] == ("apply",)])
+        self.assertEqual(self.w.origin_file(self.SCRIPT, self.branch(n)), "a = 2\n")
+        self.assertIn("grep -q", self.h.issues[n]["body"])
+        self.assertIn("Tested in the tokenless job", self.h.prs[self.branch(n)]["body"])
+        self.assertIn(self.h.prs[self.branch(n)]["url"], req.read(n)["pr"])
+
+    def test_engine_change_that_fails_its_test_opens_no_pr_and_says_why(self):
+        n = self.engine_change(test="echo the-assertion-that-broke >&2; exit 1")
+        self.answer(n)
+        self.no_pr(n, "the test command failed")
+        self.assertIn("the-assertion-that-broke", self.h.comments(n)[-1]["body"])
+
+    def test_engine_change_without_a_result_from_the_job_opens_no_pr(self):
+        n = self.engine_change()
+        self.h.tokenless_fault = "no-artifact"
+        self.answer(n)
+        self.no_pr(n, "returned no result")
+
+    def test_only_an_engine_change_takes_a_test_command(self):
+        with self.assertRaises(ValueError):
+            self.proposal(test="true")
+
     def test_engine_change_on_a_workflow_opens_no_pr(self):
         n = self.engine_change(self.WORKFLOW)
         self.answer(n)

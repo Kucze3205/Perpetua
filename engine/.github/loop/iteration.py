@@ -86,11 +86,11 @@ def fence_for(text):
     return "`" * max(3, longest + 1)
 
 
-def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None):
+def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None, test=None):
     """The only way the loop asks the owner for a decision, a consent or a confirmation. Only engine code calls it.
     The answer is the closing of the issue: completed = yes, not planned = no."""
     assert kind in REQUEST_KINDS, kind
-    proposal = requests.prepare(kind, frozen, readiness) if kind in requests.KINDS else None
+    proposal = requests.prepare(kind, frozen, readiness, test) if kind in requests.KINDS else None
     if proposal:
         frozen = proposal["frozen"]
     owner = c.owner_login()
@@ -99,6 +99,9 @@ def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks
     if frozen is not None:
         f = fence_for(frozen)
         body += "\n## Proposed text\n\n%s\n%s\n%s\n\n<!-- frozen-sha: %s -->\n" % (f, frozen, f, sha256(frozen))
+    if test:
+        f = fence_for(test)
+        body += "\n## Test command\n\n%s\n%s\n%s\n" % (f, test, f)
     body += "\n<!-- request-kind: %s -->\n" % kind
     if ref:
         body += "<!-- request-ref: %s -->\n" % ref
@@ -159,7 +162,7 @@ def process_proposals(text, iteration, source=None):
             continue
         try:
             made.append(open_request(p["kind"], p["title"], p.get("what", ""), p.get("why", ""), p.get("unblocks", ""),
-                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness")))
+                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness"), test=p.get("test")))
         except (ValueError, TypeError) as e:
             c.say("Invalid owner request %s: %s" % (p["title"], e))
     return made

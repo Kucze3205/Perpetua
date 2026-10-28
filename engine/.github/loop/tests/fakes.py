@@ -224,6 +224,8 @@ class World:
                     os.environ["LOOP_BASH"] = cand
                     os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
                     break
+        # A background `git gc --auto` repacks loose objects while a later clone copies them: no gc in fixture repos.
+        os.environ.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="gc.auto", GIT_CONFIG_VALUE_0="0")
         os.environ.pop("GH_TOKEN", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works

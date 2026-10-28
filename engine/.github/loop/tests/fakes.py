@@ -247,6 +247,7 @@ class World:
         self.write(self.loop, "policy/profiles.yml", POLICY_PROFILES)
         shutil.copy(os.path.join(ENGINE, "policy", "policymaker-trigger.py"), os.path.join(self.loop, "policy"))
         shutil.copy(os.path.join(ENGINE, "policy", "session-state.py"), os.path.join(self.loop, "policy"))
+        shutil.copy(os.path.join(ENGINE, "policy", "layer-rules.py"), os.path.join(self.loop, "policy"))
         for layer, roles in (("execution", ("orchestrator", "worker", "net")),
                              ("policy", ("evaluator", "evaluator-verifier", "audit", "policymaker"))):
             for role in roles:

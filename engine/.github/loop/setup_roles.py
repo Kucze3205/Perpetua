@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import yaml
 import common as c
 import managed_resources as resources
@@ -55,6 +56,22 @@ def install(repo, role, layer, profile=None):
     write_yaml(path, catalog)
 
 
+def layer_errors():
+    """What `policy/layer-rules.py` refuses in the setup being validated. Before arming nothing runs in Actions yet, so the
+    script runs here, on the owner's own setup."""
+    script = Path(resources.ROOT, 'layer-rules.py')
+    if not script.is_file():
+        return []
+    with tempfile.TemporaryDirectory() as tmp:
+        facts = Path(tmp, 'facts.json')
+        facts.write_text(json.dumps(resources.layer_facts('.', True)), encoding='utf-8')
+        out = subprocess.run([sys.executable, '-I', str(script.resolve()), str(facts)], capture_output=True, text=True)
+    try:
+        return json.loads(out.stdout)['errors']
+    except (ValueError, KeyError, TypeError):
+        raise ValueError('policy/layer-rules.py returned no errors list: ' + out.stderr[-300:])
+
+
 def validate(repo, baseline=None):
     """Fail closed before arming, optionally checking the accepted baseline commit."""
     root = Path(repo).resolve()
@@ -66,7 +83,9 @@ def validate(repo, baseline=None):
         params = c.load_yaml('policy/params.yml')
         if params.get('shaper') is not None and not isinstance(params['shaper'], str):
             raise ValueError('shaper must be a role name or null')
-        resources.validate_activation('.')
+        refused = layer_errors()
+        if refused:
+            raise ValueError('; '.join(refused))
         profiles = resources.role_profiles()
         required = ['audit', 'evaluator', c.cfg()['verifier_role']]
         for role in required:

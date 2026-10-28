@@ -5,7 +5,6 @@ import os
 import fakes
 from fakes import common as c, iteration as it, loop, task
 import task_graph as graph
-import owner_requests as requests
 import session_reports as reports
 from proposal_fixtures import PROPOSAL
 from session_fixtures import LayeredSessionCase, read
@@ -174,9 +173,9 @@ class InputBoundaryTest(LayeredSessionCase):
         _, sess, _ = self.stage_inputs(shaper=True, state={'iteration': 1})
         catalog = json.loads(read(os.path.join(sess, 'capabilities.json')))
         role = catalog[0]['role']
-        graph = {'tasks': [task('build', role=role), task('check', role=role, blocked_by=['build'])]}
-        self.assertEqual(graph.validate_tasks(graph), [])
-        self.assertEqual(graph.topological({t['id']: t.get('blocked_by', []) for t in graph['tasks']}), ['build', 'check'])
+        document = {'tasks': [task('build', role=role), task('check', role=role, blocked_by=['build'])]}
+        self.assertEqual(graph.validate_tasks(document), [])
+        self.assertEqual(graph.topological({t['id']: t.get('blocked_by', []) for t in document['tasks']}), ['build', 'check'])
         self.assertNotIn('audit', [entry['role'] for entry in catalog])
 
     def test_layered_suggestion_reaches_policy_and_resolution_is_replay_safe(self):

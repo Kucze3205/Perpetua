@@ -881,7 +881,7 @@ class ConsentSecretsTest(Flow):
 
     def staged(self, tid):
         work = os.path.join(self.w.tmp, "stagework-" + tid)
-        fakes.sh(self.w.tmp, "git", "clone", "-q", self.w.origin, work)
+        fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", self.w.origin, work)
         trusted = os.path.join(self.w.tmp, "trusted-" + tid)
         os.environ["RUNNER_TEMP"] = os.path.join(self.w.tmp, "run-" + tid)
         # the real stage; only the native-ELF executor preparation is left out (it needs Linux)

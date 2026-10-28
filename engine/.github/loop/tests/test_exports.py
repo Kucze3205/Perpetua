@@ -103,7 +103,7 @@ class ExportsTest(unittest.TestCase):
 
 class PolicymakerSessionTest(unittest.TestCase):
     def setUp(self):
-        self.cfg = {"policymaker": {"model": "large", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
+        self.cfg = {"verifier_role": "verifier", "policymaker": {"model": "large", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                                 "tools": ["Read"], "write": ["policy/"]},
                     "policymaker_session_ceilings": {"models": ["large", "small"], "efforts": ["low", "medium", "high"],
                                                 "max_turns": 100, "timeout_minutes": 60}}
@@ -172,7 +172,7 @@ class ExportPipelineTest(SessionCase):
         n = it.create_tasks(1, [task])[0]
         self.assertEqual(json.loads(c.marker(self.hub.issue(n)["body"], "exports")), declaration)
         work = os.path.join(self.w.tmp, "selected-work")
-        fakes.sh(self.w.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.w.origin, work)
+        fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.w.origin, work)
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted"))
         with open(os.path.join(work, ".session", "exports", "manifest.json"), encoding="utf-8") as fh:
             result = json.load(fh)["results"][0]

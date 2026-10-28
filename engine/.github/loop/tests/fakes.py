@@ -300,7 +300,7 @@ class World:
         """A commit by a human straight on the origin's default branch."""
         self.n_work += 1
         d = os.path.join(self.tmp, "human%s" % self.n_work)
-        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, d)
+        sh(self.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.origin, d)
         for p, t in files.items():
             self.write(d, p, t)
         sh(d, "git", "add", "-A")
@@ -314,7 +314,7 @@ class World:
         `session_files` go to `.session/` (report extras, tasks.json, orders.json, requests.json, artifacts/...)."""
         self.n_work += 1
         work = os.path.join(self.tmp, "work%s" % self.n_work)
-        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
+        sh(self.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.origin, work)
         sh(work, "git", "config", "core.autocrlf", "false")
         sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base or "origin/main")
         rt = os.path.join(self.tmp, "rt%s" % self.n_work)
@@ -372,7 +372,7 @@ class World:
         """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""
         self.n_work += 1
         work = os.path.join(self.tmp, "br%s" % self.n_work)
-        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
+        sh(self.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.origin, work)
         sh(work, "git", "config", "core.autocrlf", "false")
         sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base)
         for p, t in files.items():

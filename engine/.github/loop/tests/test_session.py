@@ -116,7 +116,7 @@ class StageTest(SessionCase):
     def work(self):
         self.w.n_work += 1
         d = os.path.join(self.w.tmp, "stagework%s" % self.w.n_work)
-        fakes.sh(self.w.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.w.origin, d)
+        fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.w.origin, d)
         return d
 
     def test_stage_writes_the_secrets_file_agent_sh_reads(self):

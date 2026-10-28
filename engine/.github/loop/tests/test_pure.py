@@ -1,4 +1,4 @@
-"""Pure logic: reports, globs, causes of failure, task graphs, limits. No network, no git."""
+"""Pure logic: reports, globs, causes of failure, and verdicts. No network, no git."""
 import json
 import os
 import tempfile
@@ -168,106 +168,7 @@ class RunIssueTest(unittest.TestCase):
         self.assertNotEqual(c.run_issue("session #123"), "session #12")
 
 
-class TaskGraphTest(unittest.TestCase):
-    def setUp(self):
-        self.w = fakes.worker_world()
-
-    def tearDown(self):
-        self.w.close()
-
-    def errs(self, *tasks, **kw):
-        return it.validate_tasks({"tasks": list(tasks)}, **kw)
-
-    def test_a_valid_graph(self):
-        self.assertEqual(self.errs(fakes.task("a"), fakes.task("b", blocked_by=["a"], model="opus", effort="high")), [])
-
-    def test_needs_tasks(self):
-        self.assertTrue(it.validate_tasks({"tasks": []}))
-        self.assertTrue(it.validate_tasks([]))
-
-    def test_unknown_role_duplicate_and_fields(self):
-        self.assertTrue(self.errs(fakes.task("a", role="nobody")))
-        self.assertTrue(self.errs(fakes.task("a"), fakes.task("a")))
-        self.assertTrue(self.errs(fakes.task("a", width=3)))
-        self.assertTrue(self.errs(fakes.task("a", role="policymaker")))
-
-    def test_unknown_alias_effort_and_edge(self):
-        self.assertTrue(self.errs(fakes.task("a", model="gpt")))
-        self.assertTrue(self.errs(fakes.task("a", effort="max")))
-        self.assertTrue(self.errs(fakes.task("a", blocked_by=["zzz"])))
-
-    def test_cycle(self):
-        self.assertTrue(self.errs(fakes.task("a", blocked_by=["b"]), fakes.task("b", blocked_by=["a"])))
-
-    def test_malformed_agent_json_returns_errors_instead_of_crashing(self):
-        malformed = [None, "task", [], fakes.task([]), fakes.task({}), fakes.task("bad id"),
-                     fakes.task("a", role=[]), fakes.task("a", model={"alias": "opus"}),
-                     fakes.task("a", blocked_by=7), fakes.task("a", blocked_by="a"),
-                     fakes.task("a", blocked_by=[[]])]
-        for task in malformed:
-            with self.subTest(task=task):
-                self.assertTrue(self.errs(task))
-                before = self.w.hub.list_issues("all")
-                self.assertIn("invalid tasks.json:", it.instantiate(0, {"tasks": [task]}))
-                self.assertEqual(self.w.hub.list_issues("all"), before)
-
-    def test_forward_reference_is_valid(self):
-        self.assertEqual(self.errs(fakes.task("b", blocked_by=["a"]), fakes.task("a")), [])
-
-    def test_policymaker_only_roles_come_from_orders_and_orders_only_of_them(self):
-        self.assertTrue(self.errs(fakes.task("a", role="evaluator")))
-        self.assertEqual(self.errs(fakes.task("a", role="evaluator"), ordered=True), [])
-        self.assertTrue(self.errs(fakes.task("a"), ordered=True))
-
-    def test_an_id_the_iteration_already_uses_is_refused(self):
-        self.assertTrue(self.errs(fakes.task("a"), taken={"a"}))
-
-    def test_width_is_the_widest_layer(self):
-        ts = [dict(fakes.task("a")), dict(fakes.task("b")), dict(fakes.task("c", blocked_by=["a", "b"])), dict(fakes.task("d", blocked_by=["c"]))]
-        self.assertEqual(it.width(ts), 2)
-
-    def test_order_ids_are_prefixed_with_the_policymaker_session_and_their_edges_follow(self):
-        it.store_state(7, {"tasks": [fakes.task("e", role="evaluator"), fakes.task("f", role="audit", blocked_by=["e"])]}, it.ORDERS_MARK)
-        orders = it.read_orders(7)
-        self.assertEqual([o["id"] for o in orders], ["order-7-e", "order-7-f"])
-        self.assertEqual(orders[1]["blocked_by"], ["order-7-e"])
-
-
-class LimitsTest(unittest.TestCase):
-    def setUp(self):
-        self.w = fakes.World(engine_yml="limits:\n  tools: [Read, Write, 'Bash(git:*)']\n  internet_write: ['docs/']\n")
-
-    def tearDown(self):
-        self.w.close()
-
-    def test_within(self):
-        self.assertEqual(it.limits_exceeded({"tools": ["Read", "Bash(git:*)"], "internet": True, "write": ["docs/research/**"]}), [])
-
-    def test_tool_beyond(self):
-        self.assertEqual(len(it.limits_exceeded({"tools": ["Read", "Bash(rm:*)"]})), 1)
-
-    def test_internet_together_with_writing_code(self):
-        self.assertEqual(len(it.limits_exceeded({"internet": True, "write": ["src/**"]})), 1)
-        self.assertEqual(it.limits_exceeded({"internet": False, "write": ["src/**"]}), [])
-
-
-class RequestTextTest(unittest.TestCase):
-    def test_fence_is_longer_than_any_backtick_run(self):
-        self.assertEqual(it.fence_for("a ``` b"), "````")
-        self.assertEqual(it.fence_for("plain"), "```")
-
-    def test_frozen_text_survives_a_round_trip_and_detects_edits(self):
-        w = fakes.World()
-        try:
-            n = it.open_request("goal-gate", "t", "w", "y", "u", frozen="command: x\nowner_confirms: true ``` odd\n")
-            body = w.hub.issues[n]["body"]
-            self.assertEqual(it.frozen_text(body), "command: x\nowner_confirms: true ``` odd\n")
-            self.assertIsNone(it.frozen_text(body.replace("command: x", "command: y")))
-            self.assertIn("@ow", body)
-            self.assertEqual(w.hub.issues[n]["assignees"], ["ow"])
-        finally:
-            w.close()
-
+class FrontmatterTest(unittest.TestCase):
     def test_frontmatter(self):
         fm, body = it.frontmatter("---\naim: x\nconstraints: [a]\n---\nrest\n")
         self.assertEqual((fm["aim"], fm["constraints"], body), ("x", ["a"], "rest\n"))

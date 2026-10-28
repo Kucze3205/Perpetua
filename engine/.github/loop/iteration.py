@@ -8,7 +8,6 @@ comment; everything else is derived from the issues and from `iterations/` on th
 carries the label of the iteration whose close started it and belongs to no iteration.
 """
 import glob
-import hashlib
 import json
 import os
 import re
@@ -16,30 +15,21 @@ import re
 import common as c
 import managed_resources as resources
 import owner_requests as requests
-import session_exports
+import task_graph as graph
 import session_reports
 import session_startup
 import policy_changes
 
 MAP = "loop:map"
-REQ = "owner-request"
-REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice") + requests.KINDS
-SESSION_KINDS = ("goal-gate", "goal-change", "question") + requests.KINDS
 STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
 HELD_MARK = "<!-- policymaker-held-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
 SEEN_MARK = "<!-- policymaker-audit-seen -->"
-HANDLED = "request:handled"
 
 
 def tag(n):
     return "%04d" % n
-
-
-
-def tasks_path(n):
-    return "iterations/%s/tasks.json" % tag(n)
 
 
 def record_path(n):
@@ -59,10 +49,6 @@ def read_json(path):
     return json.loads(t) if t else None
 
 
-def sha256(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def frontmatter(text):
     """(dict, body) of a markdown file with a YAML frontmatter block."""
     import yaml
@@ -71,92 +57,6 @@ def frontmatter(text):
         return {}, text or ""
     d = yaml.safe_load(m.group(1))
     return (d if isinstance(d, dict) else {}), m.group(2)
-
-
-# ---------------------------------------------------------------- owner requests
-
-def fence_for(text):
-    longest = max([len(m) for m in re.findall(r"`+", text)] or [0])
-    return "`" * max(3, longest + 1)
-
-
-def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None):
-    """The only way the loop asks the owner for a decision, a consent or a confirmation. Only engine code calls it.
-    The answer is the closing of the issue: completed = yes, not planned = no."""
-    assert kind in REQUEST_KINDS, kind
-    proposal = requests.prepare(kind, frozen, readiness) if kind in requests.KINDS else None
-    if proposal:
-        frozen = proposal["frozen"]
-    owner = c.owner_login()
-    body = "%s\n\n## What\n\n%s\n\n## Why\n\n%s\n\n## What it unblocks\n\n%s\n" % (
-        " ".join("@" + o for o in owner), what, why, unblocks)
-    if frozen is not None:
-        f = fence_for(frozen)
-        body += "\n## Proposed text\n\n%s\n%s\n%s\n\n<!-- frozen-sha: %s -->\n" % (f, frozen, f, sha256(frozen))
-    body += "\n<!-- request-kind: %s -->\n" % kind
-    if ref:
-        body += "<!-- request-ref: %s -->\n" % ref
-    if proposal:
-        body += requests.instructions(proposal)
-    labels = [REQ, "%s:%s" % (REQ, kind)] + (([c.ITER + str(iteration)]) if iteration is not None else [])
-    for l in labels:
-        c.ensure_label(l, "FBCA04" if l.startswith(REQ) else "C5DEF5")
-    n = c.create_issue(title, body, labels=labels, assignees=owner)
-    if proposal:
-        requests.freeze(n, proposal, body)
-    for t in blocks:
-        c.add_blocker(t, n)
-    c.say("owner request #%s: %s" % (n, title))
-    return n
-
-
-def frozen_text(body):
-    """The proposed text of a request when it still matches the hash taken at creation; else None."""
-    m = re.search(r"## Proposed text\n\n(`{3,})\n(.*?)\n\1\n", body or "", re.S)
-    sha = c.marker(body, "frozen-sha")
-    if not m or not sha or sha256(m.group(2)) != sha:
-        return None
-    return m.group(2)
-
-
-def open_requests():
-    return c.list_issues(labels=(REQ,))
-
-
-def request_open(kind, ref=None, title=None):
-    for x in open_requests():
-        b = x["body"] or ""
-        if c.marker(b, "request-kind") == kind and (ref is None or c.marker(b, "request-ref") == ref) \
-                and (title is None or x["title"] == title):
-            return x["number"]
-    return None
-
-
-def process_proposals(text, iteration, source=None):
-    """`.session/requests.json` of an agent: `[{kind, title, what, why, unblocks, frozen?}]`. Returns the issue numbers."""
-    try:
-        items = json.loads(text)
-    except ValueError:
-        return []
-    made = []
-    for p in items if isinstance(items, list) else []:
-        if not isinstance(p, dict) or p.get("kind") not in SESSION_KINDS or not p.get("title"):
-            continue
-        if p["kind"] not in ("question", "capability") and not p.get("frozen"):
-            continue
-        ref = None
-        if p["kind"] in requests.KINDS:
-            ref = "proposal-" + sha256(json.dumps([source if source is not None else iteration, p], sort_keys=True))
-            if any(c.marker(x["body"], "request-ref") == ref for x in c.list_issues(state="all", labels=(REQ,))):
-                continue
-        if request_open(p["kind"], title=p["title"]):
-            continue
-        try:
-            made.append(open_request(p["kind"], p["title"], p.get("what", ""), p.get("why", ""), p.get("unblocks", ""),
-                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness")))
-        except (ValueError, TypeError) as e:
-            c.say("Invalid owner request %s: %s" % (p["title"], e))
-    return made
 
 
 # ---------------------------------------------------------------- records and state
@@ -232,13 +132,13 @@ def build_state(n):
     idx = index_lines()
     goal = read_text("goal/goal.md")
     gate = read_text("goal/gate.yml")
-    closed = c.list_issues(state="closed", labels=(REQ,))[:10]
+    closed = c.list_issues(state="closed", labels=(requests.REQ,))[:10]
     return {
         "schema_version": 1, "iteration": n, "engine_version": c.engine_version(),
         "policy_rev": policy_rev(), "evaluator_rev": evaluator_rev(),
         "goal": {"text": goal, "gate_accepted": gate is not None, "gate": gate},
         "policy_params": c.params(), "engine_params": cfg["params"], "limits": cfg["limits"], "gate": cfg["gate"],
-        "owner_requests": {"open": [request_summary(x) for x in open_requests()],
+        "owner_requests": {"open": [request_summary(x) for x in requests.open_requests()],
                            "recently_closed": [dict(request_summary(x), answer=x.get("state_reason")) for x in closed]},
         "no_progress": no_progress(idx),
         "policymaker_sessions": policymaker_sessions(),
@@ -372,7 +272,7 @@ def begin_work(n, it):
         return begin_shape(n, it)
     if not (orders and place_orders(n, it, orders)):
         return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks")
-    c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(orders), "width": width(orders)})
+    c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(orders), "width": graph.width(orders)})
 
 
 def held_orders(it):
@@ -395,8 +295,8 @@ def policy_pass(n, it):
         if p in placed:
             return bool(placed[p])
         orders = read_orders(p)
-        taken = {t["id"] for t in read_json(tasks_path(n)) or []} | {o["id"] for o in held_orders(it)}
-        errs = validate_tasks({"tasks": orders}, ordered=True, taken=taken) if orders else []
+        taken = {t["id"] for t in graph.read(n)} | {o["id"] for o in held_orders(it)}
+        errs = graph.validate_tasks({"tasks": orders}, ordered=True, taken=taken) if orders else []
         if errs:
             c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
             placed[p] = []
@@ -409,7 +309,7 @@ def policy_pass(n, it):
         return bool(now)
 
     def start(p):
-        numbers = create_tasks(n, placed[p])
+        numbers = graph.create_tasks(n, placed[p])
         c.update_report(p, {"ordered": " ".join(map(str, numbers))})
         for num in numbers:
             c.launch(num)
@@ -435,9 +335,9 @@ def note_long_policy_phase(n, passes):
     """Informational only: nothing waits on it, and the owner's answer changes nothing. Once per iteration, even if answered."""
     k, ref = c.cfg()["policy_passes_notice"], "policy-passes-%s" % n
     if not k or passes < k or any(c.marker(x["body"], "request-ref") == ref
-                                  for s in ("open", "closed") for x in c.list_issues(state=s, labels=(REQ + ":notice",))):
+                                  for s in ("open", "closed") for x in c.list_issues(state=s, labels=(requests.REQ + ":notice",))):
         return
-    open_request("notice", "Policy phase of iteration %s: %s passes" % (n, passes),
+    requests.open_request("notice", "Policy phase of iteration %s: %s passes" % (n, passes),
                  "The Policymaker has run %s passes in this iteration's policy phase; each pass is a session with its ordered sessions." % passes,
                  "The engine caps nothing; a long policy phase costs time and quota, so you can see it.",
                  "Nothing is blocked. The iteration continues; closing this request changes nothing.", ref=ref, iteration=n)
@@ -588,224 +488,30 @@ def split_orders(orders):
 
 def place_orders(n, it, orders):
     """The Policymaker's held implementation-layer orders become tasks of iteration n, running beside the shaper and its graph. True when placed."""
-    errs = validate_tasks({"tasks": orders}, ordered=True)
+    errs = graph.validate_tasks({"tasks": orders}, ordered=True)
     if errs:
         c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
         return False
-    for num in create_tasks(n, orders):
+    for num in graph.create_tasks(n, orders):
         c.launch(num)
     return True
 
 
-# ---------------------------------------------------------------- the task graph
-
-TASK_FIELDS = {"id", "title", "role", "body", "model", "effort", "blocked_by", "inputs", "exports", "start_branch", "limits", "consent"}
-
-
-def limits_exceeded(profile):
-    """Why a profile is beyond the owner's accepted limits (empty: within)."""
-    lim = c.cfg()["limits"]
-    why = []
-    allowed = lim.get("tools") or c.DEFAULT_TOOLS
-    import fnmatch
-    for t in profile.get("tools", []) or []:
-        if not any(fnmatch.fnmatchcase(t, a) for a in allowed):
-            why.append("tool `%s`" % t)
-    if profile.get("internet"):
-        ok = lim.get("internet_write") or []
-        for g in profile.get("write", []) or []:
-            if not any(g.startswith(p) for p in ok):
-                why.append("internet together with writing `%s`" % g)
-    return why
-
-
-SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
-
-
-def consent_errors(consent):
-    """Errors of a task's `consent` object. `secrets` are names only, never values."""
-    if not isinstance(consent, dict):
-        return ["`consent` must be an object"]
-    errors = ["consent: unknown field %r" % k for k in sorted(set(consent) - {"what", "why", "secrets"})]
-    for key in ("what", "why"):
-        if key in consent and not isinstance(consent[key], str):
-            errors.append("consent.%s must be a string" % key)
-    secrets = consent.get("secrets", [])
-    if not isinstance(secrets, list):
-        return errors + ["consent.secrets must be a list of secret names"]
-    for k, name in enumerate(secrets):     # the entry is not echoed: it may be a value
-        if not isinstance(name, str) or not SECRET_NAME.fullmatch(name):
-            errors.append("consent.secrets[%d] is not a secret name (^[A-Z][A-Z0-9_]*$; names only, never values)" % k)
-    if len({s for s in secrets if isinstance(s, str)}) != len([s for s in secrets if isinstance(s, str)]):
-        errors.append("consent.secrets has duplicate names")
-    return errors
-
-
-def validate_tasks(doc, ordered=False, taken=()):
-    """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
-    `policymaker_only_roles` and only of them, unless no shaper is set: then it orders any role. `taken`: ids the iteration already uses."""
-    profiles, parameters, config = c.profiles(), c.params(), c.cfg()
-    policymaker_roles = config["policymaker_only_roles"]
-    tasks = doc.get("tasks") if isinstance(doc, dict) else None
-    if not isinstance(tasks, list) or not tasks:
-        return ["`tasks` must be a non-empty list"]
-    # Validate shapes before membership checks or graph traversal: this is agent-authored JSON.
-    # Only structurally valid tasks enter the graph; malformed tasks return diagnostics, not exceptions.
-    errors, task_ids, graph = [], set(), {}
-    for task in tasks:
-        if not isinstance(task, dict):
-            errors.append("a task is not an object")
-            continue
-        task_id = task.get("id")
-        if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9-]+", task_id):
-            errors.append("task id must contain only letters, digits and dashes: %r" % task_id)
-            continue
-        if task_id in task_ids or task_id in taken:
-            errors.append("task id missing or duplicated: %r" % task_id)
-        task_ids.add(task_id)
-        extra = set(task) - TASK_FIELDS - ({"pass"} if ordered else set())   # `pass`: set by the engine on orders
-        if extra:
-            errors.append("task %s: unknown fields %s" % (task_id, sorted(extra)))
-        if "exports" in task:
-            errors.extend("task %s: %s" % (task_id, error) for error in session_exports.validate(task["exports"]))
-        if "consent" in task:
-            errors.extend("task %s: %s" % (task_id, error) for error in consent_errors(task["consent"]))
-        role = task.get("role")
-        if not isinstance(role, str) or role not in profiles or role == "policymaker":
-            errors.append("task %s: role %r has no profile" % (task_id, role))
-        elif ordered and parameters["shaper"] and role not in policymaker_roles:
-            errors.append("task %s: the Policymaker orders only %s" % (task_id, ", ".join(policymaker_roles)))
-        elif not ordered and role in policymaker_roles:
-            errors.append("task %s: role `%s` is ordered only by the Policymaker" % (task_id, role))
-        for field in ("title", "body"):
-            if not isinstance(task.get(field), str) or not task[field].strip():
-                errors.append("task %s: `%s` missing" % (task_id, field))
-        if task.get("model") and (not isinstance(task["model"], str) or task["model"] not in parameters["models"]):
-            errors.append("task %s: unknown model alias %r" % (task_id, task["model"]))
-        if task.get("effort") and (not isinstance(task["effort"], str) or task["effort"] not in parameters["efforts"]):
-            errors.append("task %s: unknown effort %r" % (task_id, task["effort"]))
-        dependencies = task.get("blocked_by", [])
-        if dependencies is None:
-            dependencies = []
-        if not isinstance(dependencies, list) or any(not isinstance(dependency, str) for dependency in dependencies):
-            errors.append("task %s: blocked_by must be a list of task ids" % task_id)
-        else:
-            graph[task_id] = dependencies
-    for task_id, dependencies in graph.items():
-        unknown_dependencies = [dependency for dependency in dependencies if dependency not in task_ids]
-        if unknown_dependencies:
-            errors.append("task %s: blocked_by unknown %s" % (task_id, unknown_dependencies))
-    if not errors and topological(graph) is None:
-        errors.append("blocked_by has a cycle")
-    return errors
-
-
-def topological(graph):
-    """Task ids in an order where blockers come first; None on a cycle."""
-    order, state = [], {}
-
-    def visit(x):
-        if state.get(x) == 1:
-            return False
-        if state.get(x) == 2:
-            return True
-        state[x] = 1
-        for d in graph.get(x, []):
-            if not visit(d):
-                return False
-        state[x] = 2
-        order.append(x)
-        return True
-    for x in graph:
-        if not visit(x):
-            return None
-    return order
-
-
-def width(tasks):
-    """Largest dependency-depth level; a graph statistic, not a concurrency limit."""
-    depth = {}
-    byid = {t["id"]: t for t in tasks}
-
-    def d(x):
-        if x not in depth:
-            depth[x] = 1 + max([d(b) for b in byid[x].get("blocked_by") or [] if b in byid] or [0])
-        return depth[x]
-    layers = {}
-    for t in tasks:
-        layers[d(t["id"])] = layers.get(d(t["id"]), 0) + 1
-    return max(layers.values() or [0])
-
+# ---------------------------------------------------------------- the shaper graph enters execution
 
 def instantiate(n, doc):
     """The shaper's graph: validate it, create its tasks, start what is free. Returns the number of tasks, or an error text."""
-    taken = {t["id"] for t in read_json(tasks_path(n)) or []}
-    errs = validate_tasks(doc, taken=taken)
+    taken = {t["id"] for t in graph.read(n)}
+    errs = graph.validate_tasks(doc, taken=taken)
     if errs:
         return "invalid tasks.json: " + "; ".join(errs[:6])
-    started = create_tasks(n, doc["tasks"])
-    frozen = read_json(tasks_path(n))
+    started = graph.create_tasks(n, doc["tasks"])
+    frozen = graph.read(n)
     it = find_iteration_issue(n)
-    c.update_report(it["number"], {"phase": "run", "tasks": len(frozen), "width": width(frozen)})
+    c.update_report(it["number"], {"phase": "run", "tasks": len(frozen), "width": graph.width(frozen)})
     for num in started:
         c.launch(num)
     return len(doc["tasks"])
-
-
-def create_tasks(n, tasks):
-    """Create the issues of validated tasks, wire blocking and consent, add them to the frozen graph of the iteration.
-    Returns the issue numbers, for the caller to start."""
-    prof, label = c.profiles(), c.ITER + str(n)
-    by_id = {t["id"]: t for t in tasks}
-    for t in tasks:
-        for l in ("role:" + t["role"],):
-            c.ensure_label(l, "1D76DB")
-    number = {}
-    for tid in topological({t["id"]: [d for d in t.get("blocked_by") or [] if d in by_id] for t in tasks}):
-        t = by_id[tid]
-        body = t["body"].rstrip() + "\n\n<!-- task-id: %s -->\n" % tid
-        if t.get("limits"):
-            body += "<!-- limits: %s -->\n" % json.dumps(t["limits"], sort_keys=True)
-        if t.get("start_branch"):
-            body += "<!-- start-branch: %s -->\n" % t["start_branch"]
-        if t.get("inputs"):
-            body += "<!-- inputs: %s -->\n" % json.dumps(resolve_inputs(t["inputs"], number), sort_keys=True)
-        if "exports" in t:
-            body += "<!-- exports: %s -->\n" % json.dumps(t["exports"], sort_keys=True)
-        labels = ["role:" + t["role"], label, "generation:0"]
-        if t.get("model"):
-            labels.append("model:" + t["model"])
-        if t.get("effort"):
-            labels.append("effort:" + t["effort"])
-        number[tid] = c.create_issue(t["title"], body, labels=labels)
-    for t in tasks:
-        for d in t.get("blocked_by") or []:
-            if d in number:
-                c.add_blocker(number[t["id"]], number[d])
-        why = limits_exceeded(prof[t["role"]])
-        if why or t.get("consent"):
-            ask = t.get("consent") or {}
-            secrets = ask.get("secrets") or []
-            req = open_request("consent", "Consent: `%s` session for task \"%s\"" % (t["role"], t["title"]),
-                               ask.get("what") or "Run one `%s` session %s." % (t["role"], "beyond the accepted limits: " + ", ".join(why) if why else "with the secrets listed below"),
-                               ask.get("why") or t["title"],
-                               "The session starts only when you close this as completed; the wider profile and the secrets listed apply to that one session.",
-                               ref="task-%s" % number[t["id"]], blocks=(number[t["id"]],), iteration=n,
-                               frozen="secrets: %s" % ", ".join(secrets) if secrets else None)
-            c.edit_labels(number[t["id"]], add=["consent:%s" % req])
-    frozen = (read_json(tasks_path(n)) or []) + [dict(t, issue=number[t["id"]]) for t in tasks]
-    c.commit_main({tasks_path(n): json.dumps(frozen, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: task graph" % tag(n))
-    return list(number.values())
-
-
-def resolve_inputs(inputs, number):
-    out = []
-    for x in inputs:
-        if isinstance(x, dict) and x.get("from") in number:
-            out.append({"issue": number[x["from"]], "name": x.get("name")})
-        elif isinstance(x, dict):
-            out.append(x)
-    return out
 
 
 # ---------------------------------------------------------------- advancing and closing
@@ -925,7 +631,7 @@ def close_iteration(n, status, failure=None):
         sessions = {x["number"]: session_summary(x, streams) for x in issues if c.roles_of(c.label_names(x))}
 
         shp = sessions.get(int(f["shape_issue"])) if f.get("shape_issue", "").isdigit() else None
-        tasks = read_json(tasks_path(n)) or []
+        tasks = graph.read(n)
         work = [s for s in sessions.values() if s is not shp]
         verdicts = [s["verdict"] for s in work if s.get("verdict")]
         value = "accepted" if "accepted" in verdicts else ("rejected" if "rejected" in verdicts else ("inconclusive" if verdicts else "none"))
@@ -940,7 +646,7 @@ def close_iteration(n, status, failure=None):
                     b[k] += t.get(k, 0)
         started = c.parse_time(f["started"]) if f.get("started") else c.now()
 
-        opened = [x["number"] for x in c.list_issues(state="all", labels=(REQ, c.ITER + str(n)))]
+        opened = [x["number"] for x in c.list_issues(state="all", labels=(requests.REQ, c.ITER + str(n)))]
         record = {
             "schema_version": 1, "iteration": n, "status": status, "failure": failure,
             "started": f.get("started"), "ended": c.iso(), "engine_version": c.engine_version(),
@@ -956,7 +662,7 @@ def close_iteration(n, status, failure=None):
                                     "improved": any(s["improved"] for s in work)},
                         "tokens": dict(sums, by_model=by_model), "limit_hits": sum(s["attempts"] for s in sessions.values()), "wall_s": int((c.now() - started).total_seconds()),
                         "critical_path_s": critical_path(list(sessions.values()), tasks), "width": int(f.get("width", 0) or 0),
-                        "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in open_requests()]}},
+                        "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in requests.open_requests()]}},
         }
         changes, verifications = policy_changes.for_iteration(n)
         record["policy"]["change_ids"] = changes
@@ -982,8 +688,8 @@ def prune_streams(n):
 
 def note_no_progress(n):
     k = c.cfg()["params"].get("no_progress_iterations")
-    if k and no_progress() >= k and not request_open("notice", ref="no-progress"):
-        open_request("notice", "No progress for %s iterations" % no_progress(),
+    if k and no_progress() >= k and not requests.request_open("notice", ref="no-progress"):
+        requests.open_request("notice", "No progress for %s iterations" % no_progress(),
                      "The last %s iterations produced no accepted improvement." % no_progress(),
                      "The Policymaker has been told and keeps working toward the current goal; nothing was rolled back.",
                      "Nothing is blocked. Look at the iteration records and tell the Policymaker or change the goal.", ref="no-progress", iteration=n)
@@ -1006,9 +712,9 @@ def check_goal():
         return
     ref = c.head()
     if gate.get("owner_confirms"):
-        if request_open("result-confirmation") or confirmation_declined(ref):
+        if requests.request_open("result-confirmation") or confirmation_declined(ref):
             return
-        open_request("result-confirmation", "Confirm the result",
+        requests.open_request("result-confirmation", "Confirm the result",
                      "The goal gate says the goal is reached.\n\n%s" % (verdict.get("artifact") or verdict.get("detail") or ""),
                      "Without your confirmation the loop keeps working.",
                      "Completed ends the loop (`GOAL_REACHED`). Not planned: the loop continues; say why in a comment.", ref=ref)
@@ -1018,7 +724,7 @@ def check_goal():
 
 def confirmation_declined(ref):
     return any(c.marker(x["body"], "request-ref") == ref and x.get("state_reason") == "not_planned"
-               for x in c.list_issues(state="closed", labels=(REQ + ":result-confirmation",)))
+               for x in c.list_issues(state="closed", labels=(requests.REQ + ":result-confirmation",)))
 
 
 def parse_verdict(stdout):
@@ -1076,7 +782,7 @@ def revert_policy(why):
     if resources.revision() == resources.revision(target):
         return False
     c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, resources.restore_paths()))
-    open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
+    requests.open_request("notice", "policy/ rolled back", "The engine returned `policy/` to %s. Reason: %s." % (target[:8], why),
                  "The loop was not progressing or the Policymaker failed twice in a row.",
                  "Nothing is blocked. The Policymaker sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])
     return True

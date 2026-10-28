@@ -27,7 +27,7 @@ class OwnerRequestsTest(unittest.TestCase):
         self.w.close()
 
     def proposal(self, kind="limits-change", **kwargs):
-        return it.open_request(kind, "request", "what", "why", "unblocks",
+        return req.open_request(kind, "request", "what", "why", "unblocks",
                                frozen=kwargs.pop("frozen", self.LIMITS), **kwargs)
 
     def answer(self, n, yes=True, owner="ow"):
@@ -58,7 +58,7 @@ class OwnerRequestsTest(unittest.TestCase):
         n = self.proposal()
         self.answer(n, owner="collaborator")
         self.assertEqual(self.w.origin_file("engine.yml"), self.CONFIG)
-        self.assertNotIn(it.HANDLED, c.label_names(c.issue(n)))
+        self.assertNotIn(req.HANDLED, c.label_names(c.issue(n)))
         self.answer(n, False)
         self.assertEqual(req.read(n)["status"], "declined")
         self.assertEqual(self.w.origin_file("engine.yml"), self.CONFIG)
@@ -66,7 +66,7 @@ class OwnerRequestsTest(unittest.TestCase):
     def test_editing_both_proposal_and_displayed_hash_is_rejected(self):
         n = self.proposal()
         self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(self.LIMITS, "tools: [Bash]\ninternet_write: []\n")
-        self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(it.sha256(self.LIMITS), "forged-hash")
+        self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(req.digest(self.LIMITS), "forged-hash")
         self.answer(n)
         self.assertEqual(req.read(n)["status"], "invalid")
         self.assertEqual(self.w.origin_file("engine.yml"), self.CONFIG)
@@ -140,7 +140,7 @@ class OwnerRequestsTest(unittest.TestCase):
     def engine_change(self, frozen=None, **kwargs):
         self.w.push_main({self.SCRIPT: "a = 1\n"})
         c.sync_main()
-        return it.open_request("engine-change", "fix", "Tune the script.", "It is slow.", "The worker.",
+        return req.open_request("engine-change", "fix", "Tune the script.", "It is slow.", "The worker.",
                                frozen=frozen or self.PATCH, **kwargs)
 
     def branch(self, n):
@@ -203,7 +203,7 @@ class OwnerRequestsTest(unittest.TestCase):
         loop.sweep_requests()
         loop.on_request_closed(n)
         self.assertEqual(len(self.h.prs), 1)
-        m = it.open_request("engine-change", "fix again", "x", "y", "z", frozen=self.PATCH)
+        m = req.open_request("engine-change", "fix again", "x", "y", "z", frozen=self.PATCH)
         self.answer(m)
         self.assertEqual(len(self.h.prs), 1)
         self.assertIn(self.h.prs[self.branch(n)]["url"], self.h.comments(m)[-1]["body"])
@@ -226,17 +226,53 @@ class OwnerRequestsTest(unittest.TestCase):
 
     def test_retrying_a_denied_proposal_does_not_open_it_again(self):
         text = json.dumps([{"kind": "limits-change", "title": "limits", "frozen": self.LIMITS}])
-        (n,) = it.process_proposals(text, 0, source=100)
+        (n,) = req.process_proposals(text, 0, source=100)
         self.answer(n, False)
-        self.assertEqual(it.process_proposals(text, 0, source=100), [])
+        self.assertEqual(req.process_proposals(text, 0, source=100), [])
         fresh = json.loads(text)
         fresh[0]["revision"] = 2
-        self.assertEqual(len(it.process_proposals(json.dumps(fresh), 0, source=100)), 1)
+        self.assertEqual(len(req.process_proposals(json.dumps(fresh), 0, source=100)), 1)
 
     def test_yaml_flow_limits_preserves_other_fields(self):
         original = "limits: {tools: [Read], internet_write: []}\n# keep\npolicy: {max_turns: 2}\n"
         after = req.replace_limits(original, self.LIMITS)
         self.assertTrue(after.endswith("# keep\npolicy: {max_turns: 2}\n"))
+
+
+class LimitsTest(unittest.TestCase):
+    def setUp(self):
+        self.w = fakes.World(engine_yml="limits:\n  tools: [Read, Write, 'Bash(git:*)']\n  internet_write: ['docs/']\n")
+
+    def tearDown(self):
+        self.w.close()
+
+    def test_within(self):
+        self.assertEqual(req.limits_exceeded({"tools": ["Read", "Bash(git:*)"], "internet": True, "write": ["docs/research/**"]}), [])
+
+    def test_tool_beyond(self):
+        self.assertEqual(len(req.limits_exceeded({"tools": ["Read", "Bash(rm:*)"]})), 1)
+
+    def test_internet_together_with_writing_code(self):
+        self.assertEqual(len(req.limits_exceeded({"internet": True, "write": ["src/**"]})), 1)
+        self.assertEqual(req.limits_exceeded({"internet": False, "write": ["src/**"]}), [])
+
+
+class RequestTextTest(unittest.TestCase):
+    def test_fence_is_longer_than_any_backtick_run(self):
+        self.assertEqual(req.fence_for("a ``` b"), "````")
+        self.assertEqual(req.fence_for("plain"), "```")
+
+    def test_frozen_text_survives_a_round_trip_and_detects_edits(self):
+        w = fakes.World()
+        try:
+            n = req.open_request("goal-gate", "t", "w", "y", "u", frozen="command: x\nowner_confirms: true ``` odd\n")
+            body = w.hub.issues[n]["body"]
+            self.assertEqual(req.frozen_text(body), "command: x\nowner_confirms: true ``` odd\n")
+            self.assertIsNone(req.frozen_text(body.replace("command: x", "command: y")))
+            self.assertIn("@ow", body)
+            self.assertEqual(w.hub.issues[n]["assignees"], ["ow"])
+        finally:
+            w.close()
 
 
 if __name__ == "__main__":

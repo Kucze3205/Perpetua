@@ -8,6 +8,7 @@ from unittest import mock
 from datetime import timedelta
 
 from fakes import common as c, iteration as it, loop, task, tasks_json
+import task_graph as graph
 from flow_fixtures import Flow
 
 
@@ -39,7 +40,7 @@ class FirstIterationTest(Flow):
         self.assertIn(self.task_issue("c"), launched)
         self.assertNotIn(self.task_issue("b"), launched)               # blocked by a
         self.assertEqual(self.w.origin_file("journal/0000.md"), "## State\nx\n")
-        frozen = json.loads(self.w.origin_file(it.tasks_path(0)))
+        frozen = json.loads(self.w.origin_file(graph.tasks_path(0)))
         self.assertEqual([t["id"] for t in frozen], ["a", "b", "c"])
 
         self.w.session(self.task_issue("a"), files={"src/a.txt": "A"})
@@ -79,6 +80,26 @@ class FirstIterationTest(Flow):
         self.assertEqual(state["iterations"][0]["improved"], True)
         self.assertNotIn("aim", state["iterations"][0])
         self.assertEqual(state["no_progress"], 0)
+
+    def test_tasks_are_frozen_and_phase_is_run_before_any_task_launch(self):
+        it.start_iteration()
+        current = self.open_iteration()["number"]
+        seen = []
+        launch = c.launch
+
+        def inspect_launch(number):
+            task_id = c.marker(c.issue(number)["body"], "task-id")
+            if task_id:
+                seen.append(task_id)
+                self.assertEqual(c.report_fields(current)["phase"], "run")
+                frozen = graph.read(0)
+                self.assertEqual({t["id"] for t in frozen}, {"a", "b"})
+                self.assertEqual(next(t["issue"] for t in frozen if t["id"] == task_id), number)
+            return launch(number)
+
+        with mock.patch.object(c, "launch", side_effect=inspect_launch):
+            self.play_shaper(task("b", blocked_by=["a"]), task("a"))
+        self.assertEqual(set(seen), {"a", "b"})
 
     def test_an_old_format_record_stays_as_it_is_and_the_next_iteration_reads_it(self):
         old = json.dumps({"schema_version": 1, "iteration": 0, "status": "closed", "policy": {"orders_refused": None},

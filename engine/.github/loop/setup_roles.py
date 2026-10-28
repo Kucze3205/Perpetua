@@ -11,6 +11,7 @@ import re
 import subprocess
 import yaml
 import common as c
+import owner_requests as requests
 import managed_resources as resources
 
 
@@ -74,13 +75,12 @@ def validate(repo, baseline=None):
                 raise ValueError('required policy role missing: ' + role)
         import loop
         import session_security
-        import iteration
         pm_profile = dict(loop.profile_of('policymaker'), layer='policy')
         for role, profile in dict(profiles, policymaker=pm_profile).items():
             error = session_security.profile_error(profile, c.cfg()['cli_version'])
             if error:
                 raise ValueError('invalid profile ' + role + ': ' + error)
-            if role != 'policymaker' and iteration.limits_exceeded(profile):
+            if role != 'policymaker' and requests.limits_exceeded(profile):
                 raise ValueError('profile exceeds accepted limits: ' + role)
             if profile.get('agent', True) and not Path(profile['layer'], 'roles', role, 'SKILL.md').is_file():
                 raise ValueError('complete local skill missing: ' + role)

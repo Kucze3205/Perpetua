@@ -57,7 +57,8 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
 3. **Shape.** The optional execution shaper reads the staged state and writes
    `.session/tasks.json`. It may be a model orchestrator or a script. The engine
-   validates and creates graph issues, blocking edges and consent requests.
+   validates and creates graph issues, blocking edges and consent requests. A graph the engine accepts also goes to
+   `policy/graph-rules.py`, if present, which may add refusals (see [layer rules](managed-resources.md#layer-rules-and-activation-validation)).
    Accepted Policymaker orders become tasks alongside it. With `shaper: null`,
    orders are the only tasks; no valid orders means a failed iteration and a rollback of both managed roots.
    A graph holds at most 50 tasks (shaper output and orders together); a larger one is refused with that reason and

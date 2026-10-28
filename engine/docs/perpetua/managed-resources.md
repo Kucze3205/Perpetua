@@ -73,6 +73,20 @@ the product change gate while preserving separate evaluator verification.
 The engine rejects an ambiguous candidate catalog before publication. Products
 continue through protected/write checks and the accepted-tree change gate.
 
+## Layer rules and activation validation
+
+The engine checks the structure of the catalog (valid YAML, role names, one profile per role, no `layer` field, no links,
+no Policymaker profile in a layer). Which layer a role belongs to, and whether definitions are complete enough to become
+active, is `policy/layer-rules.py`: the engine writes the catalog as facts, the script runs in the tokenless job and prints
+`{"errors": [...]}` (at most 20 strings of 300 characters). The shipped script requires `audit`, `evaluator` and the verifier
+in the policy layer, refuses a policy role as shaper and a skill directory in the wrong or both layers, and at activation
+requires the shaper to have an execution profile with a complete skill (or a command). A change to `execution/` or `policy/`
+merges only if the script, run from the active `policy/`, finds no error; a change to the script applies from the next
+change. Invalid output is not an error list: it fails the iteration and rolls `execution/` and `policy/` back.
+
+Likewise `policy/graph-rules.py`, when present, adds task-graph rules: facts `{tasks, ordered, taken, roles}`, answer
+`{"errors": [...]}`. It runs only for a graph the engine accepted, so policy can refuse more and never less.
+
 ## Layered activation and recovery
 
 A layered revision has a `layered-v1:` identity over both managed roots and the

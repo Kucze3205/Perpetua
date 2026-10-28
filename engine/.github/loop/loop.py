@@ -520,9 +520,11 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
             if resources.layered():
                 try:
                     resources.role_profiles(cand)
-                    if boundary:
-                        resources.validate_activation(cand)
-                except ValueError as error:
+                    if boundary or any(resources.is_managed(f) for f in changed):
+                        refused = it.layer_errors(cand, boundary)
+                        if refused:
+                            return dict(res, result="invalid-resources", detail="; ".join(refused[:6]))
+                except (ValueError, it.PolicyScriptError) as error:
                     return dict(res, result="invalid-resources", detail=str(error))
             if checked_evaluator_rev and resources.evaluator_revision("HEAD", cand) != checked_evaluator_rev:
                 return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
@@ -961,7 +963,11 @@ def after_session(n, i, labels, role, k, work, status, upd, prose, merged_pendin
             doc = json.loads(c.safe_read(work, ".session/tasks.json") or "")
         except ValueError:
             err = "`.session/tasks.json` is missing or not JSON"
-        got = it.instantiate(k, doc) if doc is not None else err
+        try:
+            got = it.instantiate(k, doc) if doc is not None else err
+        except it.PolicyScriptError as e:
+            it.fail_iteration(k, "invalid policy script output: %s" % e, rollback=True)
+            got = "invalid policy script output: %s" % e
         if isinstance(got, str):
             status, prose = "partial", got
     if role == c.cfg()["verifier_role"] and merged_pending is None:

@@ -36,6 +36,7 @@ SEEN_MARK = "<!-- policymaker-audit-seen -->"
 HANDLED = "request:handled"
 POLICY_OUTPUT_BYTES = 4096      # what the engine accepts from a policy script
 POLICY_SCRIPT_MINUTES = 10
+POLICY_ERRORS = 20       # what the engine accepts from a policy rule script: refusals per answer
 MAX_TASKS = 50          # the kernel's cap on the tasks of one iteration's graph: shaper output and Policymaker orders alike
 
 
@@ -426,7 +427,10 @@ def start_iteration():
     if why and c.guard_ok():
         c.update_report(it, {"phase": "policy", "policy_issue": start_policymaker(n, why), "policy_trigger": why})
         return n
-    begin_work(n, it)
+    try:
+        begin_work(n, it)
+    except PolicyScriptError as e:
+        fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
     return n
 
 
@@ -587,6 +591,21 @@ def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
     return value
 
 
+def policy_errors(name, facts):
+    """The refusals `policy/<name>` adds to the engine's own: it prints {"errors": [...]}. No such script: none. Policy can only
+    refuse more, so these are appended to the engine's errors, never replace them. Raises PolicyScriptError for an invalid answer."""
+    out = run_policy_script(name, facts)
+    errors = (out or {}).get("errors", [])
+    if not (isinstance(errors, list) and len(errors) <= POLICY_ERRORS and all(isinstance(x, str) and 0 < len(x) <= 300 for x in errors)):
+        raise PolicyScriptError("policy/%s: `errors` must be a list of up to %s strings of 1 to 300 characters" % (name, POLICY_ERRORS))
+    return ["policy/%s: %s" % (name, x) for x in errors]
+
+
+def layer_errors(cwd, activation):
+    """Why the managed definitions in `cwd` are refused by `policy/layer-rules.py` (empty: accepted). Raises PolicyScriptError."""
+    return policy_errors("layer-rules.py", resources.layer_facts(cwd, activation))
+
+
 def policymaker_due(n):
     """Why the Policymaker opens iteration n (None: it does not, the last organization stands). The engine decides two
     things whatever policy says: one session at a time, and until a session ended `done` every iteration starts with one
@@ -703,7 +722,8 @@ def consent_errors(consent):
 
 
 def validate_tasks(doc, ordered=False, taken=()):
-    """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
+    """Errors of a task graph (empty: valid): the engine's, and when it finds none, those of `policy/graph-rules.py` (raises
+    PolicyScriptError for an answer the engine refuses). `ordered`: the Policymaker's orders, the only tasks of the roles in
     `policymaker_only_roles` and only of them, unless no shaper is set: then it orders any role. `taken`: ids the iteration already uses."""
     profiles, parameters, config = c.profiles(), c.params(), c.cfg()
     policymaker_roles = config["policymaker_only_roles"]
@@ -760,6 +780,9 @@ def validate_tasks(doc, ordered=False, taken=()):
             errors.append("task %s: blocked_by unknown %s" % (task_id, unknown_dependencies))
     if not errors and topological(graph) is None:
         errors.append("blocked_by has a cycle")
+    if not errors:      # policy may refuse a graph the engine accepts, never the other way round
+        errors = policy_errors("graph-rules.py", {"tasks": tasks, "ordered": ordered, "taken": sorted(taken),
+                                                   "roles": {role: profile["layer"] for role, profile in profiles.items()}})
     return errors
 
 
@@ -902,7 +925,10 @@ def advance():
             if orders_ended(p):
                 resume_policymaker(p)
         elif policy_settled(n):
-            policy_pass(n, it["number"])
+            try:
+                policy_pass(n, it["number"])
+            except PolicyScriptError as e:
+                fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
     elif phase == "starting":
         pass
     return n

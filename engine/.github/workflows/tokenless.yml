@@ -2,7 +2,7 @@
 # branch `tokenless/<key>` and dispatches this workflow; the bundle's `run.sh` runs in `tokenless-job.yml`
 # (`permissions: {}`) and its outputs come back as the artifact `result-<key>`. The first user is the change gate.
 name: tokenless
-run-name: "tokenless ${{ inputs.key }}"
+run-name: "tokenless #${{ inputs.key }}"
 
 on:
   workflow_dispatch:
@@ -28,12 +28,10 @@ jobs:
           ref: tokenless/${{ inputs.key }}
           path: bundle
           persist-credentials: false
-      - run: rm -rf bundle/.git
       - uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ inputs.key }}
-          path: bundle
-          include-hidden-files: true
+          path: bundle/bundle.tar.gz
 
   run:
     needs: stage

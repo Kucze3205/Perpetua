@@ -76,11 +76,13 @@ report carrying the error, up to two times (`fixes`). A gate verdict is not retr
 
 - `owner`: the engine opens a `merge-acceptance` request and the task waits (`awaiting:owner`). Completed merges, not
   planned discards (the branch is kept and tagged `iter/NNNN/<issue>`). This is the default until the setup decides.
-- `script`: `gate.command` runs from the **accepted tree** (the default branch checkout), never from the candidate, with
-  `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`, `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no
-  secrets except the names in `gate.env_passthrough`. It prints a JSON object as its last line:
-  `{"verdict": "accepted|rejected|inconclusive", "improved": true, "detail": "..."}`. No verdict is `inconclusive`, never a
-  yes. The engine stores no accepted result: the evaluator compares the candidate with `BASELINE_DIR` itself (and may cache
+- `script`: `gate.command` runs in the **tokenless job** (`tokenless.yml`: `permissions: {}`, no GitHub secret, one
+  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md))
+  from the **accepted tree**, never from the candidate, with `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`,
+  `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no secrets (`gate.env_passthrough` does not reach it).
+  The epilogue runs no gate command itself; it reads the verdict back. It prints a JSON object as its last line:
+  `{"verdict": "accepted|rejected|inconclusive", "improved": true, "detail": "..."}`. A missing, failed or malformed verdict artifact is
+  `inconclusive`, never a yes. The engine stores no accepted result: the evaluator compares the candidate with `BASELINE_DIR` itself (and may cache
   its baseline measurement by `BASELINE_SHA`). A judge that calls a model is just a gate command.
 
 `improved` (default: `verdict == accepted`) feeds `no_progress`: the number of trailing iterations without an improving

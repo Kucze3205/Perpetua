@@ -23,9 +23,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: bundle-${{ inputs.key }}
-          path: bundle
+          path: .
       - run: |
-          mkdir out
+          mkdir bundle out
+          tar -xzf bundle.tar.gz -C bundle
           set +e
           bash bundle/run.sh > out/stdout.txt 2> out/stderr.txt
           echo $? > out/exit-code

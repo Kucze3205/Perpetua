@@ -299,27 +299,30 @@ def workflow_run(workflow, **inputs):
 def run_tokenless(bundle, timeout_minutes, poll=15):
     """Run `bundle/run.sh` in the tokenless job (tokenless.yml, `permissions: {}`) and return the directory of its
     outputs (`stdout.txt`, `stderr.txt`, `exit-code`), or None when the job left none. The bundle is a directory the
-    caller staged; it travels on a throwaway branch, which is data for the job, and is deleted afterwards."""
+    caller staged; it travels as one tarball on a throwaway branch (data for the job; a tarball holds no workflow
+    file the token would be refused to push), and the branch is deleted afterwards."""
     key = uuid.uuid4().hex[:12]
     branch = "tokenless/%s" % key
-    git(bundle, "init", "-q", "-b", "bundle")
-    git(bundle, "add", "-A")
-    git(bundle, "commit", "-q", "-m", "bundle")
+    shipment = tempfile.mkdtemp(prefix="shipment-")
+    shutil.make_archive(os.path.join(shipment, "bundle"), "gztar", bundle)
+    git(shipment, "init", "-q", "-b", "bundle")
+    git(shipment, "add", "-A")
+    git(shipment, "commit", "-q", "-m", "bundle")
     url = "https://github.com/%s.git" % REPO
-    git(bundle, "push", "-q", url, "HEAD:refs/heads/%s" % branch, remote=True)
-    out = os.path.join(bundle, "..", "tokenless-out-" + key)
+    git(shipment, "push", "-q", url, "HEAD:refs/heads/%s" % branch, remote=True)
+    out = os.path.join(shipment, "out")
     try:
         workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes)
         deadline = time.time() + (timeout_minutes + 15) * 60
         while time.time() < deadline:
             time.sleep(poll)
-            run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == "tokenless %s" % key), None)
+            run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == "tokenless #%s" % key), None)
             if run and run["status"] == "completed":
                 gh("run", "download", str(run["databaseId"]), "-n", "result-%s" % key, "-D", out, check=False)
                 return out if os.path.isdir(out) else None
         return None
     finally:
-        git(bundle, "push", "-q", url, "--delete", branch, check=False, remote=True)
+        git(shipment, "push", "-q", url, "--delete", branch, check=False, remote=True)
 
 
 def run_list(workflow):

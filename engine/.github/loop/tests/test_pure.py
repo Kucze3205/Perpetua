@@ -235,20 +235,16 @@ class TaskGraphTest(unittest.TestCase):
 
 class LimitsTest(unittest.TestCase):
     def setUp(self):
-        self.w = fakes.World(engine_yml="limits:\n  tools: [Read, Write, 'Bash(git:*)']\n  internet_write: ['docs/']\n")
+        self.w = fakes.World(engine_yml="limits:\n  tools: [Read, Write, 'Bash(git:*)']\n")
 
     def tearDown(self):
         self.w.close()
 
     def test_within(self):
-        self.assertEqual(it.limits_exceeded({"tools": ["Read", "Bash(git:*)"], "internet": True, "write": ["docs/research/**"]}), [])
+        self.assertEqual(it.limits_exceeded({"tools": ["Read", "Bash(git:*)"]}), [])
 
     def test_tool_beyond(self):
         self.assertEqual(len(it.limits_exceeded({"tools": ["Read", "Bash(rm:*)"]})), 1)
-
-    def test_internet_together_with_writing_code(self):
-        self.assertEqual(len(it.limits_exceeded({"internet": True, "write": ["src/**"]})), 1)
-        self.assertEqual(it.limits_exceeded({"internet": False, "write": ["src/**"]}), [])
 
 
 class RequestTextTest(unittest.TestCase):

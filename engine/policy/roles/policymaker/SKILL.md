@@ -19,14 +19,13 @@ Use the trigger, goal, accepted gate and working memory to decide what needs att
 Find earlier work through `.session/history/manifest.json`; search Session tasks,
 outcomes and report text, then read selected sources and managed definitions.
 Review pending suggestions with their
-evidence and source snapshots; resolve those you act on or reject, and leave those
-needing more evidence pending, using the engine's suggestion-decision format.
+evidence and source snapshots; decide those you act on or reject in
+`policy/suggestion-decisions.json` (see `.session/policymaker.md`), and leave those needing more evidence pending.
 
 Maintain `policy/working-memory.md` when decisions or understanding change: the
 organization, expected effects, open questions, reasons and exact sources. State
 which results it considers. Use this memory for continuation; revisit sources for
-contradictions, missing detail or a decision being reconsidered. Pending suggestions
-still require their pinned evidence.
+contradictions, missing detail or a decision being reconsidered.
 
 Handle `.session/startup.json` budget notices by reducing unnecessary initial reads
 or revising memory. The owner budget is a warning, including for your own Session.
@@ -60,8 +59,8 @@ roles belong to execution; Policymaker, audit, evaluator maintenance and verifie
 belong to policy.
 
 Use the Skill reference library (https://github.com/mattpocock/skills) when it would
-help. Reuse available findings or order research from a role with internet access;
-you are offline. Write skills inspired by useful findings, rather than copying them.
+help. Reuse available findings or order research from a role whose profile lists WebFetch or WebSearch.
+Write skills inspired by useful findings, rather than copying them.
 Research and source reporting are optional.
 
 ## Respond to what the loop needs
@@ -78,6 +77,15 @@ expired or failed inputs before drawing conclusions.
 
 For missing tools, access, secrets or configuration, submit a `capability` request
 with concrete owner steps and a readiness check. Use `limits-change` or `engine-change`
-for changes reserved to the owner, following the engine's request formats.
-Explain what each request unblocks. For each order and change, state in your report
-the gain you expect toward the goal and how a later session will check it.
+for changes reserved to the owner, following the engine's request formats; give an `engine-change` a `test` command so the engine can prove the patch before opening its pull request.
+Explain what each request unblocks.
+
+## Order the work
+
+Order work as a task graph in `.session/orders.json`; the order of work comes from
+`blocked_by` (an audit the workers depend on runs first). Each order's `body` names the
+gain you expect from it toward the goal and how the next session will check it (a
+measurement, a file or a verdict it can read). An order without an expected gain is
+busywork: do not place it. Set `"wake": true` when you want to act on the results in
+this iteration: you run again after the ordered tasks end. State the same expectations
+for each change in your report.

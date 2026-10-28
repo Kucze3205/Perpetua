@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; enforced confidentiality of policy internals superseded by ADR-0006
 ---
 
 # Separate engine, iteration core and policy-layer resources

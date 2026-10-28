@@ -83,6 +83,15 @@ class FilesTest(unittest.TestCase):
                 r = subprocess.run([BASH, "-n", p], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, "%s: %s" % (p, r.stderr))
 
+    def test_no_session_sandbox_remains(self):
+        for p in engine_files():
+            if p == __file__:
+                continue
+            with open(p, encoding="utf-8") as fh:
+                text = fh.read().lower()
+            for word in ("bubblewrap", "bwrap", "seccomp", "offline_exec", "sandbox.sh"):
+                self.assertNotIn(word, text, "%s still mentions %s" % (p, word))
+
     def test_version_stamp(self):
         with open(os.path.join(ENGINE, "ENGINE_VERSION"), encoding="utf-8") as fh:
             self.assertRegex(fh.read().strip(), r"^\d+\.\d+\.\d+$")
@@ -103,10 +112,10 @@ class WorkflowTest(unittest.TestCase):
             self.assertIn("jobs", doc, f)
             self.assertTrue("on" in doc or True in doc, f)                   # PyYAML reads `on:` as True
             self.assertIn("permissions", doc, f)
-            if f != "watchdog.yml":
+            if f not in ("watchdog.yml", "tokenless-job.yml"):          # the reusable job is only called from tokenless.yml
                 self.assertIn("vars.AUTOPILOT == 'on'", text, f)               # the first condition of every loop workflow
         if not IN_LOOP_REPO:
-            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml"})
+            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml", "tokenless.yml", "tokenless-job.yml"})
 
     def test_run_names_keep_their_hash(self):
         """An unquoted ' #' in a YAML value is a comment: run-name became 'session' and no run matched its session (#84)."""
@@ -124,16 +133,9 @@ class WorkflowTest(unittest.TestCase):
         for f, text, doc in self.workflows():
             self.assertNotIn("pull_request_target", text, f)
             self.assertNotIn("ANTHROPIC_API_KEY", str(doc.get("env", {})), f)
-            counter_steps = []
             for job in doc.get("jobs", {}).values():
                 self.assertNotIn("ANTHROPIC_API_KEY", str(job.get("env", {})), f)
-                for step in job.get("steps", []):
-                    if "ANTHROPIC_API_KEY" in str(step):
-                        counter_steps.append(step)
-                        self.assertEqual((f, step.get("name"), step.get("working-directory")),
-                                         ("session.yml", "Stage the session", "loop"))
-                        self.assertEqual(step["env"]["ANTHROPIC_API_KEY"], "${{ secrets.ANTHROPIC_API_KEY }}")
-            self.assertEqual(len(counter_steps), 1 if f == "session.yml" else 0)
+                self.assertNotIn("ANTHROPIC_API_KEY", str(job.get("steps", [])), f)
             lines = text.splitlines()
             for i, line in enumerate(lines):
                 if "uses: actions/checkout@v4" in line:
@@ -174,6 +176,40 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual([l for l in code if re.search(r"(^|[\s;|&(])gh\s", l)], [])          # the agent has no gh
 
 
+    def test_the_tokenless_job_has_no_permissions_and_no_secret(self):
+        for name in ("tokenless-job.yml", "tokenless.yml"):
+            with open(os.path.join(ENGINE, ".github", "workflows", name), encoding="utf-8") as fh:
+                text = fh.read()
+            job = yaml.safe_load(text)["jobs"]["run"]
+            self.assertEqual(job["permissions"], {}, name)
+            if name == "tokenless-job.yml":
+                self.assertEqual(yaml.safe_load(text)["permissions"], {})
+                self.assertNotIn("secrets", text.replace("no GitHub secret", ""))
+                self.assertNotIn("github.token", text)
+                self.assertNotIn("GH_TOKEN", text)
+
+    def test_the_session_job_has_no_permissions_and_only_the_claude_token(self):
+        with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
+            jobs = yaml.safe_load(fh)["jobs"]
+        job = jobs["session"]
+        self.assertEqual(job["permissions"], {})
+        text = str(job)
+        for forbidden in ("github.token", "GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "actions/checkout"):
+            self.assertNotIn(forbidden, text)
+        text = re.sub(r"contains\(needs\.prep\.outputs\.secrets, '\|\w+\|'\) && secrets\.\w+ \|\| ''", "", text)    # consented names
+        self.assertEqual(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)), {"CLAUDE_CODE_OAUTH_TOKEN"})
+        # the token jobs sit on both sides of it and are other machines
+        self.assertEqual(job["needs"], ["prep", "stage"])
+        self.assertEqual(jobs["epilogue"]["needs"], ["prep", "stage", "session"])
+        self.assertIn("github.token", str(jobs["epilogue"]))
+
+    def test_every_checkout_leaves_no_credentials_behind(self):
+        for f, text, doc in self.workflows():
+            for step in [s for j in doc["jobs"].values() for s in j.get("steps", [])]:
+                if str(step.get("uses", "")).startswith("actions/checkout"):
+                    self.assertIs((step.get("with") or {}).get("persist-credentials"), False, f)
+
+
 @TEMPLATE_ONLY
 class ConfigTest(unittest.TestCase):
     def load(self, *parts):
@@ -188,9 +224,8 @@ class ConfigTest(unittest.TestCase):
 
     def test_the_setup_parameters_are_null_on_purpose(self):
         doc = self.load("engine.yml")
-        params = dict(doc["params"], stream_retention_iterations=None)    # #87: streams are pruned by default
-        self.assertEqual(doc["params"]["stream_retention_iterations"], 8)
-        self.assertEqual(set(params.values()) | set(doc["cadence"].values()), {None})
+        self.assertEqual(set(doc["params"].values()) | set(doc["cadence"].values()), {None})
+        self.assertEqual(self.load("policy", "params.yml")["stream_retention_iterations"], 8)     # #87: streams are pruned by default
 
     def test_template_is_layered_with_policy_roles_and_no_execution_roles(self):
         self.assertEqual(self.load('engine.yml')['resources'], {'format': 'layered'})

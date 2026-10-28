@@ -1,9 +1,7 @@
-"""One declared startup read set, a provider estimate, and nonblocking policy notices."""
+"""The startup read set, bootstrap prompt and budget come from `policy/session-startup.py`; incidents are kept here."""
 import hashlib
 import json
 import os
-import urllib.error
-import urllib.request
 
 import common as c
 from session_context import write
@@ -11,22 +9,7 @@ from session_context import write
 
 MARK = "<!-- startup-budget -->"
 STATE = ".github/loop/data/startup-budget.json"
-
-
-def count_tokens(model, system, content):
-    """The provider's document estimate, not a local character heuristic or live context size."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        raise ValueError("ANTHROPIC_API_KEY is not configured for trusted staging")
-    request = urllib.request.Request("https://api.anthropic.com/v1/messages/count_tokens",
-        data=json.dumps({"model": model, "system": system,
-                         "messages": [{"role": "user", "content": content}]}).encode("utf-8"),
-        headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        tokens = json.load(response)["input_tokens"]
-    if type(tokens) is not int or tokens < 0:
-        raise ValueError("provider returned an invalid token estimate")
-    return tokens
+STARTUP_BYTES = 1024 * 1024        # what the engine accepts from policy/session-startup.py
 
 
 def notices():
@@ -104,8 +87,25 @@ def summary(n):
     return None
 
 
+def candidate(work, path):
+    """(workspace-relative path, text) of a file the recipient may read; (None, problem) otherwise."""
+    if (not isinstance(path, str) or not path or os.path.isabs(path) or "\\" in path or ".." in path.split("/")
+            or any(char in path for char in "*?[\n\r`")):
+        return None, "invalid startup path: %s" % (path,)
+    path = os.path.normpath(path).replace(os.sep, "/")
+    identity = os.path.normcase(os.path.realpath(os.path.join(work, path)))
+    git_dir = os.path.normcase(os.path.realpath(os.path.join(work, ".git")))
+    if identity == git_dir or identity.startswith(git_dir + os.sep):
+        return None, "Git internals are not startup documents: " + path
+    text = c.safe_read(work, path)
+    if text is None:
+        return None, "startup document unavailable to this recipient: " + path
+    return path, text
+
+
 def prepare(n, role, model, work, trusted, shaper=False):
-    """Generate both the bootstrap reads and their estimate from the same recipient files."""
+    """`policy/session-startup.py` decides the reads, the bootstrap prompt and the budget from the recipient's files; the
+    kernel only shows it what the recipient may read and checks what comes back. No script: no bootstrap, no budget."""
     import iteration as it
 
     metadata = it.frontmatter(c.safe_read(work, ".session/role/SKILL.md"))[0]
@@ -114,73 +114,47 @@ def prepare(n, role, model, work, trusted, shaper=False):
     memory = "policy/working-memory.md" if role == "policymaker" else "journal/working-memory.md" if shaper else None
     if memory and c.safe_read(work, memory) is not None:
         defaults.append(memory)
-    declared = metadata.get("startup", defaults)
-    errors = []
-    if not isinstance(declared, list) or any(not isinstance(path, str) for path in declared):
-        errors.append("startup must be a list of concrete workspace-relative file paths")
-        declared = defaults
-    paths = [".session/issue.md", ".session/role/SKILL.md"] + declared
-    documents, contents, readable, seen = [], [], [], set()
-    for path in paths:
-        if (not path or os.path.isabs(path) or "\\" in path or ".." in path.split("/")
-                or any(char in path for char in "*?[\n\r`")):
-            errors.append("invalid startup path: " + path)
-            continue
-        path = os.path.normpath(path).replace(os.sep, "/")
-        identity = os.path.normcase(os.path.realpath(os.path.join(work, path)))
-        git_dir = os.path.normcase(os.path.realpath(os.path.join(work, ".git")))
-        if identity == git_dir or identity.startswith(git_dir + os.sep):
-            errors.append("Git internals are not startup documents: " + path)
-            continue
-        text = c.safe_read(work, path)
-        if text is None:
-            errors.append("startup document unavailable to this recipient: " + path)
-            continue
-        if identity in seen:
-            continue
-        seen.add(identity)
-        readable.append(path)
-        if "\0" in text or "\ufffd" in text:
-            errors.append("startup token counting requires UTF-8 text: " + path)
-        data = text.encode("utf-8")
-        documents.append({"path": path, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-        contents.append("# " + path + "\n\n" + text)
+    declared = metadata.get("startup")
+    fixed = [".session/issue.md", ".session/role/SKILL.md"]
+    asked = fixed + (declared if isinstance(declared, list) else []) + defaults
+    documents, problems = {}, []
+    for path in asked:
+        found, text = candidate(work, path)
+        if found is None:
+            problems.append(text)
+        else:
+            documents[found] = text
     prompt_path = os.path.join(trusted, "prompt.md")
-    prompt = c.safe_read(trusted, "prompt.md") or ""
-    prompt = ("You are role `%s` of this loop. Read these startup documents once:\n%s\n"
-              "Write .session/report.md. Startup diagnostics: .session/startup.json.\n"
-              "Find historical inputs through .session/history/manifest.json when needed.\n\n" %
-              (role, "\n".join("- " + json.dumps(path) for path in readable))) + prompt
+    facts = {"role": role, "model": model, "limit": c.params()["startup_token_warning"], "shaper": shaper,
+             "declared": declared, "defaults": defaults, "fixed": fixed, "documents": documents, "problems": problems,
+             "contract": c.safe_read(trusted, "contract.md") or "", "prompt": c.safe_read(trusted, "prompt.md") or "",
+             "pending_notices": pending()}
+    out = it.run_policy_script("session-startup.py", facts, max_bytes=STARTUP_BYTES)
+    if out is None:
+        return
+    reads, prompt, budget = out.get("reads"), out.get("prompt"), out.get("budget")
+    if not (isinstance(reads, list) and all(path in documents for path in reads) and isinstance(prompt, str)
+            and isinstance(budget, dict) and budget.get("status") in ("ok", "over_budget", "unmeasured")
+            and (budget.get("tokens") is None or type(budget["tokens"]) is int and budget["tokens"] >= 0)
+            and all(isinstance(budget.get(key, ""), str) and len(budget.get(key, "")) <= 500 for key in ("detail", "measurement"))):
+        raise it.PolicyScriptError("policy/session-startup.py: expected {\"reads\": [paths it was shown], \"prompt\": text, "
+                                   "\"budget\": {\"status\": ok|over_budget|unmeasured, \"tokens\": int or null}}")
+    listed, seen = [], set()
+    for path in reads:
+        identity = os.path.normcase(os.path.realpath(os.path.join(work, path)))
+        if identity not in seen:
+            seen.add(identity)
+            data = documents[path].encode("utf-8")
+            listed.append({"path": path, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+    budget = {"model": model, "limit": facts["limit"], "tokens": budget.get("tokens"), "status": budget["status"],
+              "detail": budget.get("detail", ""), "documents": listed, "measurement": budget.get("measurement", "")}
     with open(prompt_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(prompt)
-    budget = {"model": model, "limit": c.cfg()["startup_token_warning"], "tokens": None,
-              "status": "unmeasured", "detail": "", "documents": documents,
-              "measurement": "Provider estimate of the contract, bootstrap and declared documents; "
-                             "excludes this diagnostic output, CLI internals and later reads."}
-    try:
-        if errors:
-            raise ValueError("; ".join(errors))
-        budget["tokens"] = count_tokens(model, c.safe_read(trusted, "contract.md") or "",
-                                         prompt + "\n\n" + "\n\n".join(contents))
-        budget["status"] = "over_budget" if budget["tokens"] > budget["limit"] else "ok"
-        budget["detail"] = "Reduce unnecessary startup reads" if budget["status"] == "over_budget" else ""
-    except urllib.error.HTTPError as error:
-        budget["detail"] = "Provider token count unavailable (HTTP %s)" % error.code
-    except ValueError as error:
-        budget["detail"] = str(error)
-    except Exception:
-        budget["detail"] = "Provider token count unavailable"
     try:
         active = record(n, role, budget)
         if role == "policymaker":
             budget["policy_notices"] = active
     except (Exception, SystemExit):
-        # Provider/notification failures must never turn a diagnostic into a session gate.
+        # Notification failures must never turn a diagnostic into a session gate.
         c.say("session #%s: startup notice could not be persisted" % n)
     write(os.path.join(work, ".session"), "startup.json", budget)
-    if budget["status"] != "ok":
-        with open(prompt_path, "a", encoding="utf-8") as fh:
-            fh.write("\nStartup budget warning (%s): read .session/startup.json; continue your task.\n" % budget["status"])
-    elif budget.get("policy_notices"):
-        with open(prompt_path, "a", encoding="utf-8") as fh:
-            fh.write("\nStartup notices need attention: read .session/startup.json and address them.\n")

@@ -9,7 +9,6 @@ audit:
   - Edit
   - Bash(git:*)
   - Bash(python3:*)
-  internet: false
   effort: medium
   max_turns: 120
   timeout_minutes: 120

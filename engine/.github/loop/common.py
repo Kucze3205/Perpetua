@@ -9,13 +9,16 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 
 import managed_resources as resources
 
@@ -40,23 +43,20 @@ DEFAULTS = {
     "author": {"name": "", "email": ""},
     "owner": "",
     "idle_resumes": 3,
-    "startup_token_warning": 100000,
     "policy_passes_notice": 10,
     "check": "",
     "protected": [".github/", "engine.yml", "ENGINE_VERSION", "iterations/", "goal/", "GOAL_REACHED"],
     "direct_paths": [resources.EXECUTION + "/", resources.ROOT + "/", "audit/", "journal/"],
     "notes_paths": ["journal/"],
     "evaluator_paths": [resources.EVALUATOR],
-    "policymaker_only_roles": ["evaluator", "audit"],
     "verifier_role": "evaluator-verifier",
     "large_file_bytes": 5000000,
     "gate": {"kind": "owner", "command": "", "timeout_minutes": 120, "env_passthrough": []},
-    "limits": {"tools": DEFAULT_TOOLS, "internet_write": []},
+    "limits": {"tools": DEFAULT_TOOLS},
     "policymaker": {"model": "claude-opus-5-5", "effort": "high", "max_turns": 150, "timeout_minutes": 90,
                "tools": DEFAULT_TOOLS, "write": [resources.EXECUTION + "/", resources.ROOT + "/"]},
     "policymaker_session_ceilings": None,
-    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None,
-               "stream_retention_iterations": 8},
+    "params": {"no_progress_iterations": None, "quiet_minutes": None, "owner_wait_counts": None},
     "cadence": {"min_interval_minutes": None, "daily_iterations": None},
 }
 
@@ -84,11 +84,46 @@ def cfg():
     return merged(DEFAULTS, load_yaml("engine.yml"))
 
 
+# What `policy/params.yml` may tune, and the kernel's hard cap on each: a policy value above its cap is clamped.
+HARD_CAPS = {"fix_rounds": 5, "successor_generations": 5, "merge_conflict_retries": 5, "backoff_hours": 72, "backoff_steps": 6}
+
+
 def params():
     p = {"shaper": None, "criterion": "", "models": {"default": "claude-sonnet-5-5"}, "efforts": ["low", "medium", "high"],
          "ceilings": {"job_minutes": 240, "iteration_minutes": None, "max_turns": 150},
-         "policymaker_triggers": {"every_iterations": None, "no_progress": None}}
+         "policymaker_triggers": {"every_iterations": None, "no_progress": None},
+         "limits": {"fix_rounds": 2, "successor_generations": 3, "merge_conflict_retries": 3, "backoff_hours": [1, 5, 24]},
+         "cadence": {"min_interval_minutes": None, "daily_iterations": None},
+         "policymaker_only_roles": ["evaluator", "audit"], "audit_exports_window": 3,
+         "stream_retention_iterations": 8, "startup_token_warning": 100000}
     return merged(p, load_yaml(resources.PARAMS))
+
+
+def limits():
+    """The loop's retry limits from policy, each clamped to 0..its hard cap (a malformed value falls back to the default)."""
+    got, out = params()["limits"], {}
+    for key in ("fix_rounds", "successor_generations", "merge_conflict_retries"):
+        v = got.get(key)
+        out[key] = min(max(v, 0), HARD_CAPS[key]) if isinstance(v, int) and not isinstance(v, bool) else params_default(key)
+    steps = got.get("backoff_hours")
+    ok = isinstance(steps, list) and steps and all(isinstance(x, (int, float)) and not isinstance(x, bool) and x > 0 for x in steps)
+    out["backoff_hours"] = [min(x, HARD_CAPS["backoff_hours"]) for x in steps[:HARD_CAPS["backoff_steps"]]] if ok else [1, 5, 24]
+    return out
+
+
+def params_default(key):
+    return {"fix_rounds": 2, "successor_generations": 3, "merge_conflict_retries": 3}[key]
+
+
+def cadence():
+    """The cadence in force: policy may only slow iterations down, so each bound is the stricter of the owner's
+    (`engine.yml`) and policy's. None: no bound."""
+    owner, policy = cfg()["cadence"], params()["cadence"]
+    out = {}
+    for key, pick in (("min_interval_minutes", max), ("daily_iterations", min)):
+        vals = [v for v in (owner.get(key), policy.get(key)) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0]
+        out[key] = pick(vals) if vals else None
+    return out
 
 
 def profiles():
@@ -295,6 +330,35 @@ def workflow_run(workflow, **inputs):
     gh(*args, check=False)
 
 
+def run_tokenless(bundle, timeout_minutes, poll=15):
+    """Run `bundle/run.sh` in the tokenless job (tokenless.yml, `permissions: {}`) and return the directory of its
+    outputs (`stdout.txt`, `stderr.txt`, `exit-code`), or None when the job left none. The bundle is a directory the
+    caller staged; it travels as one tarball on a throwaway branch (data for the job; a tarball holds no workflow
+    file the token would be refused to push), and the branch is deleted afterwards."""
+    key = uuid.uuid4().hex[:12]
+    branch = "tokenless/%s" % key
+    shipment = tempfile.mkdtemp(prefix="shipment-")
+    shutil.make_archive(os.path.join(shipment, "bundle"), "gztar", bundle)
+    git(shipment, "init", "-q", "-b", "bundle")
+    git(shipment, "add", "-A")
+    git(shipment, "commit", "-q", "-m", "bundle")
+    url = "https://github.com/%s.git" % REPO
+    git(shipment, "push", "-q", url, "HEAD:refs/heads/%s" % branch, remote=True)
+    out = os.path.join(shipment, "out")
+    try:
+        workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes)
+        deadline = time.time() + (timeout_minutes + 15) * 60
+        while time.time() < deadline:
+            time.sleep(poll)
+            run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == "tokenless #%s" % key), None)
+            if run and run["status"] == "completed":
+                gh("run", "download", str(run["databaseId"]), "-n", "result-%s" % key, "-D", out, check=False)
+                return out if os.path.isdir(out) else None
+        return None
+    finally:
+        git(shipment, "push", "-q", url, "--delete", branch, check=False, remote=True)
+
+
 def run_list(workflow):
     out = gh("run", "list", "--workflow", workflow, "--limit", "100", "--json", "databaseId,displayTitle,status,createdAt")
     return json.loads(out or "[]")
@@ -394,6 +458,29 @@ def probe():
         return e.code
     except OSError:
         return 0    # a transient network failure is not a dead credential
+
+
+def probe_limit():
+    """The engine's own check of a usage limit a session claims: one token of output on the cheapest model. Returns
+    (limited, reset): `limited` only on HTTP 429, `reset` from the provider's headers (a datetime, or None). A session's
+    status files are data; they never park the loop alone."""
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", method="POST", data=json.dumps({
+        "model": "claude-haiku-5-5", "max_tokens": 1, "messages": [{"role": "user", "content": "ok"}]}).encode(), headers={
+        "Authorization": "Bearer " + os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", ""),
+        "anthropic-version": "2023-06-01", "anthropic-beta": "oauth-2025-04-20", "content-type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+        return False, None
+    except urllib.error.HTTPError as e:
+        if e.code != 429:
+            return False, None
+        reset = e.headers.get("anthropic-ratelimit-unified-reset") or ""
+        if reset.isdigit():
+            return True, datetime.fromtimestamp(int(reset), timezone.utc)
+        after = e.headers.get("retry-after") or ""
+        return True, now() + timedelta(seconds=int(after)) if after.isdigit() else None
+    except OSError:
+        return False, None
 
 
 def outage_open():
@@ -648,13 +735,27 @@ def clean_env(extra=()):
     return env
 
 
-def run_command(cmd, cwd, env=None, timeout=3600, extra_env=None):
-    """A shell command from the repo (check, verification, gate, goal gate) in a PID namespace when `bwrap` is there:
-    candidate code must not read the engine's token from /proc/<parent>/environ."""
-    argv = [os.environ.get("LOOP_BASH", "bash"), "-c", cmd]
-    if os.environ.get("LOOP_SANDBOX") == "1" and shutil.which("bwrap"):
-        argv = ["bwrap", "--unshare-pid", "--die-with-parent", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-                "--bind", os.path.realpath(cwd), os.path.realpath(cwd), "--bind", tempfile.gettempdir(), tempfile.gettempdir()] + argv
-    e = dict(env if env is not None else clean_env())
-    e.update(extra_env or {})
-    return subprocess.run(argv, cwd=cwd, env=e, capture_output=True, text=True, timeout=timeout)
+def run_command(cmd, tree, timeout_minutes=60):
+    """A shell command from the repo (check, verification, goal gate) run on a copy of `tree` in the tokenless job, never
+    on a machine with the token. Returns a CompletedProcess; a job that left no output counts as a failed command."""
+    bundle = tempfile.mkdtemp(prefix="bundle-")
+    try:
+        shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
+        with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write('cd "$(dirname "$0")/tree"\nbash -c %s\n' % shlex.quote(cmd))
+        out = run_tokenless(bundle, timeout_minutes)
+    finally:
+        shutil.rmtree(bundle, ignore_errors=True)
+
+    def read(name):
+        try:
+            with open(os.path.join(out, name), encoding="utf-8", errors="replace") as fh:
+                return fh.read()
+        except (OSError, TypeError):
+            return None
+    stdout, stderr, code = read("stdout.txt"), read("stderr.txt"), read("exit-code")
+    if out:
+        shutil.rmtree(out, ignore_errors=True)
+    if stdout is None or code is None or not code.strip().isdigit():
+        return subprocess.CompletedProcess(cmd, 1, "", "the tokenless job returned no result for the command")
+    return subprocess.CompletedProcess(cmd, int(code.strip()), stdout, stderr or "")

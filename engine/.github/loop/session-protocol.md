@@ -19,7 +19,7 @@ Other files the engine may put in `.session/`: `loop-state.json` (the Policymake
 Policymaker), `inputs/` (artifacts the task lists), `streams/` (the audit).
 
 The bootstrap lists the declared startup reads once. `.session/startup.json` records
-the provider estimate for that document package; an over-budget or unavailable
+the estimate for that document package; an over-budget or unavailable
 measurement is a notice, and your Session continues. The engine notifies the
 Policymaker. Later reads and the CLI's internal context are outside this estimate.
 
@@ -66,10 +66,7 @@ The epilogue uploads them as release assets and lists them in your report; a lat
 To propose a policy change to the Policymaker, write `.session/suggestions.json` as an array:
 `[{"kind":"role-change","what":"Change the role","why":"Reason","evidence":"Report section, path or measured result"}]`.
 All four fields are required nonempty strings; `kind` uses lowercase letters, digits
-and hyphens. The engine supplies the stable ID and source; agents cannot set those.
-Invalid entries get diagnostics while valid reports and valid entries survive.
-
-Only the Policymaker may write `.session/suggestion-decisions.json`.
+and hyphens. The engine archives the file as written; policy validates it and the Policymaker decides.
 
 `.session/report.md`, **overwritten** as you work, with the marker first. Make the first version (`wip`) right at the start.
 
@@ -107,7 +104,7 @@ body: ... (the same sections as the issue: Goal, Acceptance, Verification, Conte
 ```
 
 The epilogue opens an issue of the same role starting from your branch. One successor, of the same kind. The generation
-counter (`generation:<n>`) stops at 3: a generation-3 task does not delegate, it reports `blocked`.
+counter (`generation:<n>`) stops at the policy's `successor_generations` (3 by default): a task of the last generation does not delegate, it reports `blocked`.
 
 ### Requests to the owner
 
@@ -130,14 +127,17 @@ Three additional kinds cover capabilities and changes outside a role's authority
   nothing: the owner must carry out the steps and post the proposal-specific `capability-ready` marker printed by
   the engine. Until then the request remains waiting and dependent sessions cannot start.
 - `limits-change`: `frozen` is the entire proposed YAML **contents of the limits mapping**, for example
-  `tools: [Read, Grep, Glob]\ninternet_write: []\n` (without an outer `limits:` key). Completed applies only that frozen
+  `tools: [Read, Grep, Glob]\n` (without an outer `limits:` key). Completed applies only that frozen
   mapping to `engine.yml`, after checking the proposal and base configuration. Not planned changes nothing.
   A changed proposal or newer engine configuration requires a fresh request.
-- `engine-change`: `frozen` is a concrete diff and application instructions. The engine records its base commit and
-  hash. When the owner closes the request as completed, the engine applies the diff to the current `main` and opens a PR from
-  `engine-change/<first 12 hex of the proposal hash>`; merging it approves, closing it unmerged declines. A diff that touches
-  `.github/workflows/**` or does not apply cleanly gets no PR and a comment instead: the owner applies it manually and posts
-  the proposal-specific `engine-applied` confirmation. Write the diff against current `main`; there is no rebase.
+- `engine-change`: `frozen` is a concrete diff and application instructions; `test` (optional) is the command that proves
+  it, run from the repository root (for example `python3 -m unittest discover -s .github/loop/tests`). The engine records
+  its base commit and hash. When the owner closes the request as completed, the engine applies the diff to the current
+  `main` and runs `test` in a job that holds no GitHub token, then opens a PR from
+  `engine-change/<first 12 hex of the proposal hash>` and links it from the request; merging it approves, closing it
+  unmerged declines. A diff that touches `.github/workflows/**`, does not apply cleanly or fails its test gets no PR and a
+  comment saying why instead: the owner applies it manually and posts the proposal-specific `engine-applied`
+  confirmation. Write the diff against current `main`; there is no rebase.
 
 The engine prints the exact effects, hashes, base version and confirmation instructions on each request. It freezes
 the original proposal in the trusted engine tree, so editing the issue or its displayed hash cannot change what is

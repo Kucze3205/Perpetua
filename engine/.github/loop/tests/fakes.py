@@ -1,5 +1,6 @@
 """Test world: an in-memory GitHub (the thin functions of `common`) and real git repositories (a bare origin, the
 engine's checkout of the default branch, agent working copies). Nothing here talks to the network."""
+import hashlib
 import json
 import os
 import shutil
@@ -16,11 +17,11 @@ sys.path.insert(0, LOOP_DIR)
 import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
-import session_startup  # noqa: E402
+import session_artifact  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
-           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr"]
+           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless", "probe_limit"]
 
 
 class FakeHub:
@@ -35,6 +36,9 @@ class FakeHub:
         self.artifacts = []
         self.prs = {}                       # head branch -> {"number", "url", "state", "merged", "title", "body"}
         self.next_n = 1
+        self.tokenless = []                 # (bundle files) of every command sent to the tokenless job
+        self.tokenless_fault = None         # "no-artifact" | "failed": what the next tokenless job does wrong instead
+        self.limit = (True, None)           # the engine's own probe of a usage limit: (limited, reset)
 
     def ts(self):
         self.tick += 1
@@ -131,6 +135,23 @@ class FakeHub:
         self.prs[branch] = {"number": n, "url": "https://github.com/o/r/pull/%s" % n, "state": "open", "merged": False,
                             "title": title, "body": body}
 
+    def run_tokenless(self, bundle, timeout_minutes, poll=15):
+        """The tokenless job: runs the bundle's `run.sh` in a clean environment and returns the output directory."""
+        self.tokenless.append(sorted(os.listdir(bundle)))
+        fault, self.tokenless_fault = self.tokenless_fault, None
+        if fault == "no-artifact":
+            return None
+        out = tempfile.mkdtemp(prefix="tokenless-out-")
+        r = subprocess.run([os.environ.get("LOOP_BASH", "bash"), os.path.join(bundle, "run.sh")], env=common.clean_env(),
+                           capture_output=True, text=True, timeout=timeout_minutes * 60)
+        for name, text in (("stdout.txt", r.stdout), ("stderr.txt", r.stderr), ("exit-code", "%d\n" % (1 if fault == "failed" else r.returncode))):
+            with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+        return out
+
+    def probe_limit(self):
+        return self.limit
+
     def gh(self, *args, inp=None, check=True):
         self.gh_calls.append(args)
         return ""
@@ -203,14 +224,16 @@ class World:
                     os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
                     break
         os.environ.pop("GH_TOKEN", None)
-        os.environ.pop("LOOP_SANDBOX", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
-        self.counter_saved = session_startup.count_tokens
-        session_startup.count_tokens = lambda model, system, content: 1000
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
+        # Git starts a detached gc/maintenance after pushes and clones (also from the child processes of a local
+        # transport, which do not inherit environment config). It can repack origin while a later clone copies its
+        # objects, so the repository that is cloned says no background maintenance.
+        for key, value in (("gc.auto", "0"), ("maintenance.auto", "false"), ("receive.autogc", "false")):
+            sh(self.origin, "git", "config", key, value)
         # hermetic: the engine's code plus a small policy fixture, never whatever policy/ holds in the repository we run in
         shutil.copytree(os.path.join(ENGINE, ".github"), os.path.join(self.loop, ".github"),
                         ignore=shutil.ignore_patterns("__pycache__", "tests"))
@@ -219,6 +242,10 @@ class World:
         self.write(self.loop, "policy/params.yml", POLICY_PARAMS)
         self.write(self.loop, "execution/profiles.yml", EXECUTION_PROFILES)
         self.write(self.loop, "policy/profiles.yml", POLICY_PROFILES)
+        shutil.copy(os.path.join(ENGINE, "policy", "policymaker-trigger.py"), os.path.join(self.loop, "policy"))
+        shutil.copy(os.path.join(ENGINE, "policy", "session-state.py"), os.path.join(self.loop, "policy"))
+        shutil.copy(os.path.join(ENGINE, "policy", "session-startup.py"), os.path.join(self.loop, "policy"))
+        shutil.copy(os.path.join(ENGINE, "policy", "layer-rules.py"), os.path.join(self.loop, "policy"))
         for layer, roles in (("execution", ("orchestrator", "worker", "net")),
                              ("policy", ("evaluator", "evaluator-verifier", "audit", "policymaker"))):
             for role in roles:
@@ -242,7 +269,6 @@ class World:
             common.update_report(0, {"status": "done"}, "seed")
 
     def close(self):
-        session_startup.count_tokens = self.counter_saved
         self.hub.uninstall()
         os.chdir(self.cwd_saved)
         os.environ.clear()
@@ -277,7 +303,7 @@ class World:
         """A commit by a human straight on the origin's default branch."""
         self.n_work += 1
         d = os.path.join(self.tmp, "human%s" % self.n_work)
-        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, d)
+        sh(self.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.origin, d)
         for p, t in files.items():
             self.write(d, p, t)
         sh(d, "git", "add", "-A")
@@ -291,7 +317,7 @@ class World:
         `session_files` go to `.session/` (report extras, tasks.json, orders.json, requests.json, artifacts/...)."""
         self.n_work += 1
         work = os.path.join(self.tmp, "work%s" % self.n_work)
-        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
+        sh(self.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.origin, work)
         sh(work, "git", "config", "core.autocrlf", "false")
         sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base or "origin/main")
         rt = os.path.join(self.tmp, "rt%s" % self.n_work)
@@ -328,14 +354,28 @@ class World:
         common.LAUNCHED.clear()            # every epilogue is a fresh process
         if self.before_finalize:
             self.before_finalize()
-        loop.finalize(n, work)
+        self.epilogue(n, work, rt)
         return work
+
+    def epilogue(self, n, work, rt):
+        """The session job packs its results; the epilogue job, on a fresh runner, takes the artifact and the baseline
+        (a channel of its own) in."""
+        artifact, baseline = os.path.join(rt, "artifact"), os.path.join(rt, "baseline")
+        session_artifact.pack(work, rt, artifact)
+        os.makedirs(baseline)
+        shutil.move(os.path.join(rt, "trusted", "executor-baseline.json"), baseline)
+        with open(os.path.join(baseline, "executor-baseline.json"), "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        fresh = os.path.join(rt, "epilogue")
+        os.makedirs(fresh)
+        os.environ["RUNNER_TEMP"] = fresh
+        loop.epilogue(n, artifact, baseline, digest)
 
     def branch(self, n, files, base="origin/main", delete=()):
         """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""
         self.n_work += 1
         work = os.path.join(self.tmp, "br%s" % self.n_work)
-        sh(self.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.origin, work)
+        sh(self.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.origin, work)
         sh(work, "git", "config", "core.autocrlf", "false")
         sh(work, "git", "checkout", "-q", "-B", "task/%s" % n, base)
         for p, t in files.items():
@@ -372,7 +412,6 @@ worker:
   write: ["src/**", "docs/**"]
   tools: [Read, Grep, Glob, Write, Edit]
 net:
-  internet: true
   write: ["src/**"]
   tools: [Read, WebSearch, Write]
 evaluator:

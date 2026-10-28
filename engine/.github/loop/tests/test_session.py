@@ -116,7 +116,7 @@ class StageTest(SessionCase):
     def work(self):
         self.w.n_work += 1
         d = os.path.join(self.w.tmp, "stagework%s" % self.w.n_work)
-        fakes.sh(self.w.tmp, "git", "clone", "-q", "-c", "core.autocrlf=false", self.w.origin, d)
+        fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.w.origin, d)
         return d
 
     def test_stage_writes_the_secrets_file_agent_sh_reads(self):
@@ -146,6 +146,17 @@ class StageTest(SessionCase):
         self.assertIn(".session/", read(os.path.join(work, ".git", "info", "exclude")))
         hook = json.loads(read(os.path.join(trusted, "settings.json")))
         self.assertIn("remaining.py", hook["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
+
+    def test_machine_preparation_is_the_script_of_policy(self):
+        n = self.issue()
+        trusted = os.path.join(self.w.tmp, "trusted-none")
+        loop.stage(n, self.work(), trusted)
+        self.assertNotIn("apt-get", read(os.path.join(trusted, "prepare.sh")))
+        self.w.push_main({"policy/prepare.sh": "#!/usr/bin/env bash\napt-get install -y jq\n"}, "policy installs jq")
+        c.sync_main()
+        trusted = os.path.join(self.w.tmp, "trusted-policy")
+        loop.stage(n, self.work(), trusted)
+        self.assertIn("apt-get install -y jq", read(os.path.join(trusted, "prepare.sh")))
 
     def test_the_audit_gets_the_streams_of_the_last_iterations(self):
         self.hub.artifacts = [{"id": 1, "name": "stream-0001-3", "workflow_run": {"id": 101}},
@@ -207,7 +218,6 @@ class ManagedResourcesRegressionTest(SessionCase):
         accepted = loop.merge_branch(pol, "policymaker", self.hub.issue(pol), boundary=True)
         self.assertEqual((accepted["result"], accepted["verdict"]), ("merged", None))
         receipt = accepted["change"]
-        self.assertEqual(receipt["schema_version"], 1)
         self.assertEqual(receipt["policy_rev_before"], initial_revision)
         self.assertEqual(receipt["changed_paths"], ["execution/roles/worker/SKILL.md"])
         self.assertEqual(receipt["policy_rev_after"],
@@ -223,7 +233,6 @@ class ManagedResourcesRegressionTest(SessionCase):
         self.assertEqual(it.policy_rev(), initial_revision)
         self.assertEqual(self.w.origin_file("src/kept.txt"), "product")
         self.assertEqual(self.w.origin_file("journal/kept.md"), "report")
-        self.assertEqual(json.loads(self.w.origin_file("iterations/changes/change-%s.json" % pol)), receipt)
         self.assertFalse(it.revert_policy("already restored"))
 
 
@@ -240,6 +249,21 @@ class EpilogueTest(SessionCase):
         self.assertIn("blocked:rate-limit", self.hub.issues[n]["_labels"])
         self.assertEqual(self.hub.issues[n]["state"], "open")
         self.assertIn(("resume.yml", {"issue": n}), self.hub.dispatched)
+
+    def test_a_forged_limit_does_not_park_the_loop_unless_the_probe_confirms_it(self):
+        n = self.issue()
+        self.hub.limit = (False, None)
+        self.w.session(n, report=False, exit_code="1", result=self.limit_result())
+        self.assertEqual(self.hub.report(n)["status"], "crashed")
+        self.assertNotIn("blocked:rate-limit", self.hub.issues[n]["_labels"])
+        self.assertNotIn(("resume.yml", {"issue": n}), self.hub.dispatched)
+
+    def test_the_clock_of_a_park_is_the_probes_not_the_sessions(self):
+        n = self.issue()
+        reset = c.now() + timedelta(hours=3)
+        self.hub.limit = (True, reset)
+        self.w.session(n, report=False, exit_code="1", result=dict(self.limit_result(), resets_at=4102444800))
+        self.assertEqual(self.hub.report(n)["resume_after"], c.iso(reset))
 
     def test_resume_sleeps_to_the_date_and_launches(self):
         n = self.issue()
@@ -379,15 +403,21 @@ class EpilogueTest(SessionCase):
         self.assertIsNone(self.w.origin_file("src/a1.txt"))
         self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % n))
 
-    @unittest.skipUnless(sys.platform == "linux", "candidate verification requires Linux bubblewrap namespaces")
     def test_a_passing_verification_runs_in_the_candidate_tree(self):
         n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/a.txt`\n")
         self.w.session(n, files={"src/a.txt": "A"})
         self.assertEqual(self.hub.report(n)["status"], "done")
+        self.assertTrue(self.hub.tokenless)
+
+    def test_a_verification_job_that_returns_nothing_fails_the_verification(self):
+        n = self.issue(body="## Goal\nx\n## Verification\n`true`\n")
+        self.w.before_finalize = lambda: setattr(self.hub, "tokenless_fault", "no-artifact")     # after staging, which runs the state script
+        self.w.session(n, files={"src/a.txt": "A"})
+        self.assertEqual(self.hub.report(n)["verification"], "fail")
 
     def test_a_refused_merge_ends_blocked(self):
         n = self.issue()
-        self.w.session(n, files={".github/workflows/x.yml": "x"})
+        self.w.session(n, files={".github/loop/loop.py": "x"})
         self.assertEqual(self.hub.report(n)["status"], "blocked")
         self.assertEqual(self.hub.report(n)["merged"], "false")
         self.assertIn("protected paths", self.hub.prose(n))
@@ -426,6 +456,26 @@ class EpilogueTest(SessionCase):
         self.assertEqual(self.hub.issues[after]["state"], "open")
         self.assertEqual(self.hub.issues[n]["state"], "closed")
         self.assertEqual(self.hub.dispatched[-1][1]["issue"], succ)
+
+    def test_policy_values_above_the_kernel_caps_are_clamped(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "limits:\n  fix_rounds: 99\n  successor_generations: 99\n"
+                          "  merge_conflict_retries: -4\n  backoff_hours: [1, 500]\n"}, "policy tunes the limits")
+        c.sync_main()
+        self.assertEqual(c.limits(), {"fix_rounds": 5, "successor_generations": 5, "merge_conflict_retries": 0, "backoff_hours": [1, 72]})
+
+    def test_policy_may_allow_a_fourth_generation_and_more_fix_rounds(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "limits:\n  successor_generations: 4\n"}, "policy tunes the limits")
+        c.sync_main()
+        n = self.issue(labels=["generation:3"])
+        self.w.session(n, status="partial", report_extra="## What next\n- x\n\n## Successor\ntitle: More\nbody: x\n")
+        self.assertIn("More", [x["title"] for x in self.hub.issues.values()])
+
+    def test_policy_fix_rounds_end_the_correction_rounds(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "limits:\n  fix_rounds: 0\n"}, "policy tunes the limits")
+        c.sync_main()
+        n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/b.txt`\n")
+        self.w.session(n, files={"src/a.txt": "A"})
+        self.assertNotIn("Correction round", self.hub.prose(n))
 
     def test_the_third_generation_does_not_delegate(self):
         n = self.issue(labels=["generation:3"])

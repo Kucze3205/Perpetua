@@ -386,9 +386,7 @@
    "policy/params.yml"
   ],
   "diff_of_execution_and_policy_since_baseline": " policy/params.yml | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
-  "change_receipts": [
-   "policy/changes/receipt.json"
-  ],
+  "change_receipts": null,
   "orders_in_record": [
    "order-a"
   ],

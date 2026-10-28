@@ -94,7 +94,9 @@ Rollback restores both roots and accepted evaluator paths from the last closed
 iteration's commit, or `setup-baseline` before the first closed iteration. It
 restores deleted definitions and removes newly added definitions, retaining
 products, reports, receipts and Git history. Quiet time, consecutive failed
-Policymaker sessions and owner-wait accounting retain their existing rules.
+Policymaker sessions and owner-wait accounting retain their existing rules. A third trigger: an iteration closed
+without a record, or failed on invalid policy-supplied data (for example, no shaper and no valid Policymaker orders),
+rolls both roots back and opens a `notice` that the next Policymaker session sees.
 
 ## New-loop setup
 

@@ -92,7 +92,7 @@ Use this procedure in the starting-roles ticket after the accepted goal and appr
 4. Leave `policy/params.yml` `shaper` as `null`: the first Policymaker session decides the execution layer's organization. Confirm model-role skills, script commands, references, each layer's protocol and prompts, and all required policy roles (`audit`, `evaluator`, configured verifier, and `policymaker`) are complete. When the Policymaker later recruits a role, it follows the same rule through research it orders. No plugin or global installation is updated by this process.
 5. Before arming, commit the final setup and validate the actual accepted `setup-baseline` commit with `python3 .github/loop/setup_roles.py validate --baseline setup-baseline`. A missing required role, invalid profile, dirty configuration or mismatched baseline blocks arming; fix and revalidate before enabling the switch. This validates preparation only and does not start a loop. Keep arming blocked by all other unfinished setup outcomes as well.
 
-This procedure prepares new loops only. Format migration, setup review and reconfiguration are separate work. Explicit engine updates use `/perpetua:update`; they do not repeat this setup procedure.
+This procedure prepares new loops only. Format migration, setup review and reconfiguration are separate work. Explicit engine updates use `/kucze:perpetua-setup update`; they do not repeat this setup procedure.
 
 For model roles, declare initial file reads once through SKILL frontmatter `startup`
 as described in `docs/perpetua/session-context.md`. Keep other references conditional.

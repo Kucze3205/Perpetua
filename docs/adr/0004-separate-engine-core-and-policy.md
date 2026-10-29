@@ -16,7 +16,7 @@ loop, with the Skill reference library used for inspiration. Setup leaves
 Current behavior is documented in [managed definitions](../../engine/docs/perpetua/managed-resources.md),
 [session isolation](../../engine/docs/perpetua/session-sandbox.md) and
 [validation](../../engine/docs/perpetua/validation.md). Explicit engine updates
-are described in [the update skill](../../skills/update/SKILL.md); the exclusion
+are described in [the update procedure](../../skills/perpetua-setup/update.md); the exclusion
 of migration/reconfiguration in this ADR is the scope of the original change.
 
 ## Decision
@@ -96,8 +96,8 @@ The current setup explicitly stops when it finds an existing installation.
 
 ## Evidence (at decision time)
 
-- `skills/setup/SKILL.md`, section 3, copies the entire engine template.
-- `skills/setup/setup-notes.md`, Starting roles, requires copied skills under
+- `skills/perpetua-setup/SKILL.md`, section 3, copies the entire engine template.
+- `skills/perpetua-setup/setup-notes.md`, Starting roles, requires copied skills under
   `policy/roles/<role>/`; Defaults supplies the generic orchestrator.
 - `engine/.github/loop/loop.py`, `stage`, stages role skills from that shared location
   and combines shared policy work rules with the engine session contract.

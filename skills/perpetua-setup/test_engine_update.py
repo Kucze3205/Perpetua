@@ -1,4 +1,4 @@
-"""engine_update.py against real git repositories: python3 -m unittest discover -s skills/update"""
+"""engine_update.py against real git repositories: python3 -m unittest discover -s skills/perpetua-setup"""
 import json
 import os
 import shutil
@@ -92,19 +92,10 @@ class UpdateTest(unittest.TestCase):
         git(self.loop, "commit", "-qam", "local")
         self.assertEqual(json.loads(self.run_script("merge", self.engine))["status"], "up-to-date")
 
-    def test_a_loop_without_the_branch_finds_its_base_in_the_source(self):
-        source = os.path.join(self.tmp, "perpetua")
-        os.makedirs(source)
-        git(source, "init", "-q", "-b", "main")
-        shutil.copytree(self.engine, os.path.join(source, "engine"))
-        git(source, "add", "-A")
-        git(source, "commit", "-qm", "1.0.0")
-        write(self.loop, ".github/loop/loop.py", "a = 10\nb = 2\nc = 3\n")
-        git(self.loop, "commit", "-qam", "local")
-        self.release()
-        report = json.loads(self.run_script("merge", self.engine, "--source", source))
-        self.assertEqual(report["bootstrapped"]["files_differing_from_setup_copy"], 0)
-        self.assertEqual(read(self.loop, ".github/loop/loop.py"), "a = 10\nb = 2\nc = 30\n")
+    def test_a_loop_without_the_branch_is_refused(self):
+        r = subprocess.run([sys.executable, SCRIPT, "merge", self.engine], cwd=self.loop, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("perpetua/engine", r.stderr)
 
 
 if __name__ == "__main__":

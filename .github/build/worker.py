@@ -24,7 +24,7 @@ CLI = os.environ["AGENT_CLI"]
 MODEL, EFFORT = "claude-sonnet-5-5", "medium"
 FIX_ROUNDS = 3
 TESTS = [["/usr/bin/python3", "-m", "unittest", "discover", "-s", "engine/.github/loop/tests"],
-         ["python3", "-m", "unittest", "discover", "-s", "skills/update", "-p", "test_engine_update.py"]]
+         ["python3", "-m", "unittest", "discover", "-s", "skills/perpetua-setup", "-p", "test_engine_update.py"]]
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(BRIEF, exist_ok=True)
 AUTH = "AUTHORIZATION: basic " + base64.b64encode(("x-access-token:" + os.environ["GH_TOKEN"]).encode()).decode()

@@ -1,33 +1,30 @@
 # Perpetua
 
-A Claude Code and Codex plugin that prepares an autonomous agent loop in a target repository.
-This repository contains the setup skill and engine template; a running loop uses
-the copy installed in its own repository.
+The development and test repository of the `kucze:perpetua-setup` skill, which prepares an
+autonomous agent loop in a target repository (setup) and moves a running loop to a newer
+engine (`update`). The skill is not installed from here: the built version lives in the
+`kucze` plugin ([kucze-skills](../kucze-skills)). A running loop uses the copy installed in
+its own repository.
 
-## Install and invoke
+## Release
 
-In Claude Code:
+1. Change `skills/perpetua-setup/` or `engine/`; bump `engine/ENGINE_VERSION` when releasing an engine change.
+2. Run the checks below.
+3. `python3 build.py ../kucze-skills` replaces `kucze-skills/skills/perpetua-setup/`.
+4. In kucze-skills: bump `version` in both `plugin.json` files and update the plugin
+   (see its README).
+
+## Use (from the kucze plugin)
 
 ```text
-/plugin marketplace add Kucze3205/Perpetua
-/plugin install perpetua@perpetua
-/perpetua:setup <goal and optional owner context>
+/kucze:perpetua-setup <goal and optional owner context>
+/kucze:perpetua-setup update
 ```
 
-In Codex, install from a terminal:
-
-```sh
-codex plugin marketplace add Kucze3205/Perpetua --ref main
-codex plugin add perpetua@perpetua
-```
-
-Then start a new conversation in the target repository and invoke
-`$perpetua:setup <goal and optional owner context>`, or select Perpetua Setup from
-the skill picker. You can also write `Use perpetua:setup to <goal>`.
-Both clients run the same setup, create the same GitHub setup map, and continue
-through wayfinder. Install the `mattpocock-skills` dependencies (`wayfinder`,
-`grilling`, `domain-modeling`, `research`, `prototype`) for the client first.
-Codex follows their instructions directly when no Skill tool is available.
+In Codex the same skill is `$kucze:perpetua-setup`. It needs the `kucze` plugin and the
+`mattpocock-skills` `domain-modeling`, `research` and `prototype` skills; `kucze:wayfinder`
+and `kucze:grilling` come with `kucze`. Setup creates the GitHub setup map and continues
+through wayfinder.
 
 The shipped loop still runs Claude sessions on GitHub Actions. Using Codex for
 setup does not switch that provider; provider changes are resolved in the setup map.
@@ -43,7 +40,7 @@ expands the map as it learns, and splits work that outgrows one session.
 
 - **Understand the domain:** [CONTEXT.md](CONTEXT.md) defines the shared terms;
   [architecture decisions](docs/adr/) explain the constraints behind the design.
-- **Change setup:** [skills/setup/SKILL.md](skills/setup/SKILL.md) is the entry point;
+- **Change setup:** [skills/perpetua-setup/SKILL.md](skills/perpetua-setup/SKILL.md) is the entry point;
   its linked brief and setup notes guide the setup map.
 - **Investigate or change the engine:** [code map](engine/docs/perpetua/code-map.md)
   locates behavior, contracts and tests;
@@ -59,19 +56,17 @@ running loop only through an update; see [ADR-0001](docs/adr/0001-engine-copied-
 
 ## Update a running loop
 
-Update the plugin, restart the client, then run in the loop repository:
+Update the kucze plugin, restart the client, then run in the loop repository:
 
 ```text
-/plugin marketplace update perpetua
-/perpetua:update
+/kucze:perpetua-setup update
 ```
 
-[The update skill](skills/update/SKILL.md) pauses the loop and merges the plugin's engine into the loop's
+[The update procedure](skills/perpetua-setup/update.md) pauses the loop and merges the plugin's engine into the loop's
 copy with git's three-way merge. The loop's `perpetua/engine` branch keeps the untouched engine
 as the base, so the loop's own changes survive. The skill resolves conflicts, runs the tests,
 publishes the result and restarts the loop. You only confirm a moved `setup-baseline` when managed
-definitions changed. A loop set up before `perpetua/engine` existed gets its base found in
-Perpetua's history on the first update.
+definitions changed. A loop without that branch cannot be updated.
 
 ## Verify a change
 
@@ -79,7 +74,7 @@ From this repository root, run:
 
 ```sh
 python -m unittest discover -s engine/.github/loop/tests
-python -m unittest discover -s skills/update
+python -m unittest discover -s skills/perpetua-setup
 ```
 
 The [layered validation guide](engine/docs/perpetua/validation.md) maps controlled

@@ -9,6 +9,7 @@ import yaml
 
 import fakes
 from fakes import ENGINE, common as c, iteration as it
+import owner_requests as requests
 
 BASH = None
 for cand in ("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe", "/bin/bash", "/usr/bin/bash"):
@@ -240,7 +241,7 @@ class ConfigTest(unittest.TestCase):
             profs = self.load('policy', 'profiles.yml')
             self.assertEqual(set(profs), {'audit', 'evaluator', 'evaluator-verifier'})
             for role, profile in profs.items():
-                self.assertEqual(it.limits_exceeded(profile), [], role)
+                self.assertEqual(requests.limits_exceeded(profile), [], role)
             for role in [*profs, 'policymaker']:
                 path = os.path.join(ENGINE, 'policy', 'roles', role, 'SKILL.md')
                 with open(path, encoding='utf-8') as fh:

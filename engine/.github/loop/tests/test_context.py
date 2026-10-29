@@ -7,15 +7,13 @@ from unittest.mock import patch
 from fakes import common as c, iteration as it, loop
 import session_reports as reports
 import session_startup as startup
-import test_session as sessions
+import session_fixtures as sessions
 
 read = sessions.read
 BIG = "x" * 400004      # about 100001 tokens: over the warning threshold of 100000
 
 
 class ContextTest(sessions.SessionCase):
-    work = sessions.StageTest.work
-
     def stage(self, role="policymaker", state=None, labels=(), body="## Goal\nx\n"):
         n = self.issue(role, labels=labels, body=body)
         if state is not None:
@@ -218,7 +216,6 @@ class ContextTest(sessions.SessionCase):
 
 class SessionStateScriptTest(sessions.SessionCase):
     SCRIPT = "policy/session-state.py"
-    work = sessions.StageTest.work
     stage = ContextTest.stage
 
     def test_a_policymaker_change_to_the_script_changes_what_the_next_session_receives(self):
@@ -241,7 +238,6 @@ class SessionStateScriptTest(sessions.SessionCase):
 
 class SessionStartupScriptTest(sessions.SessionCase):
     SCRIPT = "policy/session-startup.py"
-    work = sessions.StageTest.work
     stage = ContextTest.stage
 
     def test_a_policymaker_change_to_the_script_changes_the_bootstrap_and_the_warning_threshold(self):

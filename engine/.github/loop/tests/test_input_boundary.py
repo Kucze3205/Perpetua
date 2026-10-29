@@ -4,13 +4,13 @@ import os
 
 import fakes
 from fakes import common as c, iteration as it, loop, task
+import task_graph as graph
 import session_reports as reports
-from test_reports import PROPOSAL
-from test_layered_resources import LayeredSessionTest
-from test_session import read
+from proposal_fixtures import PROPOSAL
+from session_fixtures import LayeredSessionCase, read
 
 
-class InputBoundaryTest(LayeredSessionTest):
+class InputBoundaryTest(LayeredSessionCase):
     def started_issue(self, *args, **kwargs):
         n = self.issue(*args, **kwargs)
         loop.resolve(n)
@@ -57,10 +57,10 @@ class InputBoundaryTest(LayeredSessionTest):
         self.assertEqual(set(options['models']), set(c.params()['models']))
         self.assertNotIn('claude-opus-5-5', json.dumps(options))
         for alias in options['models']:
-            self.assertEqual(it.validate_tasks({'tasks': [task('a', model=alias)]}), [])
+            self.assertEqual(graph.validate_tasks({'tasks': [task('a', model=alias)]}), [])
         for effort in options['efforts']:
-            self.assertEqual(it.validate_tasks({'tasks': [task('a', effort=effort)]}), [])
-        self.assertTrue(it.validate_tasks({'tasks': [task('a', model='sonnet')]}))
+            self.assertEqual(graph.validate_tasks({'tasks': [task('a', effort=effort)]}), [])
+        self.assertTrue(graph.validate_tasks({'tasks': [task('a', model='sonnet')]}))
         self.assertIn('max_turns', options['ceilings'])
         catalog = json.loads(read(os.path.join(sess, 'capabilities.json')))
         self.assertEqual([x['description'] for x in catalog], ['fixture'])
@@ -128,9 +128,9 @@ class InputBoundaryTest(LayeredSessionTest):
         _, sess, _ = self.stage_inputs(shaper=True, state={'iteration': 1})
         catalog = json.loads(read(os.path.join(sess, 'capabilities.json')))
         role = catalog[0]['role']
-        graph = {'tasks': [task('build', role=role), task('check', role=role, blocked_by=['build'])]}
-        self.assertEqual(it.validate_tasks(graph), [])
-        self.assertEqual(it.topological({t['id']: t.get('blocked_by', []) for t in graph['tasks']}), ['build', 'check'])
+        document = {'tasks': [task('build', role=role), task('check', role=role, blocked_by=['build'])]}
+        self.assertEqual(graph.validate_tasks(document), [])
+        self.assertEqual(graph.topological({t['id']: t.get('blocked_by', []) for t in document['tasks']}), ['build', 'check'])
         self.assertNotIn('audit', [entry['role'] for entry in catalog])
 
     def test_layered_suggestion_reaches_policy_and_its_decision_is_applied(self):

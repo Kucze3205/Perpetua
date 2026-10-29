@@ -5,11 +5,8 @@ from unittest.mock import patch
 
 from fakes import common as c, iteration as it, loop
 import session_reports as reports
-from test_session import SessionCase, StageTest
-
-
-PROPOSAL = {"kind": "role-change", "what": "Reduce worker context", "why": "Repeated expensive reads",
-            "evidence": "Report: worker read the entire tree three times"}
+from session_fixtures import SessionCase
+from proposal_fixtures import PROPOSAL
 
 
 class ReportsTest(SessionCase):
@@ -26,7 +23,7 @@ class ReportsTest(SessionCase):
             return json.load(fh)
 
     def stage(self, n):
-        work = StageTest.work(self)
+        work = self.work()
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
         return os.path.join(work, ".session")
 

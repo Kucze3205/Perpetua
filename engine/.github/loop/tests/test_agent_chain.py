@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from fakes import common as c, loop
-import test_session as sessions
+import session_fixtures as sessions
 
 BIG = 200 * 1024                      # over the 128 KiB limit of one argv string on Linux
 RECORDER = r'''#!/bin/sh
@@ -21,7 +21,6 @@ echo '{"type":"result","is_error":false,"num_turns":1}'
 
 
 class AgentChainCase(sessions.SessionCase):
-    work = sessions.StageTest.work
 
     def setUp(self):
         super().setUp()

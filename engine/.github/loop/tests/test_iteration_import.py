@@ -14,9 +14,10 @@ class IterationImportTest(unittest.TestCase):
 import importlib
 import unittest
 import test_flow
+import test_flow_policymaker
 importlib.reload(test_flow.it)
 suite = unittest.TestSuite([
-    test_flow.FirstPolicymakerTest(
+    test_flow_policymaker.FirstPolicymakerTest(
         'test_the_first_iteration_starts_with_the_policymaker_and_its_orders_become_its_tasks'),
     test_flow.FirstIterationTest(
         'test_script_entry_begins_work_without_a_due_policymaker'),

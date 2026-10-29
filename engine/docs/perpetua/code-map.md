@@ -33,15 +33,19 @@ The engine uses the accepted checkout; files left by a session (committed or not
 
 | Behavior | Implementation entry points | Tests in `tests/` |
 |---|---|---|
-| Session setup and outputs | `loop.resolve`, `loop.stage`, `loop.finalize` | `test_session.py` |
-| Iteration lifecycle and task graph | `iteration.start_iteration`, `validate_tasks`, `instantiate`, `advance`, `close_iteration` | `test_flow.py`, `test_pure.py` |
-| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | `test_merge.py`, `test_change_records.py` |
-| Policymaker tuning and applying finished sessions | `policymaker_session.profile`; `loop.apply_policy` | `test_exports.py`, `test_flow.py` |
-| Owner requests | `iteration.open_request`, `process_proposals`; `owner_requests.py`; `loop.on_request_closed` | `test_owner_requests.py` |
+| Session resolution and staging | `loop.resolve`, `loop.stage` | `test_session.py` |
+| Session finalization, retries and outputs | `loop.finalize`, `loop.resume` | `test_session_finalize.py` |
+| Iteration lifecycle and session launch | `iteration.start_iteration`, `instantiate`, `advance`, `close_iteration` | `test_flow.py`, `test_iteration_import.py` |
+| Task validation, dependencies, inputs and frozen graph | `task_graph.validate_tasks`, `create_tasks`, `read`, `width`; `iteration.validate_tasks` adds `policy/graph-rules.py` | `test_task_graph.py`, `test_flow.py`; `.github/loop/task-graph.md` defines the format |
+| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | `test_merge.py`, `test_flow_gate.py`, `test_change_records.py` |
+| Policymaker triggers, orders and policy phases | `iteration.start_policymaker`, `policymaker_due`; `loop.apply_policy` | `test_flow_policymaker.py`, `test_policy_admission.py` |
+| Owner consent and approved secrets | `owner_requests.consent_status`, `secrets_of_consent`, `limits_exceeded`; `loop.secret_pool`, `stage`, `finalize` | `test_flow_consent.py` |
+| Goal gate and owner confirmation | `iteration.run_goal_gate`; `loop.on_request_closed` | `test_flow_goal.py` |
+| Owner requests | `owner_requests.open_request`, `process_proposals`, `settle`; `loop.on_request_closed` | `test_owner_requests.py` |
 | Reports and the suggestion archive | `session_reports.py`; `policy/session-state.py`; report parsing/publication in `common.py` | `test_reports.py`, `test_pure.py` |
 | Fresh-template end-to-end integration | `setup_roles.py`, `loop.py`, `iteration.py` | `test_template_flow.py`; [validation guide](validation.md) |
 | Setup role registration and baseline validation | `setup_roles.py` | `test_setup_roles.py` |
-| Managed definitions, locations and revision identity | `managed_resources.py`; `policy/layer-rules.py`, `policy/graph-rules.py` | `test_session.py`, `test_merge.py` |
+| Managed definitions, locations and revision identity | `managed_resources.py`; `policy/layer-rules.py`, `policy/graph-rules.py` | `test_layered_resources.py`, `test_merge.py` |
 | Accepted-change and verifier records | `iteration.record_change`, `record_verification` | `test_change_records.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | `test_exports.py`, `test_input_boundary.py` |
 | Startup notices (the reads, prompt and estimate are `policy/session-startup.py`) and offline history | `session_context.py`, `session_startup.py` | `test_context.py` |
@@ -53,13 +57,41 @@ configuration, admission, revision and restore boundaries. See
 [managed definitions](managed-resources.md) for the supported layout and activation contract.
 `common.py` owns shared configuration, GitHub and git operations. Tests replace
 GitHub operations with `tests/fakes.py` and use real temporary git repositories.
+Shared test preparation lives beside the suites, without importing test cases:
+`session_fixtures.py` supplies `SessionCase`, its `work()` staging checkout,
+`LayeredSessionCase` and `read`; `flow_fixtures.py` supplies `Flow` for iteration
+scenarios; `gate_fixtures.py` holds the script gate and `proposal_fixtures.py` a
+shared suggestion. Scenario-specific data, such as the secret pool workflow,
+stays with its tests. For a new secrets regression start with
+`test_flow_consent.py` and `flow_fixtures.py`; for session context start with
+`test_context.py` and `session_fixtures.py`, then follow either to `fakes.py`
+only when changing the underlying world.
+`test_iteration_import.py` deliberately runs selected lifecycle and Policymaker
+scenarios in a child process after reloading `iteration`; it tests fresh imports
+without contaminating the other suites.
 Run the suite from the loop repository root:
 `python -m unittest discover -s .github/loop/tests`.
 From the plugin source use `-s engine/.github/loop/tests` instead.
 See [validation](validation.md) for prerequisites and limits of this verification.
 
+For a new graph rule, read `task_graph.py` and `test_task_graph.py`, then the
+shaper-to-record scenario in `test_flow.py` if the rule affects execution. Before
+this split, that work required navigating `iteration.py` alongside lifecycle,
+policy-phase and owner-request rules, then finding graph tests in `test_pure.py`.
+Consent rules now lead directly to `owner_requests.py`; export rules still lead
+to `session_exports.py`. Neither requires reading unrelated session-finalization
+or recovery code.
+
 ## Details that are easy to misread
 
+- `task_graph.py` validates and materializes tasks, wires blocking and consent,
+  resolves input references and saves the frozen graph. It imports neither
+  `iteration` nor `loop`. `iteration.instantiate` validates and saves first,
+  updates phase/statistics second, then launches sessions. Policymaker orders use
+  the same graph implementation while their phase handling stays in `iteration`.
+- `owner_requests.py` owns request creation, frozen proposals and consent rules;
+  `loop.on_request_closed` owns the resulting continuation. Startup checks consent
+  again during staging so a changed profile or decision cannot use a stale check.
 - `iteration.begin_work` imports and calls `loop.apply_policy` when work begins.
   This local import keeps the dependency explicit without requiring callers to
   import `loop.py` first; the two modules still depend on each other.

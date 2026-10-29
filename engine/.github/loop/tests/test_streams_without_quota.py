@@ -5,7 +5,7 @@ import unittest
 import yaml
 
 from fakes import common as c, iteration as it
-from test_session import SessionCase
+from session_fixtures import SessionCase
 
 SESSION_YML = os.path.join(os.path.dirname(__file__), "..", "..", "workflows", "session.yml")
 

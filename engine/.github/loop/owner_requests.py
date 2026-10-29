@@ -1,4 +1,8 @@
-"""Frozen owner proposals and restart-safe decisions. No agent code or secret values are read."""
+"""Owner questions, consent rules, frozen proposals and restart-safe decisions.
+
+The loop controls what runs after a decision; this module never imports its drivers.
+No agent code or secret values are read.
+"""
 import base64
 import hashlib
 import json
@@ -12,6 +16,10 @@ import common as c
 
 KINDS = ("capability", "limits-change", "engine-change")
 APPROVED = "request:approved"
+REQ = "owner-request"
+REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice") + KINDS
+SESSION_KINDS = ("goal-gate", "goal-change", "question") + KINDS
+HANDLED = "request:handled"
 PATCH_MINUTES = 30         # the tokenless job's time limit for applying a patch and running its tests
 RESULT_BYTES = 4 * 1024 * 1024
 REASON_BYTES = 1500
@@ -334,3 +342,153 @@ def settle(n, issue):
         return settle(n, issue)
     c.post_comment(n, detail)
     return status
+
+
+def fence_for(text):
+    longest = max([len(m) for m in re.findall(r"`+", text)] or [0])
+    return "`" * max(3, longest + 1)
+
+
+def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None, test=None):
+    """The only way the loop asks the owner for a decision, a consent or a confirmation. Only engine code calls it.
+    The answer is the closing of the issue: completed = yes, not planned = no."""
+    assert kind in REQUEST_KINDS, kind
+    proposal = prepare(kind, frozen, readiness, test) if kind in KINDS else None
+    if proposal:
+        frozen = proposal["frozen"]
+    owner = c.owner_login()
+    body = "%s\n\n## What\n\n%s\n\n## Why\n\n%s\n\n## What it unblocks\n\n%s\n" % (
+        " ".join("@" + o for o in owner), what, why, unblocks)
+    if frozen is not None:
+        f = fence_for(frozen)
+        body += "\n## Proposed text\n\n%s\n%s\n%s\n\n<!-- frozen-sha: %s -->\n" % (f, frozen, f, digest(frozen))
+    if test:
+        f = fence_for(test)
+        body += "\n## Test command\n\n%s\n%s\n%s\n" % (f, test, f)
+    body += "\n<!-- request-kind: %s -->\n" % kind
+    if ref:
+        body += "<!-- request-ref: %s -->\n" % ref
+    if proposal:
+        body += instructions(proposal)
+    labels = [REQ, "%s:%s" % (REQ, kind)] + (([c.ITER + str(iteration)]) if iteration is not None else [])
+    for l in labels:
+        c.ensure_label(l, "FBCA04" if l.startswith(REQ) else "C5DEF5")
+    n = c.create_issue(title, body, labels=labels, assignees=owner)
+    if proposal:
+        freeze(n, proposal, body)
+    for t in blocks:
+        c.add_blocker(t, n)
+    c.say("owner request #%s: %s" % (n, title))
+    return n
+
+
+def frozen_text(body):
+    """The proposed text of a request when it still matches the hash taken at creation; else None."""
+    m = re.search(r"## Proposed text\n\n(`{3,})\n(.*?)\n\1\n", body or "", re.S)
+    sha = c.marker(body, "frozen-sha")
+    if not m or not sha or digest(m.group(2)) != sha:
+        return None
+    return m.group(2)
+
+
+def open_requests():
+    return c.list_issues(labels=(REQ,))
+
+
+def request_open(kind, ref=None, title=None):
+    for x in open_requests():
+        b = x["body"] or ""
+        if c.marker(b, "request-kind") == kind and (ref is None or c.marker(b, "request-ref") == ref) \
+                and (title is None or x["title"] == title):
+            return x["number"]
+    return None
+
+
+def process_proposals(text, iteration, source=None):
+    """`.session/requests.json` of an agent: `[{kind, title, what, why, unblocks, frozen?}]`. Returns the issue numbers."""
+    try:
+        items = json.loads(text)
+    except ValueError:
+        return []
+    made = []
+    for p in items if isinstance(items, list) else []:
+        if not isinstance(p, dict) or p.get("kind") not in SESSION_KINDS or not p.get("title"):
+            continue
+        if p["kind"] not in ("question", "capability") and not p.get("frozen"):
+            continue
+        ref = None
+        if p["kind"] in KINDS:
+            ref = "proposal-" + digest(json.dumps([source if source is not None else iteration, p], sort_keys=True))
+            if any(c.marker(x["body"], "request-ref") == ref for x in c.list_issues(state="all", labels=(REQ,))):
+                continue
+        if request_open(p["kind"], title=p["title"]):
+            continue
+        try:
+            made.append(open_request(p["kind"], p["title"], p.get("what", ""), p.get("why", ""), p.get("unblocks", ""),
+                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness"), test=p.get("test")))
+        except (ValueError, TypeError) as e:
+            c.say("Invalid owner request %s: %s" % (p["title"], e))
+    return made
+
+
+def limits_exceeded(profile):
+    """Why a profile is beyond the owner's accepted limits (empty: within)."""
+    lim = c.cfg()["limits"]
+    why = []
+    allowed = lim.get("tools") or c.DEFAULT_TOOLS
+    import fnmatch
+    for t in profile.get("tools", []) or []:
+        if not any(fnmatch.fnmatchcase(t, a) for a in allowed):
+            why.append("tool `%s`" % t)
+    return why
+
+
+SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+
+
+def consent_errors(consent):
+    """Errors of a task's `consent` object. `secrets` are names only, never values."""
+    if not isinstance(consent, dict):
+        return ["`consent` must be an object"]
+    errors = ["consent: unknown field %r" % k for k in sorted(set(consent) - {"what", "why", "secrets"})]
+    for key in ("what", "why"):
+        if key in consent and not isinstance(consent[key], str):
+            errors.append("consent.%s must be a string" % key)
+    secrets = consent.get("secrets", [])
+    if not isinstance(secrets, list):
+        return errors + ["consent.secrets must be a list of secret names"]
+    for k, name in enumerate(secrets):     # the entry is not echoed: it may be a value
+        if not isinstance(name, str) or not SECRET_NAME.fullmatch(name):
+            errors.append("consent.secrets[%d] is not a secret name (^[A-Z][A-Z0-9_]*$; names only, never values)" % k)
+    if len({s for s in secrets if isinstance(s, str)}) != len([s for s in secrets if isinstance(s, str)]):
+        errors.append("consent.secrets has duplicate names")
+    return errors
+
+
+def consent_status(profile, labels):
+    """(granted, why-not). Granted by the closed (completed) consent request of the task, also within the limits.
+    A profile beyond the accepted limits runs only with that consent."""
+    if _consent_request(labels):
+        return True, None
+    exceeded = limits_exceeded(profile)
+    if not exceeded:
+        return False, None
+    return False, "beyond the accepted limits (%s) and no granted consent" % ", ".join(exceeded)
+
+
+def _consent_request(labels):
+    """The closed-as-completed consent request assigned to the task, else None."""
+    req = c.label_value(labels, "consent:")
+    if req and req.isdigit():
+        r = c.issue(int(req))
+        if r["state"] == "closed" and r.get("state_reason") == "completed":
+            return r
+    return None
+
+
+def secrets_of_consent(labels):
+    """Secret names of the frozen text of the task's granted consent; empty without one."""
+    r = _consent_request(labels)
+    text = frozen_text(r["body"]) if r else None
+    m = re.match(r"secrets: (.+)$", text or "")
+    return [s.strip() for s in m.group(1).split(",")] if m else []

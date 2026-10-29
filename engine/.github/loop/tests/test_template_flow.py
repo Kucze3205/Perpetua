@@ -14,8 +14,8 @@ import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 import managed_resources as resources
 import setup_roles
-from test_merge import GATE_SH
-from test_reports import PROPOSAL
+from gate_fixtures import GATE_SH
+from proposal_fixtures import PROPOSAL
 
 
 class TemplateFlowTest(unittest.TestCase):

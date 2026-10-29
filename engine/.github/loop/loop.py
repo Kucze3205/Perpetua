@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 import common as c
 import managed_resources as resources
 import iteration as it
+import owner_requests as requests
 import session_security as security
 import session_inputs
 import session_exports
@@ -42,35 +43,6 @@ JOB_MAX_MIN = 355               # GitHub kills a job at 360 min; the epilogue mu
 
 # ---------------------------------------------------------------- start of a session
 
-def consent_status(profile, labels):
-    """(granted, why-not). Granted by the closed (completed) consent request of the task, also within the limits.
-    A profile beyond the accepted limits runs only with that consent."""
-    if _consent_request(labels):
-        return True, None
-    exceeded = it.limits_exceeded(profile)
-    if not exceeded:
-        return False, None
-    return False, "beyond the accepted limits (%s) and no granted consent" % ", ".join(exceeded)
-
-
-def _consent_request(labels):
-    """The closed-as-completed consent request assigned to the task, else None."""
-    req = c.label_value(labels, "consent:")
-    if req and req.isdigit():
-        r = c.issue(int(req))
-        if r["state"] == "closed" and r.get("state_reason") == "completed":
-            return r
-    return None
-
-
-def secrets_of_consent(labels):
-    """Secret names of the frozen text of the task's granted consent; empty without one."""
-    r = _consent_request(labels)
-    text = it.frozen_text(r["body"]) if r else None
-    m = re.match(r"secrets: (.+)$", text or "")
-    return [s.strip() for s in m.group(1).split(",")] if m else []
-
-
 def secret_pool():
     """Secret names the owner wired into the `Session` step of session.yml (default branch); the token of the
     Claude credential is not a session secret. Empty when the file or the step is not there."""
@@ -87,8 +59,8 @@ def secret_pool():
 def block_secret_missing(n, i, name, work=None):
     """The task is blocked and the owner is asked (capability, no value) to provide the secret `name`."""
     title = "Secret `%s` for task #%s" % (name, n)
-    if not it.request_open("capability", title=title):
-        it.open_request("capability", title,
+    if not requests.request_open("capability", title=title):
+        requests.open_request("capability", title,
                         "Task #%s has your consent to use the secret `%s`, but the session cannot get it." % (n, name),
                         "The secret is not in the secret pool of the `Session` step of session.yml, or the repository secret is empty.",
                         "Nothing by itself: closing this request creates no secret. Add the name to the `Session` step and set the repository secret, then restart the task.",
@@ -145,7 +117,7 @@ def resolve(n):
     why = security.profile_error(p) if p else "no profile for role `%s`" % role
     granted = False
     if not why and role != "policymaker":
-        granted, why = consent_status(p, labels)
+        granted, why = requests.consent_status(p, labels)
     if not why and (role != "policymaker" or resources.layered()) and p.get("agent") is not False and not os.path.exists(resources.role_directory(role) + "/SKILL.md"):
         why = "no skill for role `%s`" % role
     if not why and p.get("agent") is False and not p.get("command"):
@@ -156,7 +128,7 @@ def resolve(n):
         close_out(n, i, "blocked", {"cause": "start:" + why.split()[0]}, "The session did not start: " + why + ".")
         reconcile()
         raise SystemExit(why)
-    names = secrets_of_consent(labels) if granted else []
+    names = requests.secrets_of_consent(labels) if granted else []
     pool = secret_pool()
     for name in names:
         if name not in pool:
@@ -223,7 +195,7 @@ def stage(n, work, trusted):
     if error:
         raise SystemExit("invalid session profile: " + error)
     if role != "policymaker":
-        _, error = consent_status(p, labels)
+        _, error = requests.consent_status(p, labels)
         if error:
             raise SystemExit("session profile changed or consent is no longer valid: " + error)
     # Real workflow sessions carry KIND. Test/finalize callers may have unrelated MODEL env values.
@@ -268,9 +240,9 @@ def stage(n, work, trusted):
                  + rules + "\n\n" + ("" if role == "policymaker" else template))
     # The approved names, for agent.sh's empty-value check. Unapproved pool names need no file: the workflow expression
     # `contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || ''` already hands them over empty.
-    granted = role != "policymaker" and consent_status(p, labels)[0]
+    granted = role != "policymaker" and requests.consent_status(p, labels)[0]
     with open(os.path.join(trusted, "secrets"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("".join(x + "\n" for x in secrets_of_consent(labels) if granted))
+        fh.write("".join(x + "\n" for x in requests.secrets_of_consent(labels) if granted))
     with open(os.path.join(trusted, "tools"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(",".join(security.tool_names(p)))
     with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:
@@ -409,10 +381,6 @@ def fetch_candidate(work, n):
     return c.git(".", "rev-parse", "--short", "task/%s" % n).stdout.strip(), touched
 
 
-def may_write(profile, path):
-    return resources.may_write(profile, path)
-
-
 def verification_commands(body):
     """Commands of `## Verification`: code blocks or backticked lines."""
     text = c.section(body, "Verification")
@@ -472,7 +440,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
         bad = [f for f in changed if resources.is_protected(f)]
         if bad:
             return dict(res, result="protected", detail=", ".join(bad))
-        out = [f for f in changed if not may_write(prof, f)]
+        out = [f for f in changed if not resources.may_write(prof, f)]
         if out:
             return dict(res, result="scope", detail=", ".join(out))
         work_paths = [f for f in changed if not resources.is_direct(f)]
@@ -539,7 +507,7 @@ def merge_notes(n, role):
         if c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), check=False, remote=True).returncode:
             return False
         files = [f for f in c.git(".", "diff", "--name-only", "--diff-filter=AM", "origin/%s...origin/%s" % (d, br)).stdout.split()
-                 if c.path_match(f, cfg["notes_paths"]) and may_write(prof, f)]
+                 if c.path_match(f, cfg["notes_paths"]) and resources.may_write(prof, f)]
         if not files:
             return False
         with Tree("origin/%s" % d) as cand:
@@ -688,7 +656,7 @@ def finalize(n, work):
         with open(os.path.join(tmp, "agent-exit")) as fh:
             exit_code = fh.read().strip()
     missing = (c.safe_read(tmp, "secret-missing") or "").strip()
-    if missing and re.fullmatch(r"[A-Z][A-Z0-9_]*", missing) and missing in secrets_of_consent(labels):
+    if missing and re.fullmatch(r"[A-Z][A-Z0-9_]*", missing) and missing in requests.secrets_of_consent(labels):
         block_secret_missing(n, i, missing, work)
         return
     exec_path = os.path.join(tmp, "claude-execution-output.json")
@@ -756,7 +724,7 @@ def finalize(n, work):
             status, prose = "crashed", "Rebase conflict %s times in a row." % kk
         elif r["result"] == "awaiting-owner":
             pending = "pending-owner"
-            req = it.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (n, i["title"]),
+            req = requests.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (n, i["title"]),
                                   "Task #%s finished; its branch `task/%s` (%s) is ready to enter the main line.\nFiles: %s" % (
                                       n, n, upd.get("commit", ""), ", ".join(r["changed"][:20])),
                                   "Every change needs a verdict before it enters the main line, and the change gate is set to you.",
@@ -861,7 +829,7 @@ def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):
             verification["override"] = {"verdict": "accepted", "improved": True, "detail": "accepted by the owner"}
         r = merge_branch(x["number"], "policymaker", x, boundary=True, **verification)
         if r["result"] == "awaiting-owner":
-            req = it.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (x["number"], x["title"]),
+            req = requests.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (x["number"], x["title"]),
                                   "The complete Policymaker candidate needs your change gate verdict.",
                                   "The change gate is set to you.", "Completed accepts the candidate for the next iteration boundary.",
                                   ref="task-%s" % x["number"], iteration=c.iteration_of(c.label_names(x)))
@@ -890,7 +858,7 @@ def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):
 def proposals(work, k, source=None):
     text = c.safe_read(work, ".session/requests.json")
     if text:
-        it.process_proposals(text, k, source=source)
+        requests.process_proposals(text, k, source=source)
 
 
 def tag_unmerged(n, k, upd):
@@ -943,15 +911,11 @@ def after_session(n, i, labels, role, k, work, status, upd, prose, merged_pendin
         if isinstance(got, str):
             status, prose = "partial", got
     if role == c.cfg()["verifier_role"] and merged_pending is None:
-        status, prose = settle_verification(n, i, status, f_result(n), prose)
+        status, prose = settle_verification(n, i, status, c.report_fields(n).get("result"), prose)
     if merged_pending:
         return reconcile()
     close_out(n, i, status, upd, prose, work=work)
     reconcile()
-
-
-def f_result(n):
-    return c.report_fields(n).get("result")
 
 
 # ---------------------------------------------------------------- the evaluator verifier
@@ -1003,7 +967,7 @@ def settle_verification(n, i, status, result, prose):
             r = merge_branch(t, trole, ti, verified=True, checked_commit=checked, checked_evaluator_rev=rev, verifier=n)
         it.record_verification(n, i, status, result, r)
         if r["result"] == "awaiting-owner":
-            req = it.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (t, ti["title"]), "The evaluator change of task #%s was verified; its work paths still need your verdict." % t,
+            req = requests.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (t, ti["title"]), "The evaluator change of task #%s was verified; its work paths still need your verdict." % t,
                                   "The change gate is set to you.", "Completed merges the branch.", ref="task-%s" % t, iteration=c.iteration_of(c.label_names(ti)))
             c.edit_labels(t, add=["awaiting:owner"], remove=["awaiting:verifier"])
             c.update_report(t, {"merged": "pending-owner", "verifier_passed": "true"}, "Verified; waiting for the owner: request #%s." % req)
@@ -1079,17 +1043,17 @@ def halt_dependents(closed, status):
 def on_request_closed(n):
     x = c.issue(n)
     names = c.label_names(x)
-    if it.REQ not in names or it.HANDLED in names or x["state"] != "closed":
+    if requests.REQ not in names or requests.HANDLED in names or x["state"] != "closed":
         return
     kind = c.marker(x["body"], "request-kind")
     # The trusted snapshot controls the type even if someone edits the issue's markers.
-    snapshot = it.requests.read(n)
-    if snapshot or kind in it.requests.KINDS:
-        status = it.requests.settle(n, x)
+    snapshot = requests.read(n)
+    if snapshot or kind in requests.KINDS:
+        status = requests.settle(n, x)
         if status == "waiting":
             return
         if status == "approved":
-            c.edit_labels(n, add=[it.requests.APPROVED])
+            c.edit_labels(n, add=[requests.APPROVED])
         for d in c.blocking(n):
             if d["state"] == "open":
                 if status == "approved":
@@ -1097,14 +1061,14 @@ def on_request_closed(n):
                 else:
                     close_out(d["number"], d, "blocked", {"cause": "owner-request-" + status},
                               "Owner request #%s ended as %s." % (n, status))
-        c.edit_labels(n, add=[it.HANDLED])
+        c.edit_labels(n, add=[requests.HANDLED])
         it.advance()
         reconcile()
         return
     yes = x.get("state_reason") == "completed"
     ref = c.marker(x["body"], "request-ref") or ""
     if kind in ("goal-gate", "goal-change") and yes:
-        text = it.frozen_text(x["body"])
+        text = requests.frozen_text(x["body"])
         if text is None:
             c.post_comment(n, "Not applied: the proposed text changed after the request was opened. The loop will open a new request.")
         else:
@@ -1120,7 +1084,7 @@ def on_request_closed(n):
                     c.launch(d["number"])
                 else:
                     close_out(d["number"], d, "blocked", {"cause": "consent-declined"}, "The owner declined the consent request #%s." % n)
-    c.edit_labels(n, add=[it.HANDLED])
+    c.edit_labels(n, add=[requests.HANDLED])
     it.advance()
     reconcile()
 
@@ -1162,8 +1126,8 @@ def settle_owner_merge(t, yes):
 
 def sweep_requests():
     """The safety net for a lost `issues: closed` event."""
-    for x in c.list_issues(state="closed", labels=(it.REQ,)):
-        if it.HANDLED not in c.label_names(x):
+    for x in c.list_issues(state="closed", labels=(requests.REQ,)):
+        if requests.HANDLED not in c.label_names(x):
             on_request_closed(x["number"])
 
 

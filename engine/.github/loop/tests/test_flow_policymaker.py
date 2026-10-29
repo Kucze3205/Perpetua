@@ -262,7 +262,7 @@ class PolicymakerTest(Flow):
         rec = self.record(0)
         self.assertEqual(sorted(t["id"] for t in rec["tasks"]), ["order-%s-e" % pol, "t0"])
         self.assertEqual(rec["outcome"]["width"], 2)
-        self.assertEqual(rec["policy"]["passes"], 2)
+        self.assertEqual(rec["policy"]["passes"], 1)          # without `wake` the session does not run again
         self.assertEqual({t["id"]: t.get("pass") for t in rec["tasks"]}, {"order-%s-e" % pol: 1, "t0": None})    # the shaper's task has no pass
 
     def test_an_order_of_a_role_outside_policymaker_only_roles_is_refused(self):
@@ -440,6 +440,7 @@ class PolicyPhaseTest(Flow):
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         self.w.session(self.task_issue("order-%s-e" % pol))
         self.w.session(pol, session_files={"orders.json": self.A})
+        self.w.session(self.task_issue("order-%s-2-a" % pol))                    # the audit runs beside the shaper's tasks
         rec = self.record_after_finish()
         self.assertEqual(rec["policy"]["passes"], 2)
         self.assertEqual({t["id"]: t.get("pass") for t in rec["tasks"]},

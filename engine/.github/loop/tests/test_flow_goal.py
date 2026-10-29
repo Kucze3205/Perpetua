@@ -80,5 +80,17 @@ class GoalGateTest(Flow):
         self.w.session(self.policymaker_session(0), session_files={"requests.json": prop})
         self.assertEqual([x["title"] for x in self.hub.by_label("owner-request")], ["ok?"])
 
+    def test_a_goal_gate_job_that_returns_nothing_is_not_reached(self):
+        self.finish_one()
+        self.gate(True, False)
+        self.hub.tokenless_fault = "no-artifact"
+        it.check_goal()
+        self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
+
+    def test_the_gate_command_runs_in_the_tokenless_job(self):
+        self.gate(True, False)
+        self.finish_one()
+        self.assertTrue(any("run.sh" in files for files in self.hub.tokenless))
+
 if __name__ == "__main__":
     unittest.main()

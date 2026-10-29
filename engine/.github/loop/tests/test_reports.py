@@ -27,36 +27,31 @@ class ReportsTest(SessionCase):
         loop.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
         return os.path.join(work, ".session")
 
-    def test_epilogue_stages_proposal_evidence_and_accepted_policymaker_resolves_once(self):
-        n, work = self.producer()
-        pending = reports.pending()
-        self.assertEqual(len(pending), 1)
-        proposal = pending[0]
+    def pending(self, pol):
+        return self.read(os.path.join(self.stage(pol), "loop-state.json"))["suggestions"]
+
+    def test_outbox_is_archived_raw_outside_github_and_policy_presents_and_decides_it(self):
+        raw = json.dumps([PROPOSAL])
+        n, work = self.producer(raw)
+        archive = "iterations/suggestions/%s.json" % n
+        self.assertEqual(self.w.origin_file(archive), raw)
+        reports.capture(n, work)                                  # replaying changes nothing
+        self.assertEqual(self.w.origin_file(archive), raw)
+        pol = self.hub.role_issues("policymaker")[0]["number"]    # the worker's end started iteration 0, which it opens
+        self.assertEqual(it.read_state(pol)["trigger"], "new session suggestions")
+        self.assertEqual(it.read_state(pol)["outboxes"], [n])
+        sess = self.stage(pol)
+        proposal = self.pending(pol)[0]
         self.assertEqual(proposal["evidence"], PROPOSAL["evidence"])
         self.assertEqual(proposal["source"]["issue"], n)
-        immutable = {path: self.w.origin_file(path) for path, _ in reports.source_records(n)}
-        reports.capture(n, work)
-        self.assertEqual([s["id"] for s in reports.pending()], [proposal["id"]])
-        pol = self.hub.role_issues("policymaker")[0]["number"]        # the worker's end started iteration 0, which it opens
-        self.assertEqual(it.read_state(pol)["trigger"], "new session suggestions")
-        sess = self.stage(pol)
-        state = self.read(os.path.join(sess, "loop-state.json"))
-        self.assertEqual(state["suggestions"][0]["id"], proposal["id"])
-        report = self.read(os.path.join(sess, "reports", "%s.json" % n))
-        self.assertIn("Evidence: three full-tree reads", report["body"])
-        evidence = self.read(os.path.join(sess, "reports", "%s-%s.json" % (n, proposal["source"]["snapshot"])))
-        self.assertEqual(evidence["snapshot"], proposal["source"]["snapshot"])
-        decision = [{"id": proposal["id"], "status": "handled", "reason": "Updated the worker's context budget"}]
-        self.w.session(pol, files={"policy/context.md": "Read only the selected files."},
-                       session_files={"suggestion-decisions.json": json.dumps(decision)})
-        self.assertEqual(reports.pending(), [])      # the iteration waited for the session: its decisions hold at once
-        final = self.w.origin_file(reports.STATE)
-        reports.apply_decisions(pol)
-        self.assertEqual(self.w.origin_file(reports.STATE), final)
-        for path, text in immutable.items():
-            self.assertEqual(self.w.origin_file(path), text)
+        with open(os.path.join(sess, "history", "sessions", str(n), proposal["source"]["snapshot"] + ".md"), encoding="utf-8") as fh:
+            self.assertIn("Evidence: three full-tree reads", fh.read())
+        decision = {proposal["id"]: {"status": "handled", "reason": "Updated the worker's context budget"}}
+        self.w.session(pol, files={"policy/suggestion-decisions.json": json.dumps(decision)})
+        later = it.start_policymaker(1, "after the decision")
+        self.assertEqual(self.pending(later), [])
+        self.assertEqual(self.w.origin_file(archive), raw)        # the archive is not rewritten by decisions
         self.assertIsNone(it.policymaker_due(1))
-        self.assertIn(proposal["id"], it.session_summary(c.issue(n))["suggestion_ids"])
 
     def test_shaper_reads_report_body_without_network_and_untrusted_marker_is_ignored(self):
         good, _ = self.producer()
@@ -71,13 +66,19 @@ class ReportsTest(SessionCase):
         self.assertIn("Evidence: three full-tree reads", self.read(os.path.join(sess, "reports", "%s.json" % good))["body"])
         self.assertEqual(self.hub.gh_calls, [])
 
-    def test_bad_suggestions_keep_report_and_persist_clear_diagnostics(self):
-        for text in ("{bad json", json.dumps([PROPOSAL, {"kind": "invalid"}])):
+    def test_bad_suggestions_keep_report_and_valid_entries_and_policy_reports_the_rest(self):
+        raws = ("{bad json", json.dumps([PROPOSAL, {"kind": "invalid"}]))
+        issues = []
+        for text in raws:
             n, _ = self.producer(text)
-            snapshots = [doc for _, doc in reports.source_records(n)]
-            self.assertTrue(any(doc["diagnostics"] for doc in snapshots))
-            self.assertTrue(all("Prose of" in doc["report"]["body"] for doc in snapshots))
-        self.assertEqual(len(reports.pending()), 1)
+            issues.append(n)
+            self.assertEqual(self.w.origin_file("iterations/suggestions/%s.json" % n), text)
+            self.assertTrue(all("Prose of" in doc["report"]["body"] for _, doc in reports.source_records(n)))
+        pol = it.start_policymaker(1, "test")
+        state = self.read(os.path.join(self.stage(pol), "loop-state.json"))
+        self.assertEqual(len(state["suggestions"]), 1)
+        self.assertEqual(state["suggestions"][0]["source"]["issue"], issues[1])
+        self.assertEqual(len(state["suggestion_diagnostics"]), 2)
 
     def test_pending_trigger_consumed_once_but_new_suggestion_still_triggers(self):
         self.producer()                                           # its end started iteration 0, opened by the Policymaker
@@ -90,59 +91,15 @@ class ReportsTest(SessionCase):
         self.hub.close_issue(later)
         self.assertIsNone(it.policymaker_due(1))  # still pending; already delivered
 
-    def test_crashed_or_rejected_policymaker_does_not_resolve_suggestions(self):
-        self.producer()
-        for status, content in (("crashed", "okay"), ("done", "BAD")):
-            pol = it.start_policymaker(1, "test")
-            decision = [{"id": reports.pending()[0]["id"], "status": "rejected", "reason": "Not useful"}]
-            self.w.session(pol, status=status, files={"policy/context.md": content},
-                           session_files={"suggestion-decisions.json": json.dumps(decision)})
-            if status == "done":
-                self.w.push_main({"policy/context.md": "Owner's competing change"}, "owner update")
-            loop.apply_policy()
-            self.assertEqual(len(reports.pending()), 1)
+    def test_empty_outbox_does_not_trigger(self):
+        self.producer("[]")
+        self.assertNotIn("new session suggestions",
+                         [it.read_state(x["number"])["trigger"] for x in self.hub.role_issues("policymaker")])
 
-    def test_bad_or_unstaged_decisions_are_refused_and_worker_cannot_handle(self):
-        n, work = self.producer()
-        item = reports.pending()[0]
-        self.w.write(work, ".session/suggestion-decisions.json", json.dumps([
-            {"id": item["id"], "status": "handled", "reason": "worker claim"}]))
-        loop.finalize(n, work)
-        self.assertEqual(reports.decisions(), {})
-        pol = it.start_policymaker(1, "test")
-        self.w.session(pol, files={"policy/context.md": "Read few files"}, session_files={
-            "suggestion-decisions.json": json.dumps([{"id": "unknown", "status": "handled", "reason": "wrong"}])})
-        loop.apply_policy()
-        self.assertEqual(len(reports.pending()), 1)
-
-    def test_concurrent_resolution_reloads_without_losing_previous_decisions(self):
-        self.producer()
-        pol = it.start_policymaker(1, "test")
-        item = reports.pending()[0]
-        work = os.path.join(self.w.tmp, "decision-work")
-        self.w.write(work, ".session/suggestion-decisions.json", json.dumps([
-            {"id": item["id"], "status": "rejected", "reason": "Keep existing design"}]))
-        reports.freeze_decisions(pol, work, [item])
-        commit = c.commit_main
-        raced = []
-
-        def concurrent(files, message, **kwargs):
-            if not raced:
-                raced.append(True)
-                commit({reports.STATE: reports.encoded({"other": {"status": "handled", "reason": "Already done"}})}, "other decision")
-                raise c.ConcurrentChange("another epilogue won")
-            return commit(files, message, **kwargs)
-
-        with patch.object(c, "commit_main", side_effect=concurrent):
-            reports.apply_decisions(pol)
-        self.assertIn("other", reports.decisions())
-        self.assertEqual(reports.decisions()[item["id"]]["status"], "rejected")
-
-    def test_script_without_agent_report_keeps_suggestions_with_its_engine_report(self):
+    def test_script_without_agent_report_archives_its_outbox_with_its_engine_report(self):
         n = self.issue("rule")
         self.w.session(n, report=False, session_files={"suggestions.json": json.dumps([PROPOSAL])})
-        self.assertEqual(len(reports.pending()), 1)
-        source = reports.pending()[0]["source"]
-        frozen = next(doc for _, doc in reports.source_records(n) if doc["report"]["snapshot"] == source["snapshot"])
+        self.assertEqual(json.loads(self.w.origin_file("iterations/suggestions/%s.json" % n)), [PROPOSAL])
+        frozen = [doc for _, doc in reports.source_records(n)][-1]
         self.assertEqual(c.fields(frozen["report"]["body"])["status"], "done")
         self.assertIn("No changes to merge", frozen["report"]["body"])

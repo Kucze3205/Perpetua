@@ -13,3 +13,5 @@ The engine does not cap the number of passes. The Policymaker has more influence
 The iteration record states the number of policy passes and, per order, the pass that placed it. The audit trigger counts an audit the Policymaker ordered and read in this iteration as seen, so the next iteration does not call it for the same report.
 
 Supersedes the model in which the Policymaker's orders ran in the same iteration beside the shaper and its changes took effect at the next iteration boundary.
+
+Amended by the one-step policy phase (#228) and [ADR-0006](0006-machine-boundary-instead-of-session-sandbox.md): the engine no longer splits orders by layer or holds any. Every valid order starts when the Policymaker's session ends and `blocked_by` sets the order of work; only a session that writes `"wake": true` waits for its orders and runs again. "Policy-layer work" above reads as "orders of a session that wakes".

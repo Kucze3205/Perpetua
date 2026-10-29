@@ -2,7 +2,7 @@
 
 The engine-owned `.github/loop/managed_resources.py` defines the supported
 layered format. Configuration loading, role resolution, staging, admission,
-receipts, iteration revisions and rollback use this boundary.
+iteration revisions and rollback use this boundary.
 
 New templates declare `resources: {format: layered}`. Omission uses that same
 format; explicit legacy formats are rejected. Existing loops keep their own
@@ -58,13 +58,13 @@ in either layer, including its own skill. Protected engine paths and evaluator
 ownership/independent verification still take precedence.
 
 The engine stages each model role's complete local skill and references at
-`.session/role/`, including the Policymaker, for both network modes. Staging
+`.session/role/`, including the Policymaker. Staging
 uses the accepted checkout and the selected layer, with no fallback to the
 other layer and no writes to global skill installations. Script roles receive
 their own profile's command. Layer selection does not grant additional tools
 or network permissions: profiles retain independent permissions and existing
 accepted-limit checks. Filesystem isolation and output admission have their
-contract in [session sandbox](session-sandbox.md#filesystem-isolation-and-output-admission).
+contract in [session boundary](session-boundary.md#output-admission).
 
 Execution roles cannot admit changes to managed definitions even if their
 `write` patterns include those locations; they use suggestions instead.
@@ -73,10 +73,24 @@ the product change gate while preserving separate evaluator verification.
 The engine rejects an ambiguous candidate catalog before publication. Products
 continue through protected/write checks and the accepted-tree change gate.
 
+## Layer rules and activation validation
+
+The engine checks the structure of the catalog (valid YAML, role names, one profile per role, no `layer` field, no links,
+no Policymaker profile in a layer). Which layer a role belongs to, and whether definitions are complete enough to become
+active, is `policy/layer-rules.py`: the engine writes the catalog as facts, the script runs in the tokenless job and prints
+`{"errors": [...]}` (at most 20 strings of 300 characters). The shipped script requires `audit`, `evaluator` and the verifier
+in the policy layer, refuses a policy role as shaper and a skill directory in the wrong or both layers, and at activation
+requires the shaper to have an execution profile with a complete skill (or a command). A change to `execution/` or `policy/`
+merges only if the script, run from the active `policy/`, finds no error; a change to the script applies from the next
+change. Invalid output is not an error list: it fails the iteration and rolls `execution/` and `policy/` back.
+
+Likewise `policy/graph-rules.py`, when present, adds task-graph rules: facts `{tasks, ordered, taken, roles}`, answer
+`{"errors": [...]}`. It runs only for a graph the engine accepted, so policy can refuse more and never less.
+
 ## Layered activation and recovery
 
 A layered revision has a `layered-v1:` identity over both managed roots and the
-accepted evaluator paths. Receipts record this same before/after identity;
+accepted evaluator paths. Change records in the iteration record carry this same before/after identity;
 historical iteration records remain readable.
 
 A finished Policymaker pass queues its entire candidate for the pass boundary
@@ -85,7 +99,7 @@ evaluator verification and owner acceptance can release a held candidate back
 to that queue, but neither completion activates it. At the
 boundary the engine rechecks the pinned evaluator snapshot, permissions,
 accepted-tree change gate and complete shaper profile/skill before publishing
-the candidate and its receipt in one ref update. Pending, rejected or stale
+the candidate in one ref update. Pending, rejected or stale
 verification and failed publication
 leave the accepted set in force. Products in a mixed candidate stay with the
 same candidate and retain their gate requirements.
@@ -93,8 +107,10 @@ same candidate and retain their gate requirements.
 Rollback restores both roots and accepted evaluator paths from the last closed
 iteration's commit, or `setup-baseline` before the first closed iteration. It
 restores deleted definitions and removes newly added definitions, retaining
-products, reports, receipts and Git history. Quiet time, consecutive failed
-Policymaker sessions and owner-wait accounting retain their existing rules.
+products, reports and Git history. Quiet time, consecutive failed
+Policymaker sessions and owner-wait accounting retain their existing rules. A third trigger: an iteration closed
+without a record, or failed on invalid policy-supplied data (for example, no shaper and no valid Policymaker orders),
+rolls both roots back and opens a `notice` that the next Policymaker session sees.
 
 ## New-loop setup
 
@@ -102,7 +118,7 @@ The shipped template has an empty `execution/profiles.yml`, no execution skills 
 
 The setup map writes each execution role's complete skill in `execution/roles/<role>/`, inspired by the Skill reference library (Matt Pocock's skills) rather than copied from it. `setup_roles.py install` then registers the explicitly supplied profile for a skill already written in one layer; it copies nothing. The shipped policy roles are edited in place when the goal needs it. Policymaker instructions are local to policy, while its permissions stay owner-controlled.
 
-Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no `internet` together with writing code beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: the engine contract in system instructions; terms: `CONTEXT.md`.
+Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no tool beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: the engine contract in system instructions; terms: `CONTEXT.md`.
 
 Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline whose managed definitions and configuration match HEAD. `shaper: null` is valid; if selected, the shaper must be a complete execution role. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This is fresh-setup validation; it does not migrate formats or reconfigure an existing loop.
 

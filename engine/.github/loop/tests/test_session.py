@@ -94,6 +94,17 @@ class StageTest(SessionCase):
         hook = json.loads(read(os.path.join(trusted, "settings.json")))
         self.assertIn("remaining.py", hook["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
 
+    def test_machine_preparation_is_the_script_of_policy(self):
+        n = self.issue()
+        trusted = os.path.join(self.w.tmp, "trusted-none")
+        loop.stage(n, self.work(), trusted)
+        self.assertNotIn("apt-get", read(os.path.join(trusted, "prepare.sh")))
+        self.w.push_main({"policy/prepare.sh": "#!/usr/bin/env bash\napt-get install -y jq\n"}, "policy installs jq")
+        c.sync_main()
+        trusted = os.path.join(self.w.tmp, "trusted-policy")
+        loop.stage(n, self.work(), trusted)
+        self.assertIn("apt-get install -y jq", read(os.path.join(trusted, "prepare.sh")))
+
     def test_the_audit_gets_the_streams_of_the_last_iterations(self):
         self.hub.artifacts = [{"id": 1, "name": "stream-0001-3", "workflow_run": {"id": 101}},
                               {"id": 2, "name": "stream-0004-9", "workflow_run": {"id": 104}},

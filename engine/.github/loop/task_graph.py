@@ -25,17 +25,20 @@ def read(n):
     return (json.loads(text) or []) if text else []
 
 
+MAX_TASKS = 50          # the kernel's cap on the tasks of one iteration's graph: shaper output and Policymaker orders alike
 TASK_FIELDS = {"id", "title", "role", "body", "model", "effort", "blocked_by", "inputs", "exports", "start_branch", "limits", "consent"}
 
 
 def validate_tasks(doc, ordered=False, taken=()):
-    """Errors of a task graph (empty: valid). `ordered`: the Policymaker's orders, the only tasks of the roles in
+    """Errors of a task graph (empty: valid), the engine's own; `iteration.validate_tasks` adds those of `policy/graph-rules.py`. `ordered`: the Policymaker's orders, the only tasks of the roles in
     `policymaker_only_roles` and only of them, unless no shaper is set: then it orders any role. `taken`: ids the iteration already uses."""
-    profiles, parameters, config = c.profiles(), c.params(), c.cfg()
-    policymaker_roles = config["policymaker_only_roles"]
+    profiles, parameters = c.profiles(), c.params()
+    policymaker_roles = parameters["policymaker_only_roles"]
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     if not isinstance(tasks, list) or not tasks:
         return ["`tasks` must be a non-empty list"]
+    if len(tasks) + len(taken) > MAX_TASKS:
+        return ["the task graph would hold %s tasks; the cap is %s per iteration" % (len(tasks) + len(taken), MAX_TASKS)]
     # Validate shapes before membership checks or graph traversal: this is agent-authored JSON.
     # Only structurally valid tasks enter the graph; malformed tasks return diagnostics, not exceptions.
     errors, task_ids, graph = [], set(), {}

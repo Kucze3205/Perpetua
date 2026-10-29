@@ -70,11 +70,9 @@ def _check_local_tree(cwd, root):
 
 def role_profiles(cwd="."):
     """Validate the whole active catalog before selecting any role."""
-    import common as c
     layered(cwd)
     for layer in LAYERS:
         _check_local_tree(cwd, layer)
-    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper")
     out = {}
     for layer in LAYERS:
         profiles = _load_profiles(os.path.join(cwd, layer, "profiles.yml"))
@@ -91,20 +89,7 @@ def role_profiles(cwd="."):
                 raise ValueError("role `%s` must have a profile mapping" % role)
             if "layer" in profile:
                 raise ValueError("role `%s` layer is assigned by its profiles.yml location" % role)
-            required = ROOT if role in ("audit", "evaluator", c.cfg()["verifier_role"]) else None
-            if role == shaper:
-                if required == ROOT:
-                    raise ValueError("policy role `%s` cannot be the execution shaper" % role)
-                required = EXECUTION
-            if required and layer != required:
-                raise ValueError("role `%s` must belong to the %s layer" % (role, required))
             out[role] = dict(profile, layer=layer)
-    # A skill directory in both layers is ambiguous even with only one profile.
-    active = dict(out, policymaker={"layer": ROOT})
-    for role, profile in active.items():
-        other = ROOT if profile["layer"] == EXECUTION else EXECUTION
-        if os.path.exists(os.path.join(cwd, other, "roles", role)):
-            raise ValueError("role `%s` has a skill in the wrong or both layers" % role)
     return out
 
 
@@ -184,18 +169,14 @@ def evaluator_revision_string(rev="HEAD", cwd="."):
     return ",".join(hashes[path] for path in c.cfg()["evaluator_paths"])
 
 
-def validate_activation(cwd):
-    """A layered boundary must publish a shaper (when one is set) together with its complete definition."""
+def layer_facts(cwd, activation):
+    """What `policy/layer-rules.py` judges: every role of the catalog in `cwd` with its layer, profile shape and the layers
+    that hold a directory for its skill. `activation`: the definitions are about to become the active ones."""
     import common as c
-    profiles = role_profiles(cwd)
-    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper")
-    if shaper is None:
-        return
-    if shaper not in profiles or profiles[shaper]["layer"] != EXECUTION:
-        raise ValueError("shaper `%s` has no execution profile" % shaper)
-    profile = profiles[shaper]
-    if profile.get("agent", True):
-        if not os.path.isfile(os.path.join(cwd, EXECUTION, "roles", shaper, "SKILL.md")):
-            raise ValueError("shaper `%s` has no complete local skill" % shaper)
-    elif not profile.get("command"):
-        raise ValueError("script shaper `%s` has no command" % shaper)
+    roles = dict(role_profiles(cwd), policymaker={"layer": ROOT})
+    return {"activation": activation, "shaper": c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper"),
+            "policy_roles": ["audit", "evaluator", c.cfg()["verifier_role"]],
+            "roles": {role: {"layer": profile["layer"], "agent": profile.get("agent", True), "command": bool(profile.get("command")),
+                             "skill": os.path.isfile(os.path.join(cwd, profile["layer"], "roles", role, "SKILL.md")),
+                             "skill_layers": [layer for layer in LAYERS if os.path.exists(os.path.join(cwd, layer, "roles", role))]}
+                      for role, profile in roles.items()}}

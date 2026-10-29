@@ -6,4 +6,4 @@ SCALE = 50
 CONTEXT_TOKENS = 250_000
 MAX_TURNS, MINUTES = 30, 10
 PLANT = "Read `.session/issue.md` in full a second time"
-OUTPUTS = ("report.md", "tasks.json", "orders.json", "suggestions.json", "requests.json", "suggestion-decisions.json")
+OUTPUTS = ("report.md", "tasks.json", "orders.json", "suggestions.json", "requests.json")

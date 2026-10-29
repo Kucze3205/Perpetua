@@ -3,10 +3,13 @@
 The loop controls what runs after a decision; this module never imports its drivers.
 No agent code or secret values are read.
 """
+import base64
 import hashlib
 import json
 import os
 import re
+import shlex
+import shutil
 import tempfile
 
 import common as c
@@ -17,7 +20,9 @@ REQ = "owner-request"
 REQUEST_KINDS = ("consent", "merge-acceptance", "goal-gate", "goal-change", "result-confirmation", "question", "notice") + KINDS
 SESSION_KINDS = ("goal-gate", "goal-change", "question") + KINDS
 HANDLED = "request:handled"
-
+PATCH_MINUTES = 30         # the tokenless job's time limit for applying a patch and running its tests
+RESULT_BYTES = 4 * 1024 * 1024
+REASON_BYTES = 1500
 
 
 def digest(text):
@@ -47,9 +52,8 @@ def limits_block(text):
     block = yaml.safe_load(text)
     if not isinstance(block, dict) or not block or any(not isinstance(k, str) for k in block):
         raise ValueError("limits must be a nonempty mapping")
-    for key in ("tools", "internet_write"):
-        if key not in block or not isinstance(block[key], list) or any(not isinstance(x, str) for x in block[key]):
-            raise ValueError("limits.%s must be a list of strings" % key)
+    if "tools" not in block or not isinstance(block["tools"], list) or any(not isinstance(x, str) for x in block["tools"]):
+        raise ValueError("limits.tools must be a list of strings")
     # Bound the shape to plain configuration, including extensions such as owner ceilings.
     json.dumps(block, allow_nan=False)
     return block
@@ -83,7 +87,7 @@ def replace_limits(text, proposed):
     return text[:key.start_mark.index] + replacement + text[end:]
 
 
-def prepare(kind, frozen, readiness=None):
+def prepare(kind, frozen, readiness=None, test=None):
     """Called by the trusted epilogue, using its accepted checkout as the proposal's base."""
     if kind not in KINDS:
         return None
@@ -93,6 +97,8 @@ def prepare(kind, frozen, readiness=None):
         frozen = frozen or "Owner action: provide the capability described above."
     if not isinstance(frozen, str) or not frozen.strip():
         raise ValueError("a concrete frozen proposal is required")
+    if test is not None and (kind != "engine-change" or not isinstance(test, str) or not test.strip()):
+        raise ValueError("only an engine-change takes a test command, and it must be a nonempty string")
     base = config_text()
     if kind == "limits-change":
         import yaml
@@ -100,8 +106,9 @@ def prepare(kind, frozen, readiness=None):
             replace_limits(base, frozen)       # validate before asking the owner
         except yaml.YAMLError as e:
             raise ValueError("invalid limits YAML") from e
-    return {"kind": kind, "frozen": frozen, "proposal_sha": digest(frozen), "base_commit": c.head(),
-            "base_engine_sha": digest(base), "readiness": readiness, "status": "pending"}
+    return {"kind": kind, "frozen": frozen, "test": test, "base_commit": c.head(), "base_engine_sha": digest(base),
+            "proposal_sha": digest(frozen if test is None else json.dumps([frozen, test])),
+            "readiness": readiness, "status": "pending"}
 
 
 def instructions(proposal):
@@ -112,10 +119,11 @@ def instructions(proposal):
         action = ("Completed automatically replaces only `limits` in engine.yml with the frozen block, "
                   "if both the proposal and configuration still match. Not planned changes nothing.")
     elif proposal["kind"] == "engine-change":
-        action = ("Completed makes the engine apply the frozen diff to the current `main` and open a PR from "
-                  "`engine-change/%s`; merging the PR applies it, closing the PR unmerged declines it. A diff that touches "
-                  "`.github/workflows/**` or does not apply cleanly gets no PR: apply it manually, then post "
-                  "`<!-- engine-applied: %s -->` and close as completed. Not planned changes nothing." % (sha[:12], sha))
+        action = ("Completed makes the engine apply the frozen diff to the current `main`%s, in a job that holds no token, "
+                  "and open a PR from `engine-change/%s`; merging the PR applies it, closing the PR unmerged declines it. "
+                  "A diff that touches `.github/workflows/**`, does not apply cleanly or fails its test gets no PR and "
+                  "the request says why: apply it manually, then post `<!-- engine-applied: %s -->` and close as "
+                  "completed. Not planned changes nothing." % (" and run the test command" if proposal.get("test") else "", sha[:12], sha))
     else:
         action = ("The owner must provide the tool, access or secret manually, then check: %s\n\n"
                   "Never paste a secret value here. Closing this issue does not create or verify a secret. "
@@ -142,34 +150,122 @@ def section(body, title):
     return m.group(1).strip() if m else ""
 
 
+# Runs in the tokenless job on the staged tree: apply the diff, record what it changed as data, run the test command.
+# Exit 3: the diff does not apply; 4: the test command failed; 5: the diff changes something other than regular files.
+COLLECT = r'''import base64, json, os, subprocess, sys
+raw = subprocess.run(["git", "diff", "--cached", "--raw", "--no-renames", "-z"], capture_output=True, check=True).stdout.split(b"\0")
+files, deleted = {}, []
+for meta, name in zip(raw[0::2], raw[1::2]):
+    mode_new, status = meta.split()[1], meta.split()[4][:1]
+    path = name.decode("utf-8", "surrogateescape")
+    if status == "D":
+        deleted.append(path)
+    elif mode_new in (b"100644", b"100755"):
+        with open(path, "rb") as fh:
+            files[path] = {"x": mode_new == b"100755", "data": base64.b64encode(fh.read()).decode()}
+    else:
+        print("%s is not a regular file" % path, file=sys.stderr)
+        sys.exit(5)
+json.dump({"files": files, "deleted": deleted}, open(sys.argv[1], "w"))
+'''
+
+
+def stage_patch(tree, diff, test):
+    """The data the tokenless job receives: the accepted tree (`tree/`), the diff, and `run.sh` applying and testing it."""
+    bundle = tempfile.mkdtemp(prefix="bundle-")
+    shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    for name, text in (("engine-change.diff", diff), ("collect.py", COLLECT), ("run.sh", (
+            'B="$(cd "$(dirname "$0")" && pwd)"\ncd "$B/tree"\ngit init -q\ngit add -A\n'
+            'git -c user.name=engine -c user.email=engine@localhost commit -q -m base\n'
+            'git apply --index "$B/engine-change.diff" || exit 3\n'
+            'python3 "$B/collect.py" "$B/result.json" || exit 5\n%scat "$B/result.json"\n') % (
+                "bash -c %s >&2 || exit 4\n" % shlex.quote(test) if test else ""))):
+        with open(os.path.join(bundle, name), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+    return bundle
+
+
+def unsafe(path):
+    parts = path.split("/")
+    return (not path or path.startswith("/") or "\0" in path or any(x in ("", ".", "..") for x in parts) or
+            parts[0] == ".git" or path.startswith(".github/workflows/"))
+
+
+def read_result(out):
+    """(result, None) from the tokenless job's output directory, or (None, why). The job's answer is data: every
+    path and size is checked before anything is written."""
+    def read(name, limit):
+        try:
+            with open(os.path.join(out, name), encoding="utf-8", errors="replace") as fh:
+                return fh.read(limit)
+        except (OSError, TypeError):
+            return None
+    code = (read("exit-code", 20) or "").strip()
+    if not code:
+        return None, "the job that applies the diff returned no result"
+    if code != "0":
+        stage = {"3": "the diff does not apply cleanly to the current `main`", "4": "the test command failed",
+                 "5": "the diff changes something other than regular files"}.get(code, "the job failed (exit %s)" % code)
+        return None, "%s: %s" % (stage, (read("stderr.txt", 1 << 20) or "")[-REASON_BYTES:].strip())
+    text = read("stdout.txt", RESULT_BYTES + 1)
+    try:
+        if text is None or len(text) > RESULT_BYTES:
+            raise ValueError("missing or oversized")
+        result = json.loads(text)
+        files, deleted = result["files"], result["deleted"]
+        assert isinstance(files, dict) and isinstance(deleted, list) and (files or deleted)
+        for path, f in files.items():
+            assert isinstance(f, dict) and isinstance(f["x"], bool)
+            f["data"] = base64.b64decode(f["data"], validate=True)
+        paths = list(files) + deleted
+        assert all(isinstance(x, str) for x in paths)
+    except (ValueError, KeyError, TypeError, AssertionError):
+        return None, "the job returned a malformed result"
+    if any(unsafe(x) for x in paths):
+        return None, "the diff touches `.github/workflows/**` or a path outside the repository, which the loop's token cannot write"
+    return result, None
+
+
 def prepare_pr(n, state, body, branch):
-    """Apply the frozen diff to the current main on `branch` and push it. Returns (PR title/body, None) or (None, reason)."""
+    """Apply the frozen diff in the tokenless job, test it there, and push the result to `branch` as a commit on the tree
+    it was applied to. Returns (PR title/body, None) or (None, reason)."""
     title = "Engine change: %s" % (section(body, "What").splitlines() or ["request #%s" % n])[0][:60]
     diff = state["frozen"].rstrip("\n") + "\n"
     if any(".github/workflows/" in line for line in diff.splitlines()
            if line.startswith(("diff --git ", "--- ", "+++ ", "rename ", "copy "))):
         return None, "the diff touches `.github/workflows/**`, which the loop's token cannot write"
     c.sync_main()
+    base = c.head()
+    bundle = stage_patch(".", diff, state.get("test"))
     try:
-        c.git(".", "checkout", "-q", "-B", branch)
-        with tempfile.TemporaryDirectory() as tmp:
-            patch = os.path.join(tmp, "engine-change.diff")
-            with open(patch, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(diff)
-            applied = c.git(".", "apply", "--index", patch, check=False)
-        if applied.returncode:
-            return None, "the diff does not apply cleanly to the current `main`: %s" % applied.stderr.strip()
-        files = [f for f in c.git(".", "diff", "--cached", "--name-only", "-z").stdout.split("\0") if f]
-        if any(f.startswith(".github/workflows/") for f in files):
-            return None, "the diff touches `.github/workflows/**`, which the loop's token cannot write"
+        result, why = read_result(c.run_tokenless(bundle, PATCH_MINUTES))
+    finally:
+        shutil.rmtree(bundle, ignore_errors=True)
+    if why:
+        return None, why
+    try:
+        c.git(".", "checkout", "-q", "-B", branch, base)
+        for path in result["deleted"]:
+            c.git(".", "rm", "-q", "-f", "--ignore-unmatch", "--", path)
+        for path, f in result["files"].items():
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            if os.path.islink(path):
+                os.remove(path)
+            with open(path, "wb") as fh:
+                fh.write(f["data"])
+            os.chmod(path, 0o755 if f["x"] else 0o644)
+        c.git(".", "add", "-A", "--", *(list(result["files"]) + result["deleted"]))
+        files = sorted(result["files"]) + sorted(result["deleted"])
         c.git(".", "commit", "-q", "-m", title)
         c.git(".", "push", "-f", "origin", "HEAD:refs/heads/%s" % branch, remote=True)
     finally:
         c.sync_main()
-    text = ("%s\n\n**Why:** %s\n\n**Unblocks:** %s\n\nFiles:\n%s\n\nOwner request: #%s\n\n---\n"
+    text = ("%s\n\n**Why:** %s\n\n**Unblocks:** %s\n\nFiles:\n%s\n\n%sOwner request: #%s\n\n---\n"
             "Proposal SHA-256: `%s`; base commit: `%s`; engine.yml SHA-256: `%s`.\n" % (
                 section(body, "What"), section(body, "Why"), section(body, "What it unblocks"),
-                "\n".join("- `%s`" % f for f in files), n, state["proposal_sha"], state["base_commit"], state["base_engine_sha"]))
+                "\n".join("- `%s`" % f for f in files),
+                "Tested in the tokenless job with: `%s`\n\n" % state["test"] if state.get("test") else "",
+                n, state["proposal_sha"], state["base_commit"], state["base_engine_sha"]))
     return (title, text), None
 
 
@@ -253,11 +349,11 @@ def fence_for(text):
     return "`" * max(3, longest + 1)
 
 
-def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None):
+def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks=(), iteration=None, readiness=None, test=None):
     """The only way the loop asks the owner for a decision, a consent or a confirmation. Only engine code calls it.
     The answer is the closing of the issue: completed = yes, not planned = no."""
     assert kind in REQUEST_KINDS, kind
-    proposal = prepare(kind, frozen, readiness) if kind in KINDS else None
+    proposal = prepare(kind, frozen, readiness, test) if kind in KINDS else None
     if proposal:
         frozen = proposal["frozen"]
     owner = c.owner_login()
@@ -266,6 +362,9 @@ def open_request(kind, title, what, why, unblocks, ref=None, frozen=None, blocks
     if frozen is not None:
         f = fence_for(frozen)
         body += "\n## Proposed text\n\n%s\n%s\n%s\n\n<!-- frozen-sha: %s -->\n" % (f, frozen, f, digest(frozen))
+    if test:
+        f = fence_for(test)
+        body += "\n## Test command\n\n%s\n%s\n%s\n" % (f, test, f)
     body += "\n<!-- request-kind: %s -->\n" % kind
     if ref:
         body += "<!-- request-ref: %s -->\n" % ref
@@ -326,7 +425,7 @@ def process_proposals(text, iteration, source=None):
             continue
         try:
             made.append(open_request(p["kind"], p["title"], p.get("what", ""), p.get("why", ""), p.get("unblocks", ""),
-                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness")))
+                                     frozen=p.get("frozen"), iteration=iteration, ref=ref, readiness=p.get("readiness"), test=p.get("test")))
         except (ValueError, TypeError) as e:
             c.say("Invalid owner request %s: %s" % (p["title"], e))
     return made
@@ -341,11 +440,6 @@ def limits_exceeded(profile):
     for t in profile.get("tools", []) or []:
         if not any(fnmatch.fnmatchcase(t, a) for a in allowed):
             why.append("tool `%s`" % t)
-    if profile.get("internet"):
-        ok = lim.get("internet_write") or []
-        for g in profile.get("write", []) or []:
-            if not any(g.startswith(p) for p in ok):
-                why.append("internet together with writing `%s`" % g)
     return why
 
 

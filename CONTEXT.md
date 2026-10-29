@@ -22,7 +22,10 @@ _Avoid_: onboarding, wizard
 **Engine**:
 The goal-independent machinery of a loop: workflows, scripts, configuration
 and protected session contracts. Copied into the loop's repository by setup, where it
-belongs to that loop; a setup map may change it. Changed only by the owner.
+belongs to that loop; a setup map may change it. Changed only by the owner; the
+Policymaker may propose a change as a ready patch. Kept to what must stay out of the
+Policymaker's reach: credentials, the goal and its gates, merging, rollback and the
+owner's limits. Everything else about how an iteration runs is policy.
 _Avoid_: framework, runtime
 
 **Role**:
@@ -51,10 +54,9 @@ One unit of the loop's work: a plan executed as one or more parallel jobs,
 ending in a verdict on what it produced. Exploring a wrong solution counts.
 It has two phases. In the policy phase, which a due trigger opens (always in
 the first iteration), one Policymaker session runs in passes: it changes policy
-and orders policy-layer work, and is resumed with a clean context when that work
-has ended, until a pass orders none. The execution phase then runs the shaper's
-graph and the implementation-layer orders on the organization the policy phase
-produced. With no trigger due there is no policy phase and the iteration runs on
+and orders work, and, when it asks to wake, is resumed with a clean context when
+that work has ended, until a pass does not wake. The execution phase then runs the
+shaper's graph on the organization the policy phase produced. With no trigger due there is no policy phase and the iteration runs on
 the last organization.
 _Avoid_: cycle
 
@@ -95,7 +97,8 @@ The agent in the policy layer that manages the loop's architecture by creating
 and revising policy, including skills in both layers and its own skill. It does
 not perform the implementation layer's work or change protected engine contracts.
 It opens an iteration when a trigger is due (always in the first), and decides how
-the implementation layer is organized, including the orders that become tasks.
+the implementation layer is organized, including the orders that become tasks and
+the order in which they run.
 It reads the results of its policy-layer orders and decides what next; the engine
 does not limit how many passes that takes.
 _Avoid_: policy, politician, strategy, scheduler
@@ -111,7 +114,7 @@ in the policy phase.
 The part of the loop that applies policy to plan, execute and evaluate work
 toward the goal. Its skills belong to this layer even when the Policymaker
 creates or revises them. It includes the shaper (when one is set) and roles performing
-goal-directed tasks, and runs in the execution phase. Its sessions cannot read policy-layer internals; they
+goal-directed tasks, and runs in the execution phase. Its sessions are asked not to read policy-layer internals; they
 receive their work instructions and may submit suggestions for policy changes.
 
 **Orchestrator**:
@@ -144,7 +147,7 @@ Governance ownership is independent of the layer that executes a definition.
 **Implementation resources**:
 The local definitions used by the selected shaper and goal-directed work roles.
 Implementation sessions receive their own instructions and public contracts;
-they cannot read policy internals and submit suggestions to the Policymaker.
+they are asked not to read policy internals and submit suggestions to the Policymaker.
 
 **Policy resources**:
 The local definitions used by the Policymaker, audit, evaluator

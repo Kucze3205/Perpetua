@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 from datetime import timedelta
 
+import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 import task_graph as graph
 from flow_fixtures import Flow
@@ -172,7 +173,7 @@ class ShaperFailureTest(Flow):
         self.assertEqual(it.iteration_number(self.open_iteration()), 1)         # the next one started
 
     def test_partial_ends_the_iteration_and_the_graph_is_not_read(self):
-        # Decision (b) of docs/perpetua/session-sandbox.md: `partial` is final for the shaper, no retry,
+        # Decision (b) of docs/perpetua/session-boundary.md: `partial` is final for the shaper, no retry,
         # no graph loading. The cause (a prompt demanding a shell) is removed at the source instead.
         it.start_iteration()
         s = self.session_issue("orchestrator")
@@ -193,6 +194,68 @@ class ShaperFailureTest(Flow):
         self.assertEqual([r["status"] for r in it.records()], ["failed"] * 3)
         self.assertIsNone(self.open_iteration())
         self.assertEqual(len(self.hub.by_label("outage")), 1)
+
+
+class TaskCapTest(Flow):
+    def test_a_graph_over_the_cap_is_refused_and_creates_no_issues(self):
+        it.start_iteration()
+        before = len(self.hub.list_issues("all"))
+        s = self.session_issue("orchestrator")
+        self.w.session(s, session_files={"tasks.json": tasks_json(*[task("t%s" % k) for k in range(graph.MAX_TASKS + 1)])})
+        self.assertIn("the cap is %s" % graph.MAX_TASKS, self.hub.prose(s))
+        self.assertIsNone(self.task_issue("t0"))
+        self.assertEqual(self.record(0)["status"], "failed")
+        self.assertEqual([x for x in self.hub.list_issues("all") if x["number"] > before + 2 and "role:worker" in c.label_names(x)], [])
+
+    def test_orders_over_the_cap_are_refused_too(self):
+        errors = it.validate_tasks({"tasks": [task("t%s" % k) for k in range(graph.MAX_TASKS + 1)]}, ordered=True)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("cap", errors[0])
+
+
+class GraphRulesTest(Flow):
+    """`policy/graph-rules.py` adds its refusals to the engine's: policy can only refuse more."""
+    SCRIPT = "policy/graph-rules.py"
+    NO_FORBIDDEN = ("import json, sys\nfacts = json.load(open(sys.argv[1]))\n"
+                    "print(json.dumps({'errors': ['task %s is forbidden' % t['id'] for t in facts['tasks'] if 'forbidden' in t['title']]}))\n")
+
+    def set_script(self, body):
+        self.w.push_main({self.SCRIPT: body}, "the Policymaker adds a graph rule")
+        c.sync_main()
+
+    def test_a_policy_rule_refuses_a_graph_the_engine_accepts(self):
+        self.set_script(self.NO_FORBIDDEN)
+        it.start_iteration()
+        s = self.session_issue("orchestrator")
+        self.w.session(s, session_files={"tasks.json": tasks_json(task("a", title="a forbidden task"))})
+        self.assertIn("policy/graph-rules.py: task a is forbidden", self.hub.prose(s))
+        self.assertIsNone(self.task_issue("a"))
+        self.assertEqual(self.record(0)["status"], "failed")
+
+    def test_a_graph_the_rule_does_not_mind_runs(self):
+        self.set_script(self.NO_FORBIDDEN)
+        it.start_iteration()
+        self.play_shaper(task("a"))
+        self.assertIsNotNone(self.task_issue("a"))
+
+    def test_no_policy_rule_accepts_a_graph_the_engine_refuses(self):
+        self.set_script("print('{\"errors\": []}')\n")
+        it.start_iteration()
+        s = self.session_issue("orchestrator")
+        self.w.session(s, session_files={"tasks.json": tasks_json(*[task("t%s" % k) for k in range(graph.MAX_TASKS + 1)])})
+        self.assertIn("the cap is %s" % graph.MAX_TASKS, self.hub.prose(s))
+        self.assertIsNone(self.task_issue("t0"))
+
+    def test_an_answer_the_engine_refuses_fails_the_iteration_and_rolls_policy_back(self):
+        fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")
+        self.set_script("print('{\"errors\": \"no\"}')\n")
+        it.start_iteration()
+        self.w.session(self.session_issue("orchestrator"), session_files={"tasks.json": tasks_json(task("a"))})
+        self.assertEqual(self.record(0)["status"], "failed")
+        c.sync_main()
+        self.assertFalse(os.path.exists(self.SCRIPT))
+        self.assertTrue(any(x["title"] == "policy/ rolled back" for x in self.hub.issues.values()))
+
 
 if __name__ == "__main__":
     unittest.main()

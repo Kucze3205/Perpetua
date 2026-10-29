@@ -13,8 +13,6 @@ from unittest.mock import patch
 import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 import managed_resources as resources
-import policy_changes
-import session_reports as reports
 import setup_roles
 from gate_fixtures import GATE_SH
 from proposal_fixtures import PROPOSAL
@@ -79,26 +77,27 @@ class TemplateFlowTest(unittest.TestCase):
         self.assertEqual(self.w.origin_file('src/product.txt'), 'accepted work')
         record = json.loads(self.w.origin_file(it.record_path(0)))
         self.assertEqual(record['status'], 'closed')
-        pending = reports.pending()
-        self.assertEqual(len(pending), 1)
         # Keep the controller at an explicit boundary while a new set is prepared.
         with patch.object(loop, 'reconcile'):
             policymaker = it.start_policymaker(1, 'new session suggestion')
             staged = self.stage(policymaker)
             state = json.loads((staged / '.session/loop-state.json').read_text())
-            self.assertEqual(state['suggestions'][0]['id'], pending[0]['id'])
+            pending = state['suggestions']
+            self.assertEqual(len(pending), 1)
             self.w.session(policymaker,
                            files={'execution/roles/worker/reference.md': 'public work guidance',
-                                  'policy/roles/policymaker/reference.md': 'private governance'},
-                           session_files={'suggestion-decisions.json': json.dumps([
-                               {'id': pending[0]['id'], 'status': 'handled', 'reason': 'adapted both layers'}])})
+                                  'policy/roles/policymaker/reference.md': 'private governance',
+                                  'policy/suggestion-decisions.json': json.dumps({
+                                      pending[0]['id']: {'status': 'handled', 'reason': 'adapted both layers'}})})
             self.assertIsNone(self.w.origin_file('execution/roles/worker/reference.md'))
             loop.apply_policy()
         c.sync_main()
-        receipt = json.loads(self.w.origin_file(policy_changes.path(policymaker)))
+        receipt = it.applied('changes', it.change_id(policymaker))
         self.assertEqual(receipt['policy_rev_before'], self.initial)
         self.assertEqual(receipt['policy_rev_after'], resources.revision())
-        self.assertEqual(reports.pending(), [])
+        later = it.start_policymaker(2, 'after the decision')
+        state = json.loads((self.stage(later) / '.session/loop-state.json').read_text())
+        self.assertEqual(state['suggestions'], [])
         self.assertEqual(self.w.origin_file('policy/roles/policymaker/reference.md'), 'private governance')
         self.assertTrue(it.revert_policy('controlled integration rollback'))
         self.assertEqual(resources.revision(), self.initial)
@@ -106,4 +105,4 @@ class TemplateFlowTest(unittest.TestCase):
         self.assertIsNone(self.w.origin_file('policy/roles/policymaker/reference.md'))
         self.assertEqual(self.w.origin_file('src/product.txt'), 'accepted work')
         self.assertIsNotNone(self.w.origin_file(it.record_path(0)))
-        self.assertIsNotNone(self.w.origin_file(policy_changes.path(policymaker)))
+        self.assertIsNotNone(it.applied('changes', it.change_id(policymaker)))

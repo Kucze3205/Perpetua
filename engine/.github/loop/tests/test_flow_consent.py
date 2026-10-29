@@ -118,12 +118,10 @@ class ConsentSecretsTest(Flow):
 
     def staged(self, tid):
         work = os.path.join(self.w.tmp, "stagework-" + tid)
-        fakes.sh(self.w.tmp, "git", "clone", "-q", self.w.origin, work)
+        fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", self.w.origin, work)
         trusted = os.path.join(self.w.tmp, "trusted-" + tid)
         os.environ["RUNNER_TEMP"] = os.path.join(self.w.tmp, "run-" + tid)
-        # the real stage; only the native-ELF executor preparation is left out (it needs Linux)
-        with mock.patch.object(loop.executor_boundary, "prepare"):
-            loop.stage(self.task_issue(tid), work, trusted)
+        loop.stage(self.task_issue(tid), work, trusted)
         return work, trusted
 
     def test_stage_writes_the_approved_names_for_agent_sh(self):

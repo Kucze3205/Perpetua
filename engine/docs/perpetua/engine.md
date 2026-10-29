@@ -9,12 +9,12 @@ Details have one home:
 
 - [Managed definitions](managed-resources.md): role layout, ownership, activation,
   rollback and fresh-setup validation.
-- [Session instructions and isolation](session-sandbox.md): staging, credentials,
+- [Session instructions and the machine boundary](session-boundary.md): staging, credentials,
   filesystem and network boundaries, output admission and sessions without a shell.
 - [Session context](session-context.md): startup reads and working memory.
 - [Session data exports](session-exports.md): historical inputs and recipient views.
-- [Reports and records](session-reports.md): session reports, iteration records and suggestions.
-- [Change provenance](policy-changes.md): immutable receipts and evaluator verification.
+- [Reports and records](session-reports.md): session reports, the suggestion archive and iteration records.
+- [Change provenance](policy-changes.md): accepted changes and evaluator verification in the iteration record.
 - [Validation](validation.md): test commands, host requirements and limits of the evidence.
 
 ## Setup and updates
@@ -37,33 +37,56 @@ merges the plugin engine with the loop's local changes using the untouched
 `perpetua/engine` branch as the merge base. It is separate from fresh setup;
 review/reconfiguration by repeating setup is not implemented.
 
+## Parameters of policy
+
+`policy/params.yml` holds the values the Policymaker tunes, each below a kernel hard cap (a higher value is clamped):
+`limits.fix_rounds` (cap 5), `limits.successor_generations` (5), `limits.merge_conflict_retries` (5) and
+`limits.backoff_hours` (up to 6 steps of 72 h). It also holds the defaults of `policymaker_only_roles`,
+`audit_exports_window` (cap 20), `stream_retention_iterations` and `startup_token_warning`.
+
+`cadence` in `policy/params.yml` can only be stricter than the owner's in `engine.yml`: for each bound the engine takes the
+stricter value (the longer interval, the smaller daily count), so a looser policy value has no effect.
+
+Machine preparation is `policy/prepare.sh`: the engine stages the accepted copy and the tokenless session job runs it
+before the role (none: nothing is prepared).
+
 ## One iteration
+
+When a session is staged, `policy/session-state.py` builds its `loop-state.json` and history from the engine's facts
+(see `session-context.md`). `policy/session-startup.py` decides its startup reads, bootstrap prompt and budget
+warning; the estimate is local, so no step of the engine needs the Anthropic API key.
 
 Iterations run sequentially. Each is an issue labelled `loop:map` and
 `loop:iteration N`; its sessions carry `loop:iteration N` and `role:<name>`.
 
 1. **Start.** The watchdog or previous close starts an iteration if cadence allows.
-   Policy triggers are checked at the start, always firing for the first iteration.
-2. **Policy phase.** When a trigger is due, the Policymaker session opens the iteration and writes proposed
-   definitions and orders. `apply_policy` admits the completed candidate when the pass ends
-   (or, if the pass says `"merge": "later"`, at the end of the phase); completion alone does not activate it.
-   Policy-layer orders (`policymaker_only_roles`) start at once and the issue waits (`awaiting:orders`).
-   When all have ended in any status, the same issue runs again on the same branch with a fresh context,
-   as often as the Policymaker orders policy-layer work; the engine sets no limit and only opens a
-   `notice` owner request at `policy_passes_notice` passes. A pass without such orders ends the phase.
+   The trigger rule is `policy/policymaker-trigger.py`: the engine writes facts, the script runs in the tokenless job and
+   prints `{"reason": "..."}` or `{"reason": null}` (at most 4 KB). Invalid output fails the iteration and rolls `execution/` and
+   `policy/` back. Whatever the script returns, the engine keeps one open Policymaker at a time and calls one at every iteration
+   until a session ended `done`.
+2. **Policy phase.** When due, the Policymaker session opens the iteration and writes proposed
+   definitions and orders. `apply_policy` admits the completed candidate when the session ends
+   (or, if it says `"merge": "later"` and waits for its orders, at the end of the phase); completion alone does not activate it.
+   The engine starts all valid orders at once; `blocked_by` sets their order. With `"wake": true` the issue waits
+   (`awaiting:orders`) and, when all have ended in any status, runs again on the same branch with a fresh context,
+   as often as the Policymaker wakes; the engine sets no limit and only opens a
+   `notice` owner request at `policy_passes_notice` passes. A session without `wake` ends the phase.
    A failure leaves the accepted organization in force; two consecutive failed sessions (many passes count
    once) roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
    With no trigger due there is no policy phase.
 3. **Shape.** The execution phase. The optional execution shaper reads the staged state and writes
    `.session/tasks.json`. It may be a model orchestrator or a script. The engine
-   validates and creates graph issues, blocking edges and consent requests.
-   Implementation-layer Policymaker orders held from the policy phase become tasks alongside it. With `shaper: null`,
-   orders are the only tasks; no valid orders means a failed iteration.
+   validates and creates graph issues, blocking edges and consent requests. A graph the engine accepts also goes to
+   `policy/graph-rules.py`, if present, which may add refusals (see [layer rules](managed-resources.md#layer-rules-and-activation-validation)).
+   Accepted Policymaker orders become tasks alongside it. With `shaper: null`,
+   orders are the only tasks; no valid orders means a failed iteration and a rollback of both managed roots.
+   A graph holds at most 50 tasks (shaper output and orders together); a larger one is refused with that reason and
+   creates no issues.
    [Task graph](../../.github/loop/task-graph.md) defines the interface.
-4. **Execute.** Free tasks start parallel `session.yml` jobs. Each prepares and stages
-   inputs, executes its role and hands outputs to the trusted epilogue. Closing a
+4. **Execute.** Free tasks start parallel `session.yml` jobs. Each stages inputs in a token job, executes its role in a job without
+   GitHub permissions and hands outputs, as data, to the epilogue job. Closing a
    task releases its consumers; a producer that did not deliver blocks them.
-   [Session isolation](session-sandbox.md) defines how outputs are admitted.
+   [Session isolation](session-boundary.md) defines how outputs are admitted.
 5. **Close.** Once no session remains open, the engine writes the immutable iteration
    record, closes the issue, prunes streams, checks progress and the goal gate,
    then starts the next iteration.
@@ -72,7 +95,7 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 
 Work enters the default branch after a verdict "not worse than what is accepted". After a task ends `done` the
 epilogue, in a throwaway worktree: checks the paths (protected, role `write`, file size), rebases on the default branch,
-runs `## Verification` and `check`, then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
+runs `## Verification` and `check` (each in the tokenless job, on a copy of the candidate tree), then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
 work and skip the check and the gate. A rejected push is retried from the new tip, up to three times.
 A failed `## Verification` or `check` is an error the agent can fix: the epilogue runs the same issue again, its
 report carrying the error, up to two times (`fixes`). A gate verdict is not retried: `rejected` and `inconclusive` go to the Policymaker.
@@ -81,11 +104,13 @@ report carrying the error, up to two times (`fixes`). A gate verdict is not retr
 
 - `owner`: the engine opens a `merge-acceptance` request and the task waits (`awaiting:owner`). Completed merges, not
   planned discards (the branch is kept and tagged `iter/NNNN/<issue>`). This is the default until the setup decides.
-- `script`: `gate.command` runs from the **accepted tree** (the default branch checkout), never from the candidate, with
-  `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`, `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no
-  secrets except the names in `gate.env_passthrough`. It prints a JSON object as its last line:
-  `{"verdict": "accepted|rejected|inconclusive", "improved": true, "detail": "..."}`. No verdict is `inconclusive`, never a
-  yes. The engine stores no accepted result: the evaluator compares the candidate with `BASELINE_DIR` itself (and may cache
+- `script`: `gate.command` runs in the **tokenless job** (`tokenless.yml`: `permissions: {}`, no GitHub secret, one
+  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md))
+  from the **accepted tree**, never from the candidate, with `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`,
+  `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no secrets (`gate.env_passthrough` does not reach it).
+  The epilogue runs no gate command itself; it reads the verdict back. It prints a JSON object as its last line:
+  `{"verdict": "accepted|rejected|inconclusive", "improved": true, "detail": "..."}`. A missing, failed or malformed verdict artifact is
+  `inconclusive`, never a yes. The engine stores no accepted result: the evaluator compares the candidate with `BASELINE_DIR` itself (and may cache
   its baseline measurement by `BASELINE_SHA`). A judge that calls a model is just a gate command.
 
 `improved` (default: `verdict == accepted`) feeds `no_progress`: the number of trailing iterations without an improving
@@ -93,13 +118,13 @@ accepted change.
 
 Evaluator changes additionally require an independent passing verifier pinned to
 that evaluator snapshot. See [activation](managed-resources.md#layered-activation-and-recovery)
-and [verification receipts](policy-changes.md).
+and [verification records](policy-changes.md).
 
 ## The goal gate and the end
 
 `goal/goal.md` (the accepted goal text) and `goal/gate.yml` (`command`, `owner_confirms`) exist only when the owner has
 accepted them, in the setup or later through an owner request. After every closed iteration, if a gate command exists
-and prints `{"reached": true, ...}`: with `owner_confirms` the engine asks the owner to confirm (a `result-confirmation`
+and prints `{"reached": true, ...}` (the command runs in the tokenless job; a job that returns nothing is "not reached"): with `owner_confirms` the engine asks the owner to confirm (a `result-confirmation`
 request; completed writes `GOAL_REACHED`, not planned lets the loop continue and is not asked again for the same state);
 without it the engine writes `GOAL_REACHED` itself. **Without an accepted gate the loop never ends by itself**; only
 switching `AUTOPILOT` off stops it.
@@ -120,21 +145,22 @@ protocol defines their fields and the kinds each role may propose.
 `capability` asks the owner to supply access, a tool or a named secret and confirm readiness; closing it alone does
 not create or verify a secret. `limits-change` automatically replaces only the frozen `limits` block after the owner
 accepts it, provided the proposal and its base configuration still match. `engine-change` records a concrete proposal
-and base; when the owner closes it as completed, trusted engine code applies the frozen diff to the current `main` and opens
-a PR from `engine-change/<proposal_sha12>` (needs "Allow GitHub Actions to create pull requests"). Merging the PR approves,
-closing it unmerged declines (the watchdog notices). A diff touching `.github/workflows/**`, or one that does not apply
-cleanly, gets no PR: the owner applies it manually and posts `engine-applied`. These requests
+and base; when the owner closes it as completed, the tokenless job applies the frozen diff to the current `main` and runs the
+request's optional test command there; the engine then commits the files it returns (validated as data) and opens
+a PR from `engine-change/<proposal_sha12>` (needs "Allow GitHub Actions to create pull requests"). The patch is never
+applied or tested on the machine that holds the token. Merging the PR approves, closing it unmerged declines (the watchdog
+notices). A diff touching `.github/workflows/**`, one that does not apply cleanly or one that fails its test gets no PR and
+the request says why: the owner applies it manually and posts `engine-applied`. These requests
 keep trusted snapshots and durable decisions so repeated events cannot reapply a proposal.
 
 Closing a request wakes the loop (`owner-request.yml`); the watchdog sweeps requests whose event was lost.
 
-**Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list,
-internet with writes outside `internet_write`) gets a `consent` request that blocks it with a native edge. `resolve`
+**Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list) gets a `consent` request that blocks it with a native edge. `resolve`
 starts the session only when that request is closed as completed, and then only that one session runs with the profile.
 The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
 secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with
-`secret-missing:NAME` (see [session secrets](session-sandbox.md#session-secrets)). There is no other path for a secret
-to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command.
+`secret-missing:NAME` (see [session secrets](session-boundary.md#session-secrets)). There is no other path for a secret
+to reach an agent; `gate.env_passthrough` is the owner's separate list for the gate command (not yet passed to the tokenless job).
 
 ## The watchdog
 

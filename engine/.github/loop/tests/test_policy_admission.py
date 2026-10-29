@@ -20,8 +20,7 @@ class PolicymakerAdmissionTest(Flow):
         return self.session_issue("policymaker")
 
     def receipt(self, pol):
-        text = self.w.origin_file("iterations/changes/change-%s.json" % pol)
-        return json.loads(text) if text else None
+        return it.applied("changes", it.change_id(pol))
 
     def outcome(self, commit):
         pol = self.pol()

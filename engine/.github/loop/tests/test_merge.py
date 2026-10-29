@@ -47,6 +47,23 @@ class GateTest(MergeCase):
         self.assertIsNone(self.w.origin_file("src/silent.txt"))
         self.assertEqual(loop.merge_outcome(r)[0], "partial")
 
+    def test_the_gate_runs_in_the_tokenless_job(self):
+        self.merge({"src/a.txt": "good"})
+        self.assertEqual(len(self.w.hub.tokenless), 1)
+        self.assertIn("run.sh", self.w.hub.tokenless[0])
+
+    def test_a_gate_job_without_an_artifact_is_not_a_yes(self):
+        self.w.hub.tokenless_fault = "no-artifact"
+        r = self.merge({"src/a.txt": "good"})
+        self.assertEqual(r["result"], "gate-inconclusive")
+        self.assertIsNone(self.w.origin_file("src/a.txt"))
+
+    def test_a_gate_job_that_failed_is_not_a_yes(self):
+        self.w.hub.tokenless_fault = "failed"
+        r = self.merge({"src/a.txt": "good"})
+        self.assertEqual(r["result"], "gate-inconclusive")
+        self.assertIsNone(self.w.origin_file("src/a.txt"))
+
     def test_direct_paths_skip_the_gate(self):
         r = self.merge({"journal/0001.md": "notes"}, role="orchestrator")
         self.assertEqual((r["result"], r["verdict"]), ("merged", None))
@@ -69,7 +86,6 @@ class GateTest(MergeCase):
         finally:
             w2.close()
 
-    @unittest.skipUnless(sys.platform == "linux", "candidate check requires Linux bubblewrap namespaces")
     def test_a_passing_check_runs_in_the_candidate_tree(self):
         w2 = fakes.worker_world(SCRIPT_GATE + "check: 'test -f src/a.txt'\n")
         try:

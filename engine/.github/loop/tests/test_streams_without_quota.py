@@ -14,7 +14,8 @@ class StreamWithoutQuotaTest(SessionCase):
     def test_stream_upload_cannot_fail_the_session_job(self):
         with open(SESSION_YML, encoding="utf-8") as fh:
             steps = [s for job in yaml.safe_load(fh)["jobs"].values() for s in job.get("steps", [])]
-        uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")]
+        uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")
+                   and str(s["with"]["name"]).startswith("stream-")]       # the session's own results must not be lost quietly
         self.assertTrue(uploads)
         for s in uploads:
             self.assertIs(s.get("continue-on-error"), True)
@@ -24,9 +25,6 @@ class StreamWithoutQuotaTest(SessionCase):
         self.assertNotIn("stream", it.session_summary(c.issue(n)))
         name = "stream-%04d-%s" % (c.iteration_of(c.label_names(c.issue(n))) or 0, n)
         self.assertEqual(it.session_summary(c.issue(n), {name})["stream"], name)
-
-    def test_streams_are_pruned_by_default(self):
-        self.assertIsNotNone(c.DEFAULTS["params"]["stream_retention_iterations"])
 
 
 if __name__ == "__main__":

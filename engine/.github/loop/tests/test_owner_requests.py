@@ -9,9 +9,9 @@ import owner_requests as req
 
 
 class OwnerRequestsTest(unittest.TestCase):
-    CONFIG = ("# retained header\nowner: ow\nlimits:\n  tools: [Read]\n  internet_write: []\n"
+    CONFIG = ("# retained header\nowner: ow\nlimits:\n  tools: [Read]\n"
               "\n# retained policymaker comment\npolicymaker: {max_turns: 12}\ncadence: {daily_iterations: 4}\n")
-    LIMITS = "tools: [Read, Grep]\ninternet_write: []\n"
+    LIMITS = "tools: [Read, Grep]\n"
 
     def setUp(self):
         self.w = fakes.World(engine_yml=self.CONFIG)
@@ -65,7 +65,7 @@ class OwnerRequestsTest(unittest.TestCase):
 
     def test_editing_both_proposal_and_displayed_hash_is_rejected(self):
         n = self.proposal()
-        self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(self.LIMITS, "tools: [Bash]\ninternet_write: []\n")
+        self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(self.LIMITS, "tools: [Bash]\n")
         self.h.issues[n]["body"] = self.h.issues[n]["body"].replace(req.digest(self.LIMITS), "forged-hash")
         self.answer(n)
         self.assertEqual(req.read(n)["status"], "invalid")
@@ -173,6 +173,41 @@ class OwnerRequestsTest(unittest.TestCase):
         self.assertTrue(c.is_unblocked(worker))
         self.assertIn(req.APPROVED, c.label_names(c.issue(n)))
 
+    def test_engine_change_is_applied_and_tested_only_in_the_tokenless_job(self):
+        n = self.engine_change(test="grep -q 'a = 2' .github/loop/tune.py && echo tested >&2")
+        original_git = c.git
+        seen = []
+
+        def spy(cwd, *args, **kwargs):
+            seen.append(args)
+            return original_git(cwd, *args, **kwargs)
+
+        with patch.object(c, "git", spy):
+            self.answer(n)
+        self.assertEqual(len(self.h.tokenless), 1)
+        self.assertIn("run.sh", self.h.tokenless[0])
+        self.assertFalse([a for a in seen if a[:1] == ("apply",)])
+        self.assertEqual(self.w.origin_file(self.SCRIPT, self.branch(n)), "a = 2\n")
+        self.assertIn("grep -q", self.h.issues[n]["body"])
+        self.assertIn("Tested in the tokenless job", self.h.prs[self.branch(n)]["body"])
+        self.assertIn(self.h.prs[self.branch(n)]["url"], req.read(n)["pr"])
+
+    def test_engine_change_that_fails_its_test_opens_no_pr_and_says_why(self):
+        n = self.engine_change(test="echo the-assertion-that-broke >&2; exit 1")
+        self.answer(n)
+        self.no_pr(n, "the test command failed")
+        self.assertIn("the-assertion-that-broke", self.h.comments(n)[-1]["body"])
+
+    def test_engine_change_without_a_result_from_the_job_opens_no_pr(self):
+        n = self.engine_change()
+        self.h.tokenless_fault = "no-artifact"
+        self.answer(n)
+        self.no_pr(n, "returned no result")
+
+    def test_only_an_engine_change_takes_a_test_command(self):
+        with self.assertRaises(ValueError):
+            self.proposal(test="true")
+
     def test_engine_change_on_a_workflow_opens_no_pr(self):
         n = self.engine_change(self.WORKFLOW)
         self.answer(n)
@@ -234,27 +269,23 @@ class OwnerRequestsTest(unittest.TestCase):
         self.assertEqual(len(req.process_proposals(json.dumps(fresh), 0, source=100)), 1)
 
     def test_yaml_flow_limits_preserves_other_fields(self):
-        original = "limits: {tools: [Read], internet_write: []}\n# keep\npolicy: {max_turns: 2}\n"
+        original = "limits: {tools: [Read]}\n# keep\npolicy: {max_turns: 2}\n"
         after = req.replace_limits(original, self.LIMITS)
         self.assertTrue(after.endswith("# keep\npolicy: {max_turns: 2}\n"))
 
 
 class LimitsTest(unittest.TestCase):
     def setUp(self):
-        self.w = fakes.World(engine_yml="limits:\n  tools: [Read, Write, 'Bash(git:*)']\n  internet_write: ['docs/']\n")
+        self.w = fakes.World(engine_yml="limits:\n  tools: [Read, Write, 'Bash(git:*)']\n")
 
     def tearDown(self):
         self.w.close()
 
     def test_within(self):
-        self.assertEqual(req.limits_exceeded({"tools": ["Read", "Bash(git:*)"], "internet": True, "write": ["docs/research/**"]}), [])
+        self.assertEqual(req.limits_exceeded({"tools": ["Read", "Bash(git:*)"]}), [])
 
     def test_tool_beyond(self):
         self.assertEqual(len(req.limits_exceeded({"tools": ["Read", "Bash(rm:*)"]})), 1)
-
-    def test_internet_together_with_writing_code(self):
-        self.assertEqual(len(req.limits_exceeded({"internet": True, "write": ["src/**"]})), 1)
-        self.assertEqual(req.limits_exceeded({"internet": False, "write": ["src/**"]}), [])
 
 
 class RequestTextTest(unittest.TestCase):

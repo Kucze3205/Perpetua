@@ -1,16 +1,16 @@
 """Recipient history and startup budgets through the session staging interface."""
 import json
-import io
 import os
+
 from unittest.mock import patch
 
 from fakes import common as c, iteration as it, loop
 import session_reports as reports
 import session_startup as startup
-import session_inputs
 import session_fixtures as sessions
 
 read = sessions.read
+BIG = "x" * 400004      # about 100001 tokens: over the warning threshold of 100000
 
 
 class ContextTest(sessions.SessionCase):
@@ -51,21 +51,16 @@ class ContextTest(sessions.SessionCase):
         self.assertEqual(staged["history"]["records"], 180)
         self.assertIn("old refusal", read(os.path.join(work, ".session/history/records/0000.json")))
 
-    def test_shaper_can_find_old_frozen_reports_without_policy_data(self):
+    def test_shaper_can_find_old_frozen_reports(self):
         public = self.issue()
-        private = self.issue("audit")
-        for n, body in [(public, "Old public finding\nUseful second line"), (private, "PRIVATE POLICY")]:
-            loop.resolve(n)
-            c.update_report(n, {"status": "done"}, body)
-            reports.capture(n)
+        loop.resolve(public)
+        c.update_report(public, {"status": "done"}, "Old public finding\nUseful second line")
+        reports.capture(public)
         frozen = reports.source_records(public)[0][1]["report"]
         c.update_report(public, {"status": "done"}, "New report text")
         record = {"iteration": 0, "status": "closed", "tasks": [
-            {"issue": public, "title": "Validate old data", "role": "worker", "body": "Check source"},
-            {"issue": private, "title": "PRIVATE POLICY", "role": "audit"}],
-            "policy": {"orders_refused": "PRIVATE POLICY"},
-            "outcome": {"sessions": [{"issue": public, "role": "worker", "status": "done"},
-                                      {"issue": private, "role": "audit", "status": "done"}]}}
+            {"issue": public, "title": "Validate old data", "role": "worker", "body": "Check source"}],
+            "outcome": {"sessions": [{"issue": public, "role": "worker", "status": "done"}]}}
         c.commit_main({"iterations/0000.json": json.dumps(record)}, "old evidence")
         _, work, _ = self.stage("orchestrator", labels=["loop:shaper"],
                                 state={"iteration": 20, "iterations": [{"n": n} for n in range(20)]})
@@ -73,10 +68,6 @@ class ContextTest(sessions.SessionCase):
         text = read(os.path.join(work, path))
         self.assertIn("Validate old data", text)
         self.assertIn("Old public finding\nUseful second line", text)
-        for root, _, names in os.walk(os.path.join(work, ".session")):
-            for name in names:
-                self.assertNotIn("PRIVATE POLICY", read(os.path.join(root, name)))
-        self.assertFalse(os.path.exists(os.path.join(work, "iterations")))
 
     def test_startup_declaration_drives_reads_and_counts_only_selected_documents(self):
         c.commit_main({"execution/roles/worker/SKILL.md":
@@ -94,9 +85,14 @@ class ContextTest(sessions.SessionCase):
         self.assertIn("journal/focus.md", prompt)
         self.assertIn(".session/role/reference.md", prompt)
 
+    def over(self, text=BIG):
+        """The worker's startup reads become `text`."""
+        c.commit_main({"execution/roles/worker/SKILL.md": "---\nname: worker\nstartup: [journal/focus.md]\n---\nWork.\n",
+                       "journal/focus.md": text}, "worker startup memory")
+
     def test_budget_warning_continues_and_reaches_policy_once_until_recovery(self):
-        with patch.object(startup, "count_tokens", return_value=100001):
-            worker, work, trusted = self.stage("worker")
+        self.over()
+        worker, work, trusted = self.stage("worker")
         self.assertEqual(json.loads(read(os.path.join(work, ".session/startup.json")))["status"], "over_budget")
         self.assertIn("continue your task", read(os.path.join(trusted, "prompt.md")))
         self.assertEqual(it.policymaker_due(1), "startup budget needs attention")
@@ -104,17 +100,19 @@ class ContextTest(sessions.SessionCase):
         policy_budget = json.loads(read(os.path.join(policy_work, ".session/startup.json")))
         self.assertEqual(policy_budget["policy_notices"][0]["issue"], worker)
         loop.close_out(pol, c.issue(pol), "done", {}, "Handled startup notice")
-        with patch.object(startup, "count_tokens", return_value=120000):
-            self.stage("worker")
+        self.over(BIG * 2)
+        self.stage("worker")
         self.assertIsNone(it.policymaker_due(2))
+        self.over("small")
         self.stage("worker")  # successful measurement closes the incident
-        with patch.object(startup, "count_tokens", return_value=100001):
-            self.stage("worker")
+        self.over()
+        self.stage("worker")
         self.assertEqual(it.policymaker_due(3), "startup budget needs attention")
 
-    def test_unavailable_counter_warns_without_blocking_and_policy_warns_itself(self):
-        with patch.object(startup, "count_tokens", side_effect=ValueError("counter not configured")):
-            n, work, trusted = self.stage()
+    def test_unmeasurable_startup_warns_without_blocking_and_policy_warns_itself(self):
+        c.commit_main({"policy/roles/policymaker/SKILL.md": "---\nname: policymaker\nstartup: [policy/missing.md]\n---\nOrganize.\n"},
+                      "a missing read")
+        n, work, trusted = self.stage()
         budget = json.loads(read(os.path.join(work, ".session/startup.json")))
         self.assertEqual(budget["status"], "unmeasured")
         self.assertIsNone(budget["tokens"])
@@ -124,8 +122,8 @@ class ContextTest(sessions.SessionCase):
         self.assertIsNone(it.policymaker_due(1))
 
     def test_staging_does_not_consume_a_notice_if_policymaker_fails(self):
-        with patch.object(startup, "count_tokens", return_value=100001):
-            self.stage("worker")
+        self.over()
+        self.stage("worker")
         pol, work, trusted = self.stage(state={"iterations": []})
         self.assertIn("read .session/startup.json", read(os.path.join(trusted, "prompt.md")))
         loop.close_out(pol, c.issue(pol), "crashed", {}, "Session failed before handling the notice")
@@ -142,29 +140,17 @@ class ContextTest(sessions.SessionCase):
         manifest = json.loads(read(os.path.join(work, ".session/history/manifest.json")))
         self.assertEqual(manifest["scope"], "task-selected inputs")
 
-    def test_provider_counts_one_declared_package_and_keeps_credentials_out_of_recipient_files(self):
+    def test_the_estimate_counts_one_declared_package_without_any_api_key(self):
         c.commit_main({"execution/roles/worker/SKILL.md":
                        "---\nname: worker\nstartup: [journal/focus.md, ./journal/focus.md]\n---\nWork.\n",
-                       "journal/focus.md": "Selected initial memory",
-                       "journal/old.md": "ARCHIVED LARGE BODY"}, "counter inputs")
-        requests = []
-
-        def provider(request, timeout):
-            requests.append(json.loads(request.data))
-            self.assertEqual(timeout, 10)
-            return io.BytesIO(b'{"input_tokens": 100000}')
-
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-counter-key"}), \
-                patch.object(startup, "count_tokens", side_effect=self.w.counter_saved), \
-                patch.object(startup.urllib.request, "urlopen", side_effect=provider):
+                       "journal/focus.md": "Selected initial memory " * 4000,
+                       "journal/old.md": BIG}, "counter inputs")
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-counter-key"}):
             n, work, trusted = self.stage("worker")
-        self.assertEqual(len(requests), 1)
-        body = requests[0]["messages"][0]["content"]
-        self.assertEqual(body.count("Selected initial memory"), 1)
-        self.assertNotIn("ARCHIVED LARGE BODY", body)
         budget = json.loads(read(os.path.join(work, ".session/startup.json")))
-        self.assertEqual((budget["status"], budget["tokens"]), ("ok", 100000))
-        self.assertEqual(it.session_summary(c.issue(n))["startup"]["tokens"], 100000)
+        self.assertEqual(budget["status"], "ok")
+        self.assertTrue(20000 < budget["tokens"] < 30000, budget["tokens"])
+        self.assertEqual(it.session_summary(c.issue(n))["startup"]["tokens"], budget["tokens"])
         for root, _, names in os.walk(os.path.join(work, ".session")):
             for name in names:
                 self.assertNotIn("test-counter-key", read(os.path.join(root, name)))
@@ -173,9 +159,7 @@ class ContextTest(sessions.SessionCase):
         c.commit_main({"policy/private.md": "PRIVATE SOURCE BODY",
                        "execution/roles/worker/SKILL.md":
                        "---\nname: worker\nstartup: [policy/private.md, ../outside.md, ./.git/config]\n---\nWork.\n"}, "invalid input selection")
-        with patch.object(startup, "count_tokens") as counter:
-            _, work, _ = self.stage("worker")
-        counter.assert_not_called()
+        _, work, _ = self.stage("worker")
         budget = json.loads(read(os.path.join(work, ".session/startup.json")))
         self.assertEqual(budget["status"], "unmeasured")
         self.assertNotIn("PRIVATE SOURCE BODY", json.dumps(budget))
@@ -185,9 +169,7 @@ class ContextTest(sessions.SessionCase):
         c.commit_main({"docs/binary.dat": "\0binary",
                        "execution/roles/worker/SKILL.md":
                        "---\nname: worker\nstartup: [docs/binary.dat]\n---\nWork.\n"}, "nontext input")
-        with patch.object(startup, "count_tokens") as counter:
-            _, work, _ = self.stage("worker")
-        counter.assert_not_called()
+        _, work, _ = self.stage("worker")
         budget = json.loads(read(os.path.join(work, ".session/startup.json")))
         self.assertEqual(budget["status"], "unmeasured")
         self.assertIn("UTF-8 text", budget["detail"])
@@ -203,36 +185,15 @@ class ContextTest(sessions.SessionCase):
         self.assertIn("policy/current.md", paths)
         self.assertNotIn("policy/working-memory.md", paths)
 
-    def test_history_reuses_provenance_for_repeated_references_to_a_session(self):
-        worker = self.issue()
-        loop.resolve(worker)
-        c.update_report(worker, {"status": "done"}, "An old execution result")
-        reports.capture(worker)
-        summary = {"issue": worker, "role": "worker", "status": "done"}
-        record = {"iteration": 0, "status": "closed", "tasks": [dict(summary, title="Old work")],
-                  "outcome": {"sessions": [summary], "shaper": summary}}
-        c.commit_main({"iterations/0000.json": json.dumps(record)}, "repeated references")
-        origin = session_inputs.origins
-        lookups = []
-
-        def lookup(n):
-            lookups.append(n)
-            return origin(n)
-
-        with patch.object(session_inputs, "origins", side_effect=lookup):
-            self.stage("orchestrator", labels=["loop:shaper"],
-                       state={"iterations": [{"n": n} for n in range(20)]})
-        self.assertEqual(lookups.count(worker), 1)
-
     def test_new_notices_arriving_during_policy_are_not_acknowledged_unseen(self):
-        with patch.object(startup, "count_tokens", return_value=100001):
-            self.stage("worker")
+        self.over()
+        self.stage("worker")
         c.commit_main({"policy/roles/policymaker/SKILL.md":
                        "---\nname: policymaker\nstartup: []\n---\nOrganize.\n"}, "custom policy reads")
         pol, work, trusted = self.stage(state={"iterations": []})
         self.assertIn("read .session/startup.json", read(os.path.join(trusted, "prompt.md")))
-        with patch.object(startup, "count_tokens", return_value=100001):
-            self.stage("audit")
+        c.commit_main({"policy/roles/audit/SKILL.md": "---\nname: audit\nstartup: [journal/focus.md]\n---\nAudit.\n"}, "audit reads")
+        self.stage("audit")
         loop.close_out(pol, c.issue(pol), "done", {}, "Handled the worker notice")
         self.assertEqual([item["role"] for item in startup.pending()], ["audit"])
 
@@ -247,7 +208,51 @@ class ContextTest(sessions.SessionCase):
                 raise c.ConcurrentChange("another stage won")
             return commit(files, message, **kwargs)
 
-        with patch.object(c, "commit_main", side_effect=concurrent), \
-                patch.object(startup, "count_tokens", return_value=100001):
+        self.over()
+        with patch.object(c, "commit_main", side_effect=concurrent):
             self.stage("worker")
         self.assertEqual(set(startup.notices()), {"audit", "worker"})
+
+
+class SessionStateScriptTest(sessions.SessionCase):
+    SCRIPT = "policy/session-state.py"
+    stage = ContextTest.stage
+
+    def test_a_policymaker_change_to_the_script_changes_what_the_next_session_receives(self):
+        _, work, _ = self.stage(state={"iteration": 1, "iterations": [{"n": 0}, {"n": 1}]})
+        self.assertEqual([x["n"] for x in json.loads(read(os.path.join(work, ".session/loop-state.json")))["iterations"]], [1])
+        c.commit_main({self.SCRIPT: "import json\nprint(json.dumps({'loop_state': {'mine': True}, 'files': {'history/note.md': 'hi'}}))\n"},
+                      "the Policymaker changes the state")
+        _, work, _ = self.stage(state={"iteration": 2, "iterations": []})
+        self.assertEqual(json.loads(read(os.path.join(work, ".session/loop-state.json"))), {"mine": True})
+        self.assertEqual(read(os.path.join(work, ".session/history/note.md")), "hi")
+        self.assertFalse(os.path.exists(os.path.join(work, ".session/history/manifest.json")))
+
+    def test_invalid_script_output_stops_the_staging(self):
+        for body in ("print('{\"loop_state\": 3}')", "print('{\"files\": {\"../x\": \"y\"}}')",
+                     "print('{\"files\": {\"loop-state.json\": \"y\"}}')", "print('nope')"):
+            c.commit_main({self.SCRIPT: body + "\n"}, "bad state script")
+            with self.assertRaises(SystemExit):
+                self.stage(state={"iterations": []})
+
+
+class SessionStartupScriptTest(sessions.SessionCase):
+    SCRIPT = "policy/session-startup.py"
+    stage = ContextTest.stage
+
+    def test_a_policymaker_change_to_the_script_changes_the_bootstrap_and_the_warning_threshold(self):
+        c.commit_main({self.SCRIPT: "import json\nprint(json.dumps({'reads': ['.session/issue.md'], 'prompt': 'MY BOOTSTRAP',"
+                       " 'budget': {'status': 'over_budget', 'tokens': 7, 'detail': 'mine'}}))\n"}, "the Policymaker changes startup")
+        _, work, trusted = self.stage("worker")
+        self.assertEqual(read(os.path.join(trusted, "prompt.md")), "MY BOOTSTRAP")
+        budget = json.loads(read(os.path.join(work, ".session/startup.json")))
+        self.assertEqual((budget["status"], budget["tokens"], budget["detail"]), ("over_budget", 7, "mine"))
+        self.assertEqual([x["path"] for x in budget["documents"]], [".session/issue.md"])
+        self.assertEqual(it.policymaker_due(1), "startup budget needs attention")
+
+    def test_invalid_script_output_stops_the_staging(self):
+        for body in ("print('nope')", "print('{\"reads\": [\"policy/params.yml\"], \"prompt\": \"\", \"budget\": {\"status\": \"ok\"}}')",
+                     "print('{\"reads\": [], \"prompt\": \"\", \"budget\": {\"status\": \"fine\"}}')"):
+            c.commit_main({self.SCRIPT: body + "\n"}, "bad startup script")
+            with self.assertRaises(SystemExit):
+                self.stage("worker")

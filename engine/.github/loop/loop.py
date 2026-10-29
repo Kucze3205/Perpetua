@@ -4,7 +4,7 @@
 Always run from a checkout of the default branch, never from a task branch. The agent's work arrives as commits
 fetched into this checkout; nothing is executed inside the agent's directory.
 
-Commands: guard, probe, resolve, stage, finalize, request-closed, watch, resume, start, git-identity.
+Commands: guard, probe, resolve, stage, epilogue, request-closed, watch, resume, start, git-identity.
 """
 import hashlib
 import json
@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -24,22 +25,18 @@ import owner_requests as requests
 import session_security as security
 import session_inputs
 import session_exports
+import session_artifact
 import session_reports
 import policymaker_session
-import policy_changes
 import executor_boundary
 import session_context
 import session_startup
 
-BACKOFF_H = (1, 5, 24)          # when the session result carries no limit reset time
 MAX_AGE_DAYS = 30
 MAX_KICKS = 3
 CRASH_STREAK = 3                # consecutive `crashed` without a commit
 MAX_SLEEP_S = 340 * 60          # resume.yml: a job is limited to 360 min; a longer park is the watchdog's
 GRACE_MIN = 30                  # covers dispatch latency, never working time
-MAX_GEN = 3                     # successor generations
-MAX_CONFLICTS = 3
-MAX_FIXES = 2                   # correction rounds after a failed `## Verification` or `check`
 PUSH_TRIES = 3
 JOB_MAX_MIN = 355               # GitHub kills a job at 360 min; the epilogue must fit
 
@@ -117,7 +114,7 @@ def resolve(n):
         close_out(n, i, "blocked", {"cause": "start:policymaker-session"}, str(error))
         reconcile()
         raise SystemExit(str(error))
-    why = security.profile_error(p, c.cfg()["cli_version"]) if p else "no profile for role `%s`" % role
+    why = security.profile_error(p) if p else "no profile for role `%s`" % role
     granted = False
     if not why and role != "policymaker":
         granted, why = requests.consent_status(p, labels)
@@ -142,7 +139,6 @@ def resolve(n):
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
-    session_inputs.capture_origin(n, role)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
     c.set_output(**options, start=start, consented="true" if granted else "false",
                  secrets="|%s|" % "|".join(names) if names else "")
@@ -169,13 +165,21 @@ def session_contract(role, profile, labels):
     else:
         parts.append("You have no shell and cannot run commands. `done` means the requested files "
                      "are written; the engine runs verification.")
-    if session_inputs.restricted(role):
-        parts.append("Do not create a branch or commit: the engine imports the files you wrote, "
-                     "not your commits.")
-    else:
-        parts.append("The epilogue publishes the files you leave in your write paths, as they are when the session "
-                     "ends. No commit is needed.")
+    parts.append("Do not create a branch or commit: the engine imports the files you wrote, not your commits.")
+    if resources.role_layer(role) == resources.EXECUTION:
+        parts.append("Do not read `policy/`: it holds the Policymaker's working files, not your task.")
     return "\n\n".join(parts) + "\n"
+
+
+def policy_output(labels, step, *args, **kwargs):
+    """Run a staging step that uses a policy script; output the engine refuses fails the iteration and rolls policy back."""
+    try:
+        step(*args, **kwargs)
+    except it.PolicyScriptError as e:
+        k = c.iteration_of(labels)
+        if k is not None:
+            it.fail_iteration(k, "invalid policy script output: %s" % e, rollback=True)
+        raise SystemExit("invalid policy script output: %s" % e)
 
 
 def stage(n, work, trusted):
@@ -187,7 +191,7 @@ def stage(n, work, trusted):
         p = profile_of(role)
     except ValueError as error:
         raise SystemExit("invalid session profile: " + str(error))
-    error = security.profile_error(p, c.cfg()["cli_version"])
+    error = security.profile_error(p)
     if error:
         raise SystemExit("invalid session profile: " + error)
     if role != "policymaker":
@@ -202,7 +206,6 @@ def stage(n, work, trusted):
             if env_key in os.environ and os.environ[env_key] != str(value):
                 raise SystemExit("session configuration changed after prep: " + env_key)
     security.check_session_directory(work)
-    session_inputs.capture_origin(n, role)
     sess = os.path.join(work, ".session")
     # Discard prior recipient views before staging a new scope.
     if os.path.isdir(sess):
@@ -213,18 +216,15 @@ def stage(n, work, trusted):
     with open(os.path.join(work, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
         fh.write("\n.session/\n")
     c.export_issue(n, os.path.join(sess, "issue.md"),
-                   omit_markers=(it.STATE_MARK, session_startup.MARK) +
-                   ((it.ORDERS_MARK, session_reports.DECISIONS_MARK, session_inputs.ORIGIN_MARK)
-                    if session_inputs.restricted(role) else ()))
+                   omit_markers=(it.STATE_MARK, session_startup.MARK))
     metadata = it.frontmatter(c.safe_read(".", resources.role_directory(role) + "/SKILL.md"))[0]
-    fetch_inputs(i["body"], os.path.join(sess, "inputs"), role=role)
+    fetch_inputs(i["body"], os.path.join(sess, "inputs"))
     session_exports.stage(i["body"], role, c.iteration_of(labels) or 0, sess, defaults=metadata.get("exports"))
-    if role == "policymaker" or "loop:shaper" in labels:
-        full = c.marker(i["body"], "exports") is None and "exports" not in metadata
-        it.export_state(n, sess, role=role, full_history=full)
-    else:
-        session_context.history(sess, role)
-    if "loop:shaper" in labels and session_inputs.restricted(role):
+    sees_state = role == "policymaker" or "loop:shaper" in labels
+    full = sees_state and c.marker(i["body"], "exports") is None and "exports" not in metadata
+    state = it.stored_state(n, sess, role=role) if sees_state else None
+    policy_output(labels, session_context.stage, sess, role, state, full=full)
+    if "loop:shaper" in labels:
         with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
             json.dump(session_inputs.capabilities(), fh, indent=1)
     contract = session_contract(role, p, labels)
@@ -238,8 +238,6 @@ def stage(n, work, trusted):
         # Include it once, rather than loading the same instructions again through that pointer.
         fh.write("# Policy work rules (subordinate to the engine contract)\n\n"
                  + rules + "\n\n" + ("" if role == "policymaker" else template))
-    with open(os.path.join(trusted, "network-mode"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("online\n" if p.get("internet", False) else "offline\n")
     # The approved names, for agent.sh's empty-value check. Unapproved pool names need no file: the workflow expression
     # `contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || ''` already hands them over empty.
     granted = role != "policymaker" and requests.consent_status(p, labels)[0]
@@ -249,33 +247,33 @@ def stage(n, work, trusted):
         fh.write(",".join(security.tool_names(p)))
     with open(os.path.join(trusted, "mcp.json"), "w", encoding="utf-8") as fh:
         json.dump({"mcpServers": {}}, fh)
-    for f in ("agent.sh", "stream_filter.py", "remaining.py", "offline_exec.py"):
+    for f in ("agent.sh", "stream_filter.py", "remaining.py", "session_artifact.py"):
         shutil.copy(".github/loop/" + f, trusted)
+    # Machine preparation is policy: `policy/prepare.sh` of the accepted tree (none: nothing to prepare).
+    prepare = os.path.join(resources.ROOT, "prepare.sh")
+    if os.path.isfile(prepare) and not os.path.islink(prepare):
+        shutil.copy(prepare, os.path.join(trusted, "prepare.sh"))
+    else:
+        with open(os.path.join(trusted, "prepare.sh"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("#!/usr/bin/env bash\n")
+    with open(os.path.join(trusted, "cli-version"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(str(c.cfg()["cli_version"]) + "\n")
     if resources.layered() and p.get("agent") is not False:
         staged_role = os.path.join(sess, "role")
         shutil.rmtree(staged_role, ignore_errors=True)
         shutil.copytree(resources.role_directory(role), staged_role)
-        security.check_skills(staged_role)
     if role == "policymaker":
         with open(os.path.join(sess, "policymaker.md"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write("You are the Policymaker. Follow the engine contract supplied in system instructions.\n\n" + template)
     elif p.get("agent") is False:
         with open(os.path.join(trusted, "command.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(p["command"] + "\n")
-    # Skill hooks and interpolation execute outside the Bash tool sandbox.
-    if p.get("agent") is not False and not p.get("internet", False):
-        for root in (os.path.join(work, ".claude", "skills"), os.path.join(os.path.expanduser("~"), ".claude", "skills")):
-            security.check_skills(root)
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
-        json.dump(security.settings(p, "/engine" if session_inputs.restricted(role) else trusted), fh)
-    if session_inputs.restricted(role):
-        shutil.copy(".github/loop/executor_boundary.py", trusted)
-        executor_boundary.prepare(work, trusted)
-    else:
-        executor_boundary.record(work, trusted)
+        json.dump(security.settings(p, trusted), fh)
+    executor_boundary.record(work, trusted)
     if p.get("agent") is not False:
-        session_startup.prepare(n, role, session_options(i, role, p)["model"], work, trusted,
-                                shaper="loop:shaper" in labels)
+        policy_output(labels, session_startup.prepare, n, role, session_options(i, role, p)["model"], work, trusted,
+                      shaper="loop:shaper" in labels)
 
 
 # ---------------------------------------------------------------- artifacts: large outputs live in release assets
@@ -314,35 +312,12 @@ def upload_artifacts(n, work, k):
     return len(lines)
 
 
-def fetch_inputs(body, dest, role=None):
-    """Fetch only engine-published assets of sessions visible to this recipient."""
-    refs = json.loads(c.marker(body, "inputs") or "[]")
-    results = []
-    restricted = bool(role and session_inputs.restricted(role))
-    for ref in refs:
-        rel, asset = ref.get("release"), None
-        issue = ref.get("issue")
-        if restricted:
-            # A direct release selector must identify an engine-published asset;
-            # arbitrary release patterns/globs have no trustworthy origin.
-            match = re.fullmatch(r"iter-[0-9]{4,}/([0-9]+)-[A-Za-z0-9._-]+", rel or "")
-            if issue is None and match:
-                issue = int(match.group(1))
-            if type(issue) is not int or not session_inputs.visible(issue):
-                results.append({"status": "denied", "detail": "artifact is not available to this recipient"})
-                continue
-            report = c.find_report(issue)
-            candidates = [m for m in ARTIFACT_LINE.finditer(report["body"] if report else "")
-                          if (m.group(1) == ref.get("name") if "issue" in ref else m.group(2) == rel)]
-            if not candidates:
-                results.append({"status": "unavailable", "detail": "no matching published artifact"})
-                continue
-            rel = candidates[0].group(2)
-            if not re.fullmatch(r"iter-[0-9]{4,}/%s-[A-Za-z0-9._-]+" % issue, rel):
-                results.append({"status": "denied", "detail": "artifact has no supported origin"})
-                continue
-        elif "issue" in ref:
-            report = c.find_report(issue)
+def fetch_inputs(body, dest):
+    """Download the release assets the task body names."""
+    for ref in json.loads(c.marker(body, "inputs") or "[]"):
+        rel = ref.get("release")
+        if "issue" in ref:
+            report = c.find_report(ref["issue"])
             for match in ARTIFACT_LINE.finditer(report["body"] if report else ""):
                 if match.group(1) == ref.get("name"):
                     rel = match.group(2)
@@ -352,13 +327,8 @@ def fetch_inputs(body, dest, role=None):
         os.makedirs(dest, exist_ok=True)
         try:
             c.gh("release", "download", tag, "--pattern", asset, "--dir", dest, "--clobber")
-            results.append({"status": "downloaded"})
         except (SystemExit, OSError):
-            results.append({"status": "unavailable", "detail": "artifact download failed"})
-    if restricted and refs:
-        os.makedirs(dest, exist_ok=True)
-        with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8", newline="\n") as fh:
-            json.dump({"schema_version": 1, "results": results}, fh, indent=1)
+            pass
 
 
 # ---------------------------------------------------------------- the candidate: the agent's commits in a trusted tree
@@ -385,23 +355,20 @@ def fetch_candidate(work, n):
     (short sha, protected paths the change touches). The branch goes to origin only when it touches none: GitHub refuses
     a token's push of workflow files, and such a change is refused at merge anyway."""
     trusted = os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "trusted")
-    executor, policy = (os.path.join(trusted, name) for name in ("executor-baseline.json", "policy-baseline.json"))
+    baseline = os.path.join(trusted, "executor-baseline.json")
     ref = "refs/heads/task/%s" % n
     try:
-        if os.path.isfile(executor):
-            with open(executor, encoding="utf-8") as fh:
-                executor_boundary.import_candidate(work, json.load(fh), ".", ref)
-        elif os.path.isfile(policy):
-            with open(policy, encoding="utf-8") as fh:
-                meta = json.load(fh)
-            # A new path outside the role's write paths is environment debris (CLI stubs, runner home files, IDE
-            # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
-            write = profile_of(c.roles_of(c.label_names(c.issue(n)))[0]).get("write") or []
-            executor_boundary.admit(work, meta, ".", ref, "Policy session files admitted as data\n",
-                                    skip=lambda rel, tracked: not tracked and not c.path_match(rel, write))
-        else:
+        if not os.path.isdir(work) or not os.path.isfile(baseline):
             print("Required session admission metadata unavailable")
             return None, []
+        with open(baseline, encoding="utf-8") as fh:
+            meta = json.load(fh)
+        role = c.roles_of(c.label_names(c.issue(n)))[0]
+        # A new path outside a role's write paths is environment debris (runner home files, IDE
+        # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
+        write = profile_of(role).get("write") or []
+        skip = lambda rel, tracked: not tracked and not c.path_match(rel, write)
+        executor_boundary.import_candidate(work, meta, ".", ref, skip)
     except (ValueError, OSError, subprocess.SubprocessError):
         print("Session output could not be admitted safely")
         return None, []
@@ -425,11 +392,10 @@ def verification_rules(body):
     return ["Bash(%s)" % re.sub(r"([\\()*])", r"\\\1", cmd) for cmd in verification_commands(body) if "\n" not in cmd]
 
 
-def run_verification(cand, body, role=None):
-    """`## Verification` of the task: commands from code blocks or backticked lines. No secrets."""
+def run_verification(cand, body):
+    """`## Verification` of the task: commands from code blocks or backticked lines, run in the tokenless job."""
     for cmd in verification_commands(body):
-        r = (executor_boundary.run_candidate(cmd, cand) if role and session_inputs.restricted(role)
-             else c.run_command(cmd, cand))
+        r = c.run_command(cmd, cand)
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -438,12 +404,12 @@ def run_verification(cand, body, role=None):
 
 def fix_round(n, f, upd, why):
     """A failed `## Verification` or `check` is an error the agent can fix: run the same issue again, its report carrying
-    the error, up to MAX_FIXES times. False when the rounds are spent."""
-    kk = int(f.get("fixes", 0)) + 1
-    if kk > MAX_FIXES:
+    the error, up to the policy's `fix_rounds` times. False when the rounds are spent."""
+    kk, max_fixes = int(f.get("fixes", 0)) + 1, c.limits()["fix_rounds"]
+    if kk > max_fixes:
         return False
     upd["fixes"] = kk
-    c.update_report(n, dict(upd, status="partial"), "%s\nCorrection round %s of %s." % (why, kk, MAX_FIXES))
+    c.update_report(n, dict(upd, status="partial"), "%s\nCorrection round %s of %s." % (why, kk, max_fixes))
     c.launch(n)
     return True
 
@@ -459,7 +425,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
     for _ in range(PUSH_TRIES):
         c.sync_main()
         c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
-        existing = policy_changes.read(policy_changes.path(n, k))
+        existing = it.applied("changes", it.change_id(n, k))
         if existing:
             return dict(res, result="merged", change=existing)
         branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
@@ -487,11 +453,13 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
             if resources.layered():
                 try:
                     resources.role_profiles(cand)
-                    if boundary:
-                        resources.validate_activation(cand)
-                except ValueError as error:
+                    if boundary or any(resources.is_managed(f) for f in changed):
+                        refused = it.layer_errors(cand, boundary)
+                        if refused:
+                            return dict(res, result="invalid-resources", detail="; ".join(refused[:6]))
+                except (ValueError, it.PolicyScriptError) as error:
                     return dict(res, result="invalid-resources", detail=str(error))
-            if checked_evaluator_rev and policy_changes.evaluator_rev("HEAD", cand) != checked_evaluator_rev:
+            if checked_evaluator_rev and resources.evaluator_revision("HEAD", cand) != checked_evaluator_rev:
                 return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
             # The accepted range contains this session's rebased commits only.
             changed = c.git(cand, "diff", "--name-only", "-z", baseline, "HEAD").stdout.split("\0")[:-1]
@@ -501,19 +469,15 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                 return dict(res, result="large", detail=", ".join(big))
             if work_paths:
                 if cfg["check"]:
-                    t = (executor_boundary.run_candidate(cfg["check"], cand) if session_inputs.restricted(role)
-                         else c.run_command(cfg["check"], cand))
+                    t = c.run_command(cfg["check"], cand)
                     if t.returncode:
                         return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
                 if override:
                     res["verdict"] = override
                 else:
                     t0 = time.time()
-                    listing = os.path.join(cand, "..", "changed.txt")
-                    with open(listing, "w", encoding="utf-8", newline="\n") as fh:
-                        fh.write("\n".join(changed) + "\n")
                     v = it.run_gate(cand, os.path.abspath("."), {"candidate_sha": c.head(cand), "baseline_sha": c.head("."),
-                                                                  "changed_file": os.path.abspath(listing), "task": n,
+                                                                  "changed": changed, "task": n,
                                                                   "iteration": c.iteration_of(c.label_names(i)) or 0})
                     res["gate_s"] = int(time.time() - t0)
                     res["verdict"] = v
@@ -525,8 +489,10 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                     return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
             if resources.layered() and role == "policymaker" and not boundary:
                 return dict(res, result="awaiting-iteration")
-            change = policy_changes.receipt(cand, n, role, i, session_base, baseline, c.head(cand), changed, verifier, k)
+            change = it.record_change(cand, n, role, session_base, baseline, c.head(cand), changed, verifier, k)
             if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
+                if change:
+                    it.record_applied("changes", change)
                 return dict(res, result="merged", change=change)
     return dict(res, result="conflict")
 
@@ -702,6 +668,9 @@ def finalize(n, work):
         prose = "Script %s.\n" % ("finished" if status == "done" else "failed (exit %s)" % exit_code) + (c.safe_read(tmp, "script-output.txt") or "")[-1500:]
     else:
         cause, limited, reset = machine_cause(exec_path, exit_code)
+        if limited and status not in c.AGENT_STATUSES:
+            # the status files are the session's data: only the engine's own probe parks the loop, and it sets the clock
+            limited, reset = c.probe_limit()
         upd["cause"] = cause or None
         upd.update(usage_fields(exec_path))
         upd.update(model=os.environ.get("MODEL") or None, effort=os.environ.get("EFFORT") or None)
@@ -729,7 +698,7 @@ def finalize(n, work):
         upload_artifacts(n, work, k)
     if status == "done" and sha and not script:
         with Tree("task/%s" % n) as cand:
-            ok, out = run_verification(cand, i["body"], role=role)
+            ok, out = run_verification(cand, i["body"])
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"
@@ -747,7 +716,7 @@ def finalize(n, work):
         if r["result"] == "conflict":
             kk = int(f.get("conflicts", 0)) + 1
             upd["conflicts"] = kk
-            if kk < MAX_CONFLICTS:
+            if kk < c.limits()["merge_conflict_retries"]:
                 c.update_report(n, dict(upd, status="partial"), "Rebase on the default branch: conflict (attempt %s)." % kk)
                 c.edit_labels(n, add=["conflict"])
                 c.launch(n)
@@ -788,10 +757,34 @@ def finalize(n, work):
     after_session(n, i, labels, role, k, work, status, upd, prose, pending)
 
 
+def epilogue(n, artifact, baseline, digest):
+    """The epilogue job, on a fresh runner: takes the session job's artifact in as data (`session_artifact`), puts the
+    executor baseline from the channel the session cannot touch (`baseline/`, pinned by `digest`) where admission reads
+    it, and finalizes. A tree that cannot be taken in is as good as no tree."""
+    tmp = os.environ.get("RUNNER_TEMP", tempfile.gettempdir())
+    with open(os.path.join(baseline, "executor-baseline.json"), "rb") as fh:
+        raw = fh.read()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise SystemExit("the executor baseline does not match the one staged")
+    work = os.path.join(tmp, "work")
+    session_artifact.receive_status(artifact, tmp)
+    try:
+        session_artifact.receive_tree(artifact, work)
+    except (ValueError, OSError, tarfile.TarError) as error:
+        print("Session output refused: %s" % error)
+        shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(os.path.join(tmp, "trusted"), exist_ok=True)
+    meta = json.loads(raw)
+    meta["work"] = os.path.abspath(work)
+    with open(os.path.join(tmp, "trusted", "executor-baseline.json"), "w", encoding="utf-8") as fh:
+        json.dump(meta, fh)
+    session_artifact.receive_commits(artifact, ".", n)
+    finalize(n, work)
+
+
 def hold_policymaker_output(n, work):
-    """Keep a finished Policymaker pass's orders on its issue until the iteration continues; a pass without orders keeps
-    an empty entry, so the orders of an earlier pass are never read again. Returns the report prose."""
-    session_reports.freeze_decisions(n, work, (it.read_state(n) or {}).get("suggestions", []))
+    """Keep a finished Policymaker session's orders on its issue until the iteration continues; a run without orders keeps
+    an empty entry, so the orders of an earlier run are never read again. Returns the report prose."""
     text = c.safe_read(work, ".session/orders.json")
     try:
         doc = json.loads(text) if text else {}
@@ -802,15 +795,17 @@ def hold_policymaker_output(n, work):
     else:
         prose = ""
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
+    wake = isinstance(doc, dict) and doc.get("wake") is True
     later = {"merge": "later"} if isinstance(doc, dict) and doc.get("merge") == "later" else {}
-    it.store_state(n, dict({"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else []}, **later), it.ORDERS_MARK)
+    it.store_state(n, dict({"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, **later), it.ORDERS_MARK)
     return prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
 
 
 def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):
     """Merge the finished Policymaker sessions, oldest first, and return the numbers of those that merged. An unmerged one
     counts as a failed Policymaker session. A merged one is closed, unless `keeps_open(number)`: it is relaunched after
-    the sessions it ordered, so it waits (`awaiting:orders`). One that `defers(number)` is not merged yet: it waits the same way."""
+    the tasks it ordered with `wake`, so it waits (`awaiting:orders`). One that `defers(number)` is not merged yet: it waits
+    the same way."""
     merged = []
     for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
         if defers(x["number"]):
@@ -850,7 +845,6 @@ def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):
         st, upd, pr = merge_outcome(r)
         if st == "done":
             merged.append(x["number"])
-            session_reports.apply_decisions(x["number"])
             if keeps_open(x["number"]):
                 c.update_report(x["number"], dict(upd, status="done"), pr)
                 c.edit_labels(x["number"], add=["awaiting:orders"], remove=["awaiting:iteration"])
@@ -892,7 +886,8 @@ def park(n, i, f, upd, prose, reset, head):
                       "Each resume used the agent and produced no turn and no commit.",
                       "Look at the session's stream and report, fix the cause, then close this issue.")
         return "%s resumes in a row used the agent without progress." % idle
-    when = reset or c.now() + timedelta(hours=BACKOFF_H[min(kk - 1, len(BACKOFF_H) - 1)])
+    backoff = c.limits()["backoff_hours"]      # when the session result carries no limit reset time
+    when = reset or c.now() + timedelta(hours=backoff[min(kk - 1, len(backoff) - 1)])
     c.update_report(n, dict(upd, status="paused", attempts=kk, idle_resumes=idle, head=head, resume_after=c.iso(when), paused_at=c.iso()), prose)
     c.edit_labels(n, add=["blocked:rate-limit"])
     c.workflow_run("resume.yml", issue=n)      # the clock lives in a workflow: GitHub's cron lags by hours
@@ -908,7 +903,11 @@ def after_session(n, i, labels, role, k, work, status, upd, prose, merged_pendin
             doc = json.loads(c.safe_read(work, ".session/tasks.json") or "")
         except ValueError:
             err = "`.session/tasks.json` is missing or not JSON"
-        got = it.instantiate(k, doc) if doc is not None else err
+        try:
+            got = it.instantiate(k, doc) if doc is not None else err
+        except it.PolicyScriptError as e:
+            it.fail_iteration(k, "invalid policy script output: %s" % e, rollback=True)
+            got = "invalid policy script output: %s" % e
         if isinstance(got, str):
             status, prose = "partial", got
     if role == c.cfg()["verifier_role"] and merged_pending is None:
@@ -925,7 +924,7 @@ def request_verifier(n, i, k, changed):
     role = c.cfg()["verifier_role"]
     c.ensure_label("role:" + role, "1D76DB")
     checked = c.git(".", "rev-parse", "origin/task/%s" % n).stdout.strip()
-    rev = policy_changes.evaluator_rev(checked)
+    rev = resources.evaluator_revision(checked)
     body = ("Verify the evaluator change of task #%s (branch `task/%s`).\n\nChanged evaluator files: %s\n\n"
             "Decide whether the changed evaluator still measures progress toward the goal; the accepted state in force is the default branch.\n\n"
             "<!-- verifies: %s -->\n<!-- start-branch: %s -->\n<!-- checked-commit: %s -->\n"
@@ -959,14 +958,14 @@ def settle_verification(n, i, status, result, prose):
             # Verification is evidence, not authority to activate during an iteration.
             # The boundary rechecks the entire pinned candidate and rebased measurement.
             r = {"result": "pending-iteration"}
-            policy_changes.verification(n, i, status, result, r)
+            it.record_verification(n, i, status, result, r)
             c.edit_labels(t, add=["awaiting:iteration"], remove=["awaiting:verifier"])
             c.update_report(t, {"merged": "pending-iteration", "verifier_passed": "true"},
                             "Verified; the complete managed set waits for the next iteration boundary.")
             return status, prose
         else:
             r = merge_branch(t, trole, ti, verified=True, checked_commit=checked, checked_evaluator_rev=rev, verifier=n)
-        policy_changes.verification(n, i, status, result, r)
+        it.record_verification(n, i, status, result, r)
         if r["result"] == "awaiting-owner":
             req = requests.open_request("merge-acceptance", "Accept the change of task #%s: %s" % (t, ti["title"]), "The evaluator change of task #%s was verified; its work paths still need your verdict." % t,
                                   "The change gate is set to you.", "Completed merges the branch.", ref="task-%s" % t, iteration=c.iteration_of(c.label_names(ti)))
@@ -975,7 +974,7 @@ def settle_verification(n, i, status, result, prose):
             return status, prose
         st, upd, pr = merge_outcome(r)
     else:
-        policy_changes.verification(n, i, status, result, {"result": "not-applied"})
+        it.record_verification(n, i, status, result, {"result": "not-applied"})
         st, upd, pr = "rejected", {"merged": "false", "verdict": "rejected"}, "The evaluator verifier did not pass the change (result: %s, status: %s)." % (result, status)
     c.edit_labels(t, remove=["awaiting:verifier"])
     close_out(t, ti, st, upd, pr)
@@ -990,7 +989,7 @@ def spawn_successor(n, i, report_body):
         return None
     labels = c.label_names(i)
     gen = max([int(l.split(":")[1]) for l in labels if l.startswith("generation:")] or [0])
-    if gen >= MAX_GEN:
+    if gen >= c.limits()["successor_generations"]:
         return None
     keep = [l for l in labels if l.startswith(("role:", "model:", "effort:", c.ITER, "loop:shaper"))] + ["generation:%s" % (gen + 1)]
     for l in keep:
@@ -1106,7 +1105,7 @@ def settle_owner_merge(t, yes):
                         "Accepted by the owner; the complete managed set waits for the next iteration boundary.")
         if verifier:
             vf = c.report_fields(verifier)
-            policy_changes.verification(verifier, vi, vf.get("status"), vf.get("result"), {"result": "pending-iteration"}, owner=True)
+            it.record_verification(verifier, vi, vf.get("status"), vf.get("result"), {"result": "pending-iteration"}, owner=True)
         return
     if yes:
         r = merge_branch(t, role, ti, override={"verdict": "accepted", "improved": True, "detail": "accepted by the owner"},
@@ -1117,7 +1116,7 @@ def settle_owner_merge(t, yes):
         r = {"result": "gate-rejected", "detail": "declined by the owner", "verdict": {"verdict": "rejected", "detail": "declined by the owner"}}
     if verifier:
         vf = c.report_fields(verifier)
-        policy_changes.verification(verifier, vi, vf.get("status"), vf.get("result"), r, owner=True)
+        it.record_verification(verifier, vi, vf.get("status"), vf.get("result"), r, owner=True)
     st, upd, pr = merge_outcome(r)
     k = c.iteration_of(c.label_names(ti)) or 0
     if st != "done":
@@ -1314,8 +1313,8 @@ def main(argv):
         resolve(int(args[0]))
     elif cmd == "stage":
         stage(int(args[0]), args[1], args[2])
-    elif cmd == "finalize":
-        finalize(int(args[0]), args[1])
+    elif cmd == "epilogue":
+        epilogue(int(args[0]), *args[1:4])
     elif cmd == "request-closed":
         on_request_closed(int(args[0]))
     elif cmd == "watch":

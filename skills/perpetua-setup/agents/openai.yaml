@@ -1,5 +1,5 @@
 interface:
   display_name: "Perpetua Setup"
-  short_description: "Prepare a repository and chart its loop setup map"
+  short_description: "Set up a loop in a repository, or update its engine (`update`)"
 policy:
   allow_implicit_invocation: false

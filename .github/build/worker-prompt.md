@@ -21,11 +21,11 @@ state of the sibling tickets and the parent spec. Read it in full first.
   - use the loop test world (the in-memory GitHub fake and the `Flow` fixtures);
   - use the static workflow test for workflow properties;
   - delete tests that only prove removed machinery; do not port them.
-- Update the docs your change makes wrong: `engine/docs/perpetua/`, the session contracts, the setup and update
-  skills. Change `CONTEXT.md` only for domain terms.
+- Update the docs your change makes wrong: `engine/docs/perpetua/`, the session contracts, the setup skill
+  (setup and update). Change `CONTEXT.md` only for domain terms.
 - Run both suites and leave them passing:
   - `/usr/bin/python3 -m unittest discover -s engine/.github/loop/tests`
-  - `python3 -m unittest discover -s skills/update -p test_engine_update.py`
+  - `python3 -m unittest discover -s skills/perpetua-setup -p test_engine_update.py`
 
 ## Git
 

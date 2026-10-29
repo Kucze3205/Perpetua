@@ -1,6 +1,6 @@
 # The Perpetua engine
 
-The goal-independent machinery copied into this loop by `/perpetua:setup`: workflows,
+The goal-independent machinery copied into this loop by `/kucze:perpetua-setup`: workflows,
 scripts, protected configuration and session contracts. It belongs to this loop.
 Terms are in `CONTEXT.md`; `ENGINE_VERSION` identifies the installed engine.
 
@@ -32,7 +32,7 @@ checking the integration and documenting each lost or replacement guarantee in
 setup decisions. This gives the Policymaker no additional authority after arming.
 
 Plugin changes do not automatically change an installed loop. The explicit
-[`/perpetua:update` procedure](https://github.com/Kucze3205/Perpetua/blob/main/skills/update/SKILL.md)
+[`/kucze:perpetua-setup update` procedure](https://github.com/Kucze3205/Perpetua/blob/main/skills/perpetua-setup/update.md)
 merges the plugin engine with the loop's local changes using the untouched
 `perpetua/engine` branch as the merge base. It is separate from fresh setup;
 review/reconfiguration by repeating setup is not implemented.

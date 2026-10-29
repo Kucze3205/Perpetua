@@ -1,7 +1,0 @@
-{
-  "name": "perpetua",
-  "description": "Sets up an autonomous agent loop in a GitHub repository and leaves it running until it reaches its goal",
-  "version": "0.5.0",
-  "author": { "name": "Kamil Kuczerowski" },
-  "skills": "./skills/"
-}

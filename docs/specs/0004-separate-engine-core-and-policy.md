@@ -15,7 +15,7 @@ Aktualne kontrakty: [definicje zarządzane](../../engine/docs/perpetua/managed-r
 [izolacja sesji](../../engine/docs/perpetua/session-sandbox.md) i
 [walidacja](../../engine/docs/perpetua/validation.md). Wyłączenie aktualizacji
 z zakresu tej specyfikacji nie oznacza ich obecnego braku; osobną procedurą jest
-[skill update](../../skills/update/SKILL.md).
+[procedura update](../../skills/perpetua-setup/update.md).
 
 ## Problem Statement
 

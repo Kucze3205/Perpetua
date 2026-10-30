@@ -1,12 +1,6 @@
----
-name: update
-description: Update the engine of a running Perpetua loop in the current repository to the engine shipped with this plugin, keeping the loop's local changes.
-disable-model-invocation: true
----
+Update the loop in this repository to this plugin's engine (`SKILL_DIR/engine`; `SKILL_DIR` is defined in `SKILL.md`). Terms are defined in the loop's `CONTEXT.md`.
 
-Update the loop in this repository to this plugin's engine. Resolve the path of this loaded `SKILL.md`, following symlinks/junctions. Call its directory `SKILL_DIR`; `PLUGIN_ROOT` is two directories above it, containing `engine/`. Terms are defined in the loop's `CONTEXT.md`.
-
-The engine was copied into the loop at setup and has changed on both sides since: Perpetua released fixes, and the loop (its owner, its engine-change PRs, its Policymaker) changed its own copy. `SKILL_DIR/engine_update.py` merges the two with git's three-way merge. The base is the untouched engine kept on the loop's `perpetua/engine` branch; loops set up before that branch existed get their base found once in Perpetua's history. You run it, resolve what git cannot, check, and publish. The owner only confirms a moved setup baseline.
+The engine was copied into the loop at setup and has changed on both sides since: Perpetua released fixes, and the loop (its owner, its engine-change PRs, its Policymaker) changed its own copy. `SKILL_DIR/engine_update.py` merges the two with git's three-way merge. The base is the untouched engine kept on the loop's `perpetua/engine` branch; a loop without it cannot be updated. You run it, resolve what git cannot, check, and publish. The owner only confirms a moved setup baseline.
 
 Run every command in the loop repository root. Use `python3`, or `python` where that is the interpreter. Quote paths: on Windows they contain `C:\`.
 
@@ -16,7 +10,7 @@ Stop at the first failure and say what to fix, in one line each:
 
 - a git work tree with a clean status, on the default branch, equal to `origin` after `git fetch` (`gh repo view --json nameWithOwner,defaultBranchRef`), with `ENGINE_VERSION` in the root
 - `gh auth status` is logged in, and `gh api repos/{owner}/{repo} --jq .permissions` shows `push` and `admin`. A cloud session usually lacks them: then do steps 2–6 on a pushed branch and hand the owner steps 7–9 as copyable commands.
-- `PLUGIN_ROOT/engine/ENGINE_VERSION` exists. Say both versions: the loop's and the plugin's.
+- `SKILL_DIR/engine/ENGINE_VERSION` exists. Say both versions: the loop's and the plugin's.
 
 ## 2. Pause the loop
 
@@ -26,13 +20,12 @@ Read `gh variable get AUTOPILOT` and remember it. If it is `on`, set it to `off`
 
 ```sh
 git switch -c perpetua/update
-python3 SKILL_DIR/engine_update.py merge PLUGIN_ROOT/engine
+python3 SKILL_DIR/engine_update.py merge SKILL_DIR/engine
 ```
 
-It prints a JSON report: `from`/`to` versions, `base`, `snapshot` (the new untouched engine commit), `bootstrapped` (how a missing base was found), `status`, and the changed paths split into `engine`, `workflows` and `definitions`. Nothing is committed or pushed.
+It prints a JSON report: `from`/`to` versions, `base`, `snapshot` (the new untouched engine commit), `status`, and the changed paths split into `engine`, `workflows` and `definitions`. Nothing is committed or pushed.
 
-- `up-to-date`: nothing to merge. Switch back, delete the branch, restore `AUTOPILOT` (step 8) and report. If the plugin's version equals the loop's, the owner probably has to update the plugin first (`/plugin marketplace update perpetua`, then restart the client).
-- `bootstrapped` with `files_differing_from_setup_copy` above 0: the found base is approximate. Say so in the report; the conflicts will be wider.
+- `up-to-date`: nothing to merge. Switch back, delete the branch, restore `AUTOPILOT` (step 8) and report. If the plugin's version equals the loop's, the owner probably has to update the plugin first (`claude plugin update kucze@kucze`, then restart the client).
 - `merged` or `conflicts`: continue.
 
 ## 4. Resolve conflicts
@@ -74,4 +67,4 @@ Restore `AUTOPILOT` to the value from step 2. If it is `on`, run `gh workflow ru
 
 ## 9. Report
 
-Versions from → to; how the base was found; merged paths by group; each conflict and how it was resolved; workflow changes; tests run, failed and skipped; whether the baseline moved; the `AUTOPILOT` state.
+Versions from → to; merged paths by group; each conflict and how it was resolved; workflow changes; tests run, failed and skipped; whether the baseline moved; the `AUTOPILOT` state.

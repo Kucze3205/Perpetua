@@ -90,7 +90,8 @@ class FilesTest(unittest.TestCase):
                 continue
             with open(p, encoding="utf-8") as fh:
                 text = fh.read().lower()
-            for word in ("bubblewrap", "bwrap", "seccomp", "offline_exec", "sandbox.sh"):
+            # SUBPROCESS_ENV_SCRUB makes the CLI require bubblewrap: a session would exit before its first model call
+            for word in ("bubblewrap", "bwrap", "seccomp", "offline_exec", "sandbox.sh", "subprocess_env_scrub"):
                 self.assertNotIn(word, text, "%s still mentions %s" % (p, word))
 
     def test_version_stamp(self):

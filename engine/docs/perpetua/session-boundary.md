@@ -54,8 +54,7 @@ leak is revoking them.
 What the engine still owns is the tool allowlist. `--tools` limits the available builtins independently of permission
 rules, `--allowedTools` lists what the role may use, and `settings.json` denies `Agent`, `Task`, `Monitor` and
 `PowerShell` for every profile. MCP configuration is empty and a profile that lists an MCP or subagent tool is refused.
-User and project settings are disabled. Subprocess environments scrub the provider credential
-(`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`). Script roles receive no model credential.
+User and project settings are disabled. Script roles receive no model credential.
 
 A profile has no network key: it may list WebFetch/WebSearch, and a session reaches the network like any process on the
 runner. Native slash-command discovery is off and `Skill` is available only when a profile lists it; every session reads

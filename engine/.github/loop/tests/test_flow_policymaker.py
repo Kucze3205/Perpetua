@@ -563,6 +563,40 @@ class PolicymakerFailureTest(Flow):
         finally:
             it.revert_policy = saved
 
+    def test_a_policymaker_issue_closed_unstarted_is_not_a_failed_session(self):
+        calls = []
+        saved = it.revert_policy
+        it.revert_policy = lambda why: calls.append(why) or True
+        try:
+            it.start_iteration()
+            self.w.session(self.session_issue("policymaker"))
+            self.finish(0)
+            pol = self.session_issue("policymaker")
+            probe = self.hub.create_issue("probe", "", labels=("role:policymaker",))      # as the E2E probe leaves it
+            self.hub.close_issue(probe, "not planned")
+            self.w.session(pol, report=False, exit_code="1")
+            self.assertEqual([s["status"] for s in it.policymaker_sessions()], ["crashed", "done"])
+            self.assertEqual(calls, [])
+        finally:
+            it.revert_policy = saved
+
+    def test_a_done_session_the_closed_list_does_not_return_yet_stops_the_count(self):
+        calls = []
+        saved, listed = it.revert_policy, c.list_issues
+        it.revert_policy = lambda why: calls.append(why) or True
+        try:
+            it.start_iteration()
+            for k in range(2):
+                self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
+                self.finish(k)
+            self.assertEqual(len(calls), 1)
+            pol = self.session_issue("policymaker")
+            c.list_issues = lambda state="open", labels=(): [x for x in listed(state, labels) if x["number"] != pol]
+            self.w.session(pol)
+            self.assertEqual(len(calls), 1)
+        finally:
+            it.revert_policy, c.list_issues = saved, listed
+
 
 if __name__ == "__main__":
     unittest.main()

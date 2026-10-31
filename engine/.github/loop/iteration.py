@@ -100,16 +100,25 @@ def no_progress(idx=None):
     return k
 
 
-def policymaker_sessions(limit=5):
-    """The latest closed Policymaker sessions, newest first, and how they ended."""
-    done = sorted(c.list_issues(state="closed", labels=("role:policymaker",)), key=lambda x: -x["number"])[:limit]
-    return [{"issue": x["number"], "status": c.report_fields(x["number"]).get("status")} for x in done]
+def policymaker_sessions(limit=5, latest=None):
+    """The latest Policymaker sessions that ran, newest first, and how they ended. An issue closed before its session
+    started (the E2E probe's, say) has no report and is no session. `latest`: a session that just ended, which the list of
+    closed issues may not return yet."""
+    numbers = {x["number"] for x in c.list_issues(state="closed", labels=("role:policymaker",))}
+    out = []
+    for n in sorted(numbers | ({latest} if latest else set()), reverse=True):
+        status = c.report_fields(n).get("status")
+        if status:
+            out.append({"issue": n, "status": status})
+        if len(out) == limit:
+            break
+    return out
 
 
-def policymaker_failures():
+def policymaker_failures(latest=None):
     """Trailing Policymaker sessions that did not end `done`."""
     k = 0
-    for s in policymaker_sessions(2):
+    for s in policymaker_sessions(2, latest):
         if s["status"] == "done":
             break
         k += 1
@@ -337,7 +346,8 @@ def begin_work(n, it):
 
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
     orders = orders_of(apply_policy())      # apply_policy: a session left over from an earlier iteration
-    if policymaker_failures() >= 2:
+    latest = c.report_fields(it).get("policy_issue", "")
+    if policymaker_failures(int(latest) if latest.isdigit() else None) >= 2:
         revert_policy("two Policymaker sessions in a row failed")
     store_state(it, build_state(n))
     if c.params()["shaper"]:

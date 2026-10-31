@@ -1,0 +1,11 @@
+[
+ {
+  "id": "write-greeting",
+  "title": "Write src/greeting.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate one file and nothing else: `src/greeting.txt` containing the single line `hello from perpetua`. Report, do not change any other file.\n## Acceptance\n- [ ] `src/greeting.txt` exists and its content is exactly `hello from perpetua` followed by a newline\n- [ ] no other file is created or changed\n## Verification\n`python3 -c \"import sys; sys.exit(open('src/greeting.txt').read() != 'hello from perpetua\\n')\"`\n## Context\n- goal: the loop goal in `.session/loop-state.json` (`goal.text`); this is its first half\n- gate: `policy/evaluator/gate.py` checks the file; read it only if verification fails\n## Budget\n- `src/greeting.txt` (create)\n- `.session/loop-state.json` (goal text only)",
+  "issue": 267
+ }
+]

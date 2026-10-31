@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/244\niteration: 9\nrunner: Linux\ncause: no-execution-file exit=1\ntokens_in: 0\ntokens_out: 0\ncache_read: 0\ncache_write: 0\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 0\ntotal_s: 18\nstatus: crashed\n```\n\nThe agent left no terminal status (no-execution-file exit=1).\n",
+  "comment": 6543712886,
+  "issue": 244,
+  "snapshot": "d5a546c3af3308e0724e0542a922f825a5abd3e97a0b7842dcc571d3c6c6ae1c",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/244#issuecomment-6543712886"
+ },
+ "schema_version": 1
+}

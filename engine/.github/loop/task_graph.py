@@ -74,6 +74,10 @@ def validate_tasks(doc, ordered=False, taken=()):
             errors.append("task %s: unknown model alias %r" % (task_id, task["model"]))
         if task.get("effort") and (not isinstance(task["effort"], str) or task["effort"] not in parameters["efforts"]):
             errors.append("task %s: unknown effort %r" % (task_id, task["effort"]))
+        limits = task.get("limits")
+        if limits is not None and (not isinstance(limits, dict) or set(limits) - {"timeout_minutes", "max_turns"} or any(
+                type(v) is not int or v < 1 for v in limits.values())):
+            errors.append("task %s: `limits` takes only `timeout_minutes` and `max_turns`, as positive integers" % task_id)
         dependencies = task.get("blocked_by", [])
         if dependencies is None:
             dependencies = []

@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/265\niteration: 11\nrunner: Linux\ncause: terminal_reason=completed\nturns: 12\npeak_context: 23292\ntokens_in: 10\ntokens_out: 2921\ncache_read: 67695\ncache_write: 23290\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":67695,\"cache_write\":23290,\"in\":10,\"out\":2921}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 16\ntotal_s: 33\ncommit: 70c76f3\nmerged: true\nstatus: done\n```\nPolicymaker, iteration 0011. No changes to `execution/` or `policy/` definitions, and no orders.\n\n- Evidence reviewed: `.session/loop-state.json`, `.session/startup.json` (7365 of 100000 tokens, status ok), `policy/working-memory.md`, `.session/role/SKILL.md`, `.session/policymaker.md`.\n- No closed iteration exists (`iterations: []`, history records 0), no pending suggestions, no audit report, no evaluator verdict, and `no_progress` is 0.\n- The prior policymaker session 244 crashed; sessions 251, 160, 155 and 147 are `done`. Nothing in the current state shows a failed change to roll back.\n- Decision: place no orders. Without any measured signal, an order has no expected gain and would be busywork.\n- Updated `policy/working-memory.md` with the current state, this decision, and the open questions.\n\n## What next\n\n- Next iteration: revisit once the first `iterations/NNNN.json` is closed, to check the shaper's result on `src/greeting.txt`.\n- The `src/farewell.txt` step cannot be done until a later iteration than the one that merges `src/greeting.txt`. Do not order it earlier.\n- Do not repeat the startup reads of the whole history; the history has no records yet.\n\nWaiting for the iteration to continue: then `policy/` merges.\n",
+  "comment": 6549699652,
+  "issue": 265,
+  "snapshot": "ecbb7d99bf1b302f41eaec2a5d6c8351bacc1abf22e6d0e3922ea68b907ab6de",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/265#issuecomment-6549699652"
+ },
+ "schema_version": 1
+}

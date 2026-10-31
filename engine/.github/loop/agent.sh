@@ -38,9 +38,6 @@ AVAILABLE_TOOLS="$(cat "$TRUSTED/tools")"
 
 # the end of a turn in -p is the end of the session: background work and Monitor die with the runner
 export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
-# the credential stays in the claude process, gone from Bash and hooks; this forces permission mode `default`,
-# so every tool the role needs must be in --allowedTools (acceptEdits is ignored)
-export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
 # API overload (429/529) is retried instead of ending the session; stream_filter.py ends it on a rejected limit event
 export CLAUDE_CODE_RETRY_WATCHDOG=1
 # long work in the foreground: by default Bash cuts off after 2 min

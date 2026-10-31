@@ -27,12 +27,15 @@ ITERATION_MINUTES = 60          # ceilings.iteration_minutes: a stuck iteration 
 WAIT_MINUTES = 120              # `wait` gives up after this
 GOAL = """# Goal
 
-Create two independent files, and nothing else:
+Create two files, and nothing else:
 
-- `src/greeting.txt` containing the single line `hello from perpetua`.
-- `src/farewell.txt` containing the single line `goodbye from perpetua`.
+1. `src/greeting.txt` containing the single line `hello from perpetua`.
+2. `src/farewell.txt` containing the single line `goodbye after iteration N`, where N is the number of the iteration in
+   which `src/greeting.txt` was merged. N must be a closed iteration with a record `iterations/NNNN.json`; an iteration
+   has no record until it closes, so this file can only be written in a later iteration than the first one.
+
+Each file is checked by the change gate (`policy/evaluator/gate.py`).
 """
-GATE = "echo '{\"verdict\": \"accepted\", \"improved\": true, \"detail\": \"e2e gate\"}'\n"
 WORKER_SKILL = f"""---
 name: worker
 description: Writes the one small text file its task asks for, then reports.
@@ -115,8 +118,8 @@ def check_not_behind():
 
 def build(args):
     """A fresh loop repository as after setup and arming prerequisites, as the branch `e2e-loop`: the real engine at the
-    root, every role on Haiku 5.5, one trivial goal, one worker role with a planted wasteful step, cadence that allows
-    exactly one iteration. Pushes the branch and the tag `setup-baseline`; touches nothing else."""
+    root, every role on Haiku 5.5, a two-step goal whose second step needs a later iteration, a change gate that scores
+    it, one worker role with a planted wasteful step, cadence that allows exactly N iterations. Pushes the branch and the tag `setup-baseline`; touches nothing else."""
     check_not_behind()
     if default_branch() == BRANCH:
         raise SystemExit("`%s` is the default branch: a running test must not be rebuilt under itself" % BRANCH)
@@ -160,13 +163,13 @@ def build(args):
     write_yaml(work / "policy/params.yml", params)
     config = c.load_yaml(work / "engine.yml")
     config["cli_version"] = CLI_VERSION
-    config["gate"] = {"kind": "script", "command": "bash policy/evaluator/gate.sh"}
+    config["gate"] = {"kind": "script", "command": "python3 policy/evaluator/gate.py"}
     config["policymaker_session_ceilings"] = {"models": [HAIKU], "efforts": ["low"], "max_turns": MAX_TURNS, "timeout_minutes": MINUTES}
     config["cadence"] = {"min_interval_minutes": None, "daily_iterations": args.iterations} if args.iterations > 1 else {
         "min_interval_minutes": 10 ** 6, "daily_iterations": None}        # exactly N iterations (default one)
     write_yaml(work / "engine.yml", config)
     (work / "policy/evaluator").mkdir(parents=True, exist_ok=True)
-    (work / "policy/evaluator/gate.sh").write_text(GATE, encoding="utf-8", newline="\n")
+    shutil.copyfile(HERE / "fixtures" / "gate.py", work / "policy/evaluator/gate.py")
     (work / "goal").mkdir(exist_ok=True)
     (work / "goal/goal.md").write_text(GOAL, encoding="utf-8", newline="\n")
     git = lambda *a, **k: run(["git", "-c", "core.autocrlf=false", *a], cwd=work, **k).stdout.strip()

@@ -36,6 +36,12 @@ class TaskGraphTest(unittest.TestCase):
         self.assertTrue(self.errs(fakes.task("a", effort="max")))
         self.assertTrue(self.errs(fakes.task("a", blocked_by=["zzz"])))
 
+    def test_limits_are_positive_integers(self):
+        self.assertEqual(self.errs(fakes.task("a", limits={"timeout_minutes": 20, "max_turns": 30})), [])
+        for limits in ({"timeout_minutes": "20"}, {"max_turns": "..."}, {"max_turns": 0}, {"max_turns": True},
+                       {"width": 3}, ["max_turns"]):
+            self.assertTrue(self.errs(fakes.task("a", limits=limits)), limits)
+
     def test_cycle(self):
         self.assertTrue(self.errs(fakes.task("a", blocked_by=["b"]), fakes.task("b", blocked_by=["a"])))
 

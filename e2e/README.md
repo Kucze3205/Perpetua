@@ -26,12 +26,13 @@ it refuses a checkout behind `origin/main`. `build --no-push` builds locally.
 `start` sets `AUTOPILOT=on` and `E2E_CAPTURE=on` and dispatches the watchdog.
 `wait` waits for the iteration record, outage or timeout and sets `AUTOPILOT=off`.
 `probe` stages the next iteration's sessions without running them. `collect`
-downloads evidence and generates the report. `finish` turns autopilot off and
+downloads the evidence of the last `start` only (issues, runs with jobs, streams,
+captures, the probe, the branch; no run logs) and generates the report. `finish` turns autopilot off and
 removes `E2E_CAPTURE`; the owner restores the default branch.
 
 `run OUT` combines start, wait, probe and collect. For multiple iterations, use
 `build --iterations N` followed by `run OUT --iterations N`; results go into
-`OUT-1`, `OUT-2`, etc. `start --iterations N` also records that count for `wait`.
+`OUT-1`, `OUT-2`, etc.; the evidence is downloaded once and copied. `start --iterations N` also records that count for `wait`.
 `collect` alone selects the first iteration from the last `start`.
 
 The experiment also creates issues, labels, artifacts and releases

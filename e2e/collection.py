@@ -6,6 +6,7 @@ import re
 import shutil
 import sys
 import traceback
+from datetime import timedelta
 from pathlib import Path
 
 import analysis
@@ -17,8 +18,24 @@ from scenario import BRANCH, HAIKU, SCALE, CONTEXT_TOKENS, MAX_TURNS, MINUTES
 SECRET_RE = re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}")
 
 
+def since():
+    """The start of the run's window: `start`, minus the watchdog it dispatched just before recording the time. Evidence of
+    earlier runs in the repository is not this run's and is not downloaded."""
+    started = json.loads(read(STATE / "started.json")) if (STATE / "started.json").is_file() else {}
+    if not started.get("at"):
+        raise SystemExit("no `start` recorded in e2e/.state/started.json: nothing to bound the collection by")
+    return iso(analysis.parse_time(started["at"]) - timedelta(minutes=5))
+
+
 def collect(args):
+    """Download this run's evidence into OUT and analyze the selected iteration. `args.fetched`: a directory a collect of
+    the same run already filled; it is copied instead of downloading the same evidence again."""
     out, R = Path(args.out).resolve(), repo()
+    fetched = getattr(args, "fetched", None)
+    if fetched and Path(fetched).resolve() != out:
+        shutil.copytree(fetched, out, dirs_exist_ok=True, ignore=shutil.ignore_patterns("report.json", "README.md", "sessions"))
+        previous = json.loads(read(out / "collection.json"))
+        return finish(out, dict(previous, iteration=target()))
     out.mkdir(parents=True, exist_ok=True)
     errors = []
 
@@ -29,11 +46,12 @@ def collect(args):
             errors.append({"step": label, "error": repr(error)[:500], "trace": traceback.format_exc()[-1500:]})
             say("collect: %s failed: %s" % (label, repr(error)[:200]))
 
+    begun = since()
     meta = attempt("meta", fetch_meta, out, R) or {}
-    issues = attempt("issues", fetch_issues, out, R) or []
-    runs = attempt("runs", fetch_runs, out, R) or []
-    attempt("artifacts", fetch_artifacts, out, R)
-    attempt("captures", fetch_captures, out, R)
+    issues = attempt("issues", fetch_issues, out, R, begun) or []
+    runs = attempt("runs", fetch_runs, out, R, begun) or []
+    attempt("artifacts", fetch_artifacts, out, R, begun)
+    attempt("captures", fetch_captures, out, R, begun)
     attempt("repository", fetch_repository, out, R)
     context = {"iteration": target(), "collect_errors": errors,
                "issues": [i["number"] for i in issues], "runs": [r["id"] for r in runs]}
@@ -44,6 +62,10 @@ def collect(args):
     for name in ("built", "started", "waited"):
         if (STATE / (name + ".json")).is_file():
             context["run"][name] = json.loads(read(STATE / (name + ".json")))
+    finish(out, context)
+
+
+def finish(out, context):
     write_json(out / "collection.json", context)
     report = analysis.analyze(out)
     redacted = 0
@@ -70,46 +92,50 @@ def fetch_meta(out, R):
     return {k: meta[k] for k in ("repo", "default_branch", "branch", "gh_version")}
 
 
-def fetch_issues(out, R):
-    issues = [i for i in api_items("repos/%s/issues?state=all&per_page=100" % R) if "pull_request" not in i]
+def fetch_issues(out, R, begun):
+    issues = [i for i in api_items("repos/%s/issues?state=all&since=%s&per_page=100" % (R, begun))
+              if "pull_request" not in i and i["created_at"] >= begun]
     for issue in issues:
         n = issue["number"]
         issue["comments_list"] = api_items("repos/%s/issues/%s/comments" % (R, n))
-        issue["timeline"] = api_items("repos/%s/issues/%s/timeline" % (R, n))
         write_json(out / "github" / "issues" / ("%d.json" % n), issue)
     return issues
 
 
-def fetch_runs(out, R):
-    runs = api_items("repos/%s/actions/runs?per_page=100" % R, "workflow_runs")
+def fetch_runs(out, R, begun):
+    """The run's workflow runs with their jobs. No logs: the sessions' streams and the issues carry what the analysis reads."""
+    runs = api_items("repos/%s/actions/runs?per_page=100&created=%%3E%%3D%s" % (R, begun), "workflow_runs")
     for r in runs:
         d = out / "github" / "runs" / str(r["id"])
         r["jobs_list"] = api_items("repos/%s/actions/runs/%s/jobs?per_page=100" % (R, r["id"]), "jobs")
         write_json(d / "jobs.json", r["jobs_list"])
-        log = gh("run", "view", str(r["id"]), "--log", check=False)
-        (d / "log.txt").write_text(log.stdout or log.stderr, encoding="utf-8")
-        found = re.search(r"ISSUE: (\d+)", log.stdout or "")      # run-name does not carry the issue (see the report)
+        found = re.match(r"session #(\d+)", r.get("display_title") or "")       # session.yml's run-name
         r["issue"] = int(found.group(1)) if found and r["name"] == "session" else None
         write_json(d / "run.json", {k: v for k, v in r.items() if k != "jobs_list"})
     return runs
 
 
-def fetch_artifacts(out, R):
-    arts = api_items("repos/%s/actions/artifacts?per_page=100" % R, "artifacts")
+KEPT_ARTIFACTS = ("stream-", "probe")     # what the analysis reads; staged inputs come from the captures
+
+
+def fetch_artifacts(out, R, begun):
+    arts = [a for a in api_items("repos/%s/actions/artifacts?per_page=100" % R, "artifacts") if a["created_at"] >= begun]
     write_json(out / "github" / "artifacts.json", arts)
     for a in arts:
         run_id = (a.get("workflow_run") or {}).get("id")
-        if a.get("expired") or not run_id:
+        if a.get("expired") or not run_id or not a["name"].startswith(KEPT_ARTIFACTS):
             continue
         gh("run", "download", str(run_id), "--name", a["name"], "--dir", str(out / "artifacts" / a["name"]), check=False)
 
 
-def fetch_captures(out, R):
-    """Release `e2e-capture`: the session captures and the probe (E2E_CAPTURE; release assets, not artifacts)."""
+def fetch_captures(out, R, begun):
+    """Release `e2e-capture`: the session captures and the probe (E2E_CAPTURE; release assets, not artifacts), only the
+    assets this run uploaded."""
     tmp = out / "release-assets"
-    r = gh("release", "download", "e2e-capture", "--dir", str(tmp), "--clobber", check=False)
-    if r.returncode:
-        raise SystemExit("no release e2e-capture: " + r.stderr.strip())
+    release = api("repos/%s/releases/tags/e2e-capture" % R)
+    for asset in release["assets"]:
+        if asset["created_at"] >= begun:
+            gh("release", "download", "e2e-capture", "--pattern", asset["name"], "--dir", str(tmp), "--clobber")
     for f in tmp.glob("*.tgz"):
         dest = out / "artifacts" / f.stem
         dest.mkdir(parents=True, exist_ok=True)

@@ -724,7 +724,6 @@ def commit_main(files, message, remove=(), restore=None, expected=None):
             with open(p, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
             git(".", "add", "-f", "--", p)
-        git(".", "add", "-A")
         if git(".", "diff", "--cached", "--quiet", check=False).returncode == 0:
             return False
         git(".", "commit", "-q", "-m", message)

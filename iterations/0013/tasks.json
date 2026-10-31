@@ -1,0 +1,18 @@
+[
+ {
+  "id": "greeting-file",
+  "title": "Write src/greeting.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate the single file `src/greeting.txt` containing exactly one line: `hello from perpetua`. Write nothing else.\n## Acceptance\n- [ ] `src/greeting.txt` exists and its content is `hello from perpetua` followed by a newline\n- [ ] no other file is created or changed\n## Verification\n`python3 -c \"import sys; sys.exit(open('src/greeting.txt').read() != 'hello from perpetua\\n')\"`\n## Context\n- goal: the loop goal text in `.session/loop-state.json` (`goal.text`) names this file and its content\n- the file `src/farewell.txt` is NOT part of this task: it needs the number of the iteration that merges this file, so it waits for a later iteration\n## Budget\n- `.session/issue.md`\n- `src/greeting.txt` (new)",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 15,
+   "max_turns": 20
+  },
+  "inputs": [],
+  "issue": 274
+ }
+]

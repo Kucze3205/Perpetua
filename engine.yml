@@ -1,0 +1,71 @@
+resources:
+  format: layered
+cli_version: 2.1.303
+author:
+  name: ''
+  email: ''
+idle_resumes: 3
+policy_passes_notice: 10
+owner: ''
+check: ''
+gate:
+  kind: script
+  command: bash policy/evaluator/gate.sh
+protected:
+- .github/
+- engine.yml
+- ENGINE_VERSION
+- iterations/
+- goal/
+- GOAL_REACHED
+direct_paths:
+- execution/
+- policy/
+- audit/
+- journal/
+notes_paths:
+- journal/
+evaluator_paths:
+- policy/evaluator/
+verifier_role: evaluator-verifier
+large_file_bytes: 5000000
+limits:
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  - Skill
+  - Bash(git:*)
+  - Bash(python3:*)
+  - Bash(echo:*)
+  - Bash(printf:*)
+  - Bash(mkdir:*)
+policymaker:
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  - Skill
+  - Bash(git:*)
+  - Bash(python3:*)
+  write:
+  - execution/
+  - policy/
+policymaker_session_ceilings:
+  models:
+  - claude-haiku-5-5
+  efforts:
+  - low
+  max_turns: 30
+  timeout_minutes: 10
+params:
+  no_progress_iterations: null
+  quiet_minutes: null
+  owner_wait_counts: null
+cadence:
+  min_interval_minutes: 1000000
+  daily_iterations: null

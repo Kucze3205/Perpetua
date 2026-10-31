@@ -9,7 +9,7 @@ on:
 permissions:
   contents: write
   issues: write
-  actions: read
+  actions: write     # staging runs policy scripts in the tokenless job (run_tokenless dispatches tokenless.yml)
 
 jobs:
   probe:

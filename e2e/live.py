@@ -17,6 +17,7 @@ def run_all(args):
     for k in range(n):                          # one directory per iteration: OUT, or OUT-1, OUT-2... when there are several
         experiment.SHIFT, args.out = k, out if n == 1 else "%s-%d" % (out, k + 1)
         collect(args)
+        args.fetched = args.out                 # the same run's evidence: downloaded once, copied for the next iterations
 
 
 def main():

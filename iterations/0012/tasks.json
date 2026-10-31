@@ -1,0 +1,18 @@
+[
+ {
+  "id": "write-farewell",
+  "title": "Write src/farewell.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate `src/farewell.txt` containing the single line `goodbye after iteration 11`. Create only this file.\nIteration 11 is the iteration in which `src/greeting.txt` was merged (its record `iterations/0011.json` lists task `write-greeting`).\n\n## Acceptance\n- [ ] `src/farewell.txt` contains exactly `goodbye after iteration 11` followed by a newline\n- [ ] no other file is created or changed\n\n## Verification\n`python3 -c \"import sys; sys.exit(open('src/farewell.txt').read() != 'goodbye after iteration 11\\n')\"`\n\n## Context\n- link: iterations/0011.json, the record that shows the greeting merge in iteration 11\n- link: src/greeting.txt, existing file, do not change it\n\n## Budget\n- iterations/0011.json\n- src/greeting.txt\n- src/farewell.txt",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 20,
+   "max_turns": 20
+  },
+  "inputs": [],
+  "issue": 270
+ }
+]

@@ -12,6 +12,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -324,10 +325,14 @@ def is_unblocked(n):
 
 
 def workflow_run(workflow, **inputs):
+    """True when GitHub accepted the dispatch (a token without `actions: write` is refused)."""
     args = ["workflow", "run", workflow]
     for k, v in inputs.items():
         args += ["-f", "%s=%s" % (k, v)]
-    gh(*args, check=False)
+    r = subprocess.run(["gh", *args], capture_output=True, text=True)
+    if r.returncode:
+        print("gh workflow run %s: %s" % (workflow, r.stderr.strip()), file=sys.stderr)
+    return r.returncode == 0
 
 
 def run_tokenless(bundle, timeout_minutes, poll=15):
@@ -346,7 +351,8 @@ def run_tokenless(bundle, timeout_minutes, poll=15):
     git(shipment, "push", "-q", url, "HEAD:refs/heads/%s" % branch, remote=True)
     out = os.path.join(shipment, "out")
     try:
-        workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes)
+        if not workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes):
+            return None                 # no run will appear: do not wait out the deadline for it
         deadline = time.time() + (timeout_minutes + 15) * 60
         while time.time() < deadline:
             time.sleep(poll)

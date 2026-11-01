@@ -424,10 +424,10 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
     k = it.policy_pass_of(n) if role == "policymaker" else 1
     for _ in range(PUSH_TRIES):
         c.sync_main()
-        c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
         existing = it.applied("changes", it.change_id(n, k))
-        if existing:
+        if existing:        # a merged session's branch is gone
             return dict(res, result="merged", change=existing)
+        c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
         branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
         if checked_commit and branch_sha != checked_commit:
             return dict(res, result="verification-stale", detail="The task branch changed after the verified snapshot.")

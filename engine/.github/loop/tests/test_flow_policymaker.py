@@ -601,7 +601,7 @@ class PolicymakerFailureTest(Flow):
                 self.finish(k)
             self.assertEqual(len(calls), 1)
             pol = self.session_issue("policymaker")
-            c.list_issues = lambda state="open", labels=(): [x for x in listed(state, labels) if x["number"] != pol]
+            c.list_issues = lambda state="open", labels=(), limit=None: [x for x in listed(state, labels, limit) if x["number"] != pol]
             self.w.session(pol)
             self.assertEqual(len(calls), 1)
         finally:

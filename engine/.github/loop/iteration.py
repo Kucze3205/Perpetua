@@ -104,7 +104,7 @@ def policymaker_sessions(limit=5, latest=None):
     """The latest Policymaker sessions that ran, newest first, and how they ended. An issue closed before its session
     started (the E2E probe's, say) has no report and is no session. `latest`: a session that just ended, which the list of
     closed issues may not return yet."""
-    numbers = {x["number"] for x in c.list_issues(state="closed", labels=("role:policymaker",))}
+    numbers = {x["number"] for x in c.list_issues(state="closed", labels=("role:policymaker",), limit=3 * limit)}
     out = []
     for n in sorted(numbers | ({latest} if latest else set()), reverse=True):
         status = c.report_fields(n).get("status")
@@ -147,7 +147,7 @@ def build_state(n):
     idx = index_lines()
     goal = read_text("goal/goal.md")
     gate = read_text("goal/gate.yml")
-    closed = c.list_issues(state="closed", labels=(requests.REQ,))[:10]
+    closed = c.list_issues(state="closed", labels=(requests.REQ,), limit=10)
     return {
         "schema_version": 1, "iteration": n, "engine_version": c.engine_version(),
         "policy_rev": policy_rev(), "evaluator_rev": evaluator_rev(),
@@ -267,7 +267,7 @@ def stored_state(n, directory, role=None):
 # ---------------------------------------------------------------- starting an iteration
 
 def next_number():
-    nums = [iteration_number(x) for x in c.list_issues(state="all", labels=(MAP,))]
+    nums = [iteration_number(x) for x in c.list_issues(state="all", labels=(MAP,), limit=5)]
     files = [int(os.path.basename(f)[:4]) for f in record_files()]
     done = [x for x in nums + files if x is not None]
     return max(done) + 1 if done else 0
@@ -276,7 +276,7 @@ def next_number():
 def closed_without_record():
     """The number of the latest iteration when its issue was closed but no record was written (closed by hand, or the
     closing died); else None."""
-    issues = c.list_issues(state="all", labels=(MAP,))
+    issues = c.list_issues(state="all", labels=(MAP,), limit=5)
     nums = [iteration_number(x) for x in issues]
     if not nums or max(nums) in [iteration_number(x) for x in issues if x["state"] == "open"]:
         return None
@@ -407,7 +407,7 @@ def note_long_policy_phase(n, passes):
     """Informational only: nothing waits on it, and the owner's answer changes nothing. Once per iteration, even if answered."""
     k, ref = c.cfg()["policy_passes_notice"], "policy-passes-%s" % n
     if not k or passes < k or any(c.marker(x["body"], "request-ref") == ref
-                                  for s in ("open", "closed") for x in c.list_issues(state=s, labels=(requests.REQ + ":notice",))):
+                                  for x in c.list_issues(state="all", labels=(requests.REQ + ":notice",), limit=100)):
         return
     requests.open_request("notice", "Policy phase of iteration %s: %s passes" % (n, passes),
                  "The Policymaker has run %s passes in this iteration's policy phase; each pass is a session with its ordered sessions." % passes,
@@ -862,7 +862,7 @@ def check_goal():
 
 def confirmation_declined(ref):
     return any(c.marker(x["body"], "request-ref") == ref and x.get("state_reason") == "not_planned"
-               for x in c.list_issues(state="closed", labels=(requests.REQ + ":result-confirmation",)))
+               for x in c.list_issues(state="closed", labels=(requests.REQ + ":result-confirmation",), limit=100))
 
 
 def parse_verdict(stdout):

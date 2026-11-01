@@ -55,6 +55,21 @@ class ReportTest(unittest.TestCase):
             os.unlink(path)
 
 
+class ListIssuesTest(unittest.TestCase):
+    def test_a_limit_is_one_call_for_the_newest_issues_without_pull_requests(self):
+        asked = []
+        page = [{"number": 9}, {"number": 8, "pull_request": {}}, {"number": 7}]
+        c_api, c_list = c.api, c.api_list
+        c.api = lambda path, *a, **k: asked.append(path) or page
+        c.api_list = lambda path: self.fail("the limit reads no further pages")
+        try:
+            self.assertEqual([x["number"] for x in c.list_issues(state="all", labels=("loop:map",), limit=2)], [9, 7])
+        finally:
+            c.api, c.api_list = c_api, c_list
+        self.assertEqual(len(asked), 1)
+        self.assertIn("per_page=2", asked[0])
+
+
 class PublishTest(unittest.TestCase):
     def setUp(self):
         self.w = fakes.World()

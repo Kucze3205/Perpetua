@@ -221,11 +221,14 @@ def label_names(i):
     return {l["name"] if isinstance(l, dict) else l for l in i["labels"]}
 
 
-def list_issues(state="open", labels=()):
-    q = "repos/%s/issues?state=%s&per_page=100" % (REPO, state)
+def list_issues(state="open", labels=(), limit=None):
+    """Issues of a label, newest first. Without `limit` every page is read, which costs more with each iteration of the
+    loop: ask for the newest `limit` (one call, at most 100) whenever the answer is among them."""
+    q = "repos/%s/issues?state=%s&per_page=%s" % (REPO, state, min(limit, 100) if limit else 100)
     if labels:
         q += "&labels=" + ",".join(urllib.parse.quote(l, safe=":") for l in labels)      # `loop:iteration 3` has a space
-    return [x for x in api_list(q) if "pull_request" not in x]
+    found = api(q) if limit else api_list(q)
+    return [x for x in found if "pull_request" not in x][:limit]
 
 
 def recent_closed(limit=30):

@@ -1,0 +1,291 @@
+{
+ "schema_version": 1,
+ "iteration": 16,
+ "status": "failed",
+ "failure": "the shaper produced no valid task graph",
+ "started": "2026-11-01T09:09:54Z",
+ "ended": "2026-11-01T09:17:10Z",
+ "engine_version": "0.5.0",
+ "input_state": {
+  "schema_version": 1,
+  "iteration": 16,
+  "engine_version": "0.5.0",
+  "policy_rev": "layered-v1:904d0a98ef99ad1106a4131e07dd4ff66af5a0a3d6361e155a87edb82da08ff4",
+  "evaluator_rev": "e3f5aa8b05a7aa76e3e5324b19cbcbd89cb4fab6",
+  "goal": {
+   "text": "# Goal\n\nCreate two files, and nothing else:\n\n1. `src/greeting.txt` containing the single line `hello from perpetua`.\n2. `src/farewell.txt` containing the single line `goodbye after iteration N`, where N is the number of the iteration in\n   which `src/greeting.txt` was merged. N must be a closed iteration with a record `iterations/NNNN.json`; an iteration\n   has no record until it closes, so this file can only be written in a later iteration than the first one.\n\nEach file is checked by the change gate (`policy/evaluator/gate.py`).\n",
+   "gate_accepted": false,
+   "gate": null
+  },
+  "policy_params": {
+   "shaper": "orchestrator",
+   "criterion": "shortest wall-clock time to the goal",
+   "models": {
+    "default": "claude-haiku-5-5",
+    "opus": "claude-haiku-5-5"
+   },
+   "efforts": [
+    "low",
+    "medium",
+    "high"
+   ],
+   "ceilings": {
+    "job_minutes": 240,
+    "iteration_minutes": 60,
+    "max_turns": 150
+   },
+   "policymaker_triggers": {
+    "every_iterations": 1,
+    "no_progress": null
+   },
+   "limits": {
+    "fix_rounds": 2,
+    "successor_generations": 3,
+    "merge_conflict_retries": 3,
+    "backoff_hours": [
+     1,
+     5,
+     24
+    ]
+   },
+   "cadence": {
+    "min_interval_minutes": null,
+    "daily_iterations": null
+   },
+   "policymaker_only_roles": [
+    "evaluator",
+    "audit"
+   ],
+   "audit_exports_window": 3,
+   "stream_retention_iterations": 8,
+   "startup_token_warning": 100000,
+   "policymaker_session": {
+    "model": "claude-haiku-5-5",
+    "effort": "low",
+    "max_turns": 30,
+    "timeout_minutes": 10
+   }
+  },
+  "engine_params": {
+   "no_progress_iterations": null,
+   "quiet_minutes": null,
+   "owner_wait_counts": null
+  },
+  "limits": {
+   "tools": [
+    "Read",
+    "Grep",
+    "Glob",
+    "Write",
+    "Edit",
+    "Skill",
+    "Bash(git:*)",
+    "Bash(python3:*)",
+    "Bash(echo:*)",
+    "Bash(printf:*)",
+    "Bash(mkdir:*)"
+   ]
+  },
+  "gate": {
+   "kind": "script",
+   "command": "python3 policy/evaluator/gate.py",
+   "timeout_minutes": 120,
+   "env_passthrough": []
+  },
+  "owner_requests": {
+   "open": [],
+   "recently_closed": [
+    {
+     "number": 252,
+     "kind": "notice",
+     "title": "policy/ rolled back",
+     "answer": "completed"
+    },
+    {
+     "number": 162,
+     "kind": "question",
+     "title": "Goal met: confirm src/greeting.txt and src/farewell.txt are the whole goal",
+     "answer": "completed"
+    }
+   ]
+  },
+  "no_progress": 0,
+  "policymaker_sessions": [
+   {
+    "issue": 303,
+    "status": "done"
+   },
+   {
+    "issue": 299,
+    "status": "done"
+   },
+   {
+    "issue": 295,
+    "status": "done"
+   },
+   {
+    "issue": 272,
+    "status": "done"
+   },
+   {
+    "issue": 265,
+    "status": "done"
+   }
+  ],
+  "outboxes": [],
+  "audit_report": null,
+  "audit_rev": null,
+  "startup_notices": []
+ },
+ "policy": {
+  "rev_start": "layered-v1:1b4339b442117499f0daf8ed51d33e84e47d426bf9063acd4ef02ea7507918b4",
+  "rev_end": "layered-v1:904d0a98ef99ad1106a4131e07dd4ff66af5a0a3d6361e155a87edb82da08ff4",
+  "commit_end": "85cf4c6d9117c38e68f16236582004f898a7ad2b",
+  "orders_refused": null,
+  "session": 303,
+  "trigger": "every 1 iterations",
+  "passes": 1,
+  "changes": [
+   {
+    "id": "change-303",
+    "issue": 303,
+    "role": "policymaker",
+    "base_commit": "f8129335625e699318e2f6c8b7ccdb434c31b522",
+    "applied_base_commit": "be1539682b641d6aca740650e3ba7623aca066d7",
+    "accepted_commit": "b9223fe93a43f6fef9fcfe7a3390ae0bb5ef7302",
+    "policy_rev_before": "layered-v1:1b4339b442117499f0daf8ed51d33e84e47d426bf9063acd4ef02ea7507918b4",
+    "policy_rev_after": "layered-v1:904d0a98ef99ad1106a4131e07dd4ff66af5a0a3d6361e155a87edb82da08ff4",
+    "changed_paths": [
+     "policy/working-memory.md"
+    ],
+    "verifier_issue": null,
+    "applied_at": "2026-11-01T09:13:56Z"
+   }
+  ]
+ },
+ "decided_by": "orchestrator",
+ "tasks": [],
+ "outcome": {
+  "sessions": [
+   {
+    "issue": 304,
+    "role": "orchestrator",
+    "model": "claude-haiku-5-5",
+    "effort": "low",
+    "startup": {
+     "status": "ok",
+     "model": "claude-haiku-5-5",
+     "tokens": 6233,
+     "limit": 100000
+    },
+    "report_snapshots": [
+     ".github/loop/data/session-reports/304/8397caa830e6708514c1b42985ba350ad94b7258953c1c88ee55f964484fb608.json"
+    ],
+    "status": "partial",
+    "verdict": null,
+    "improved": false,
+    "merged": true,
+    "branch": "task/304",
+    "commit": "bf08e42",
+    "tokens": {
+     "in": 12,
+     "out": 2521,
+     "cache_read": 93770,
+     "cache_write": 9035
+    },
+    "models": {
+     "claude-haiku-5-5": {
+      "cache_read": 93770,
+      "cache_write": 9035,
+      "in": 12,
+      "out": 2521
+     }
+    },
+    "turns": 13,
+    "peak_context": 19765,
+    "attempts": 0,
+    "agent_s": 17,
+    "gate_s": 0,
+    "total_s": 37,
+    "parked_s": 0,
+    "runner": "Linux",
+    "artifacts": 0,
+    "stream": "stream-0016-304"
+   }
+  ],
+  "shaper": {
+   "issue": 304,
+   "role": "orchestrator",
+   "model": "claude-haiku-5-5",
+   "effort": "low",
+   "startup": {
+    "status": "ok",
+    "model": "claude-haiku-5-5",
+    "tokens": 6233,
+    "limit": 100000
+   },
+   "report_snapshots": [
+    ".github/loop/data/session-reports/304/8397caa830e6708514c1b42985ba350ad94b7258953c1c88ee55f964484fb608.json"
+   ],
+   "status": "partial",
+   "verdict": null,
+   "improved": false,
+   "merged": true,
+   "branch": "task/304",
+   "commit": "bf08e42",
+   "tokens": {
+    "in": 12,
+    "out": 2521,
+    "cache_read": 93770,
+    "cache_write": 9035
+   },
+   "models": {
+    "claude-haiku-5-5": {
+     "cache_read": 93770,
+     "cache_write": 9035,
+     "in": 12,
+     "out": 2521
+    }
+   },
+   "turns": 13,
+   "peak_context": 19765,
+   "attempts": 0,
+   "agent_s": 17,
+   "gate_s": 0,
+   "total_s": 37,
+   "parked_s": 0,
+   "runner": "Linux",
+   "artifacts": 0,
+   "stream": "stream-0016-304"
+  },
+  "verdict": {
+   "value": "none",
+   "issuer": "script",
+   "evaluator_rev": "e3f5aa8b05a7aa76e3e5324b19cbcbd89cb4fab6",
+   "improved": false
+  },
+  "tokens": {
+   "in": 12,
+   "out": 2521,
+   "cache_read": 93770,
+   "cache_write": 9035,
+   "by_model": {
+    "claude-haiku-5-5": {
+     "in": 12,
+     "out": 2521,
+     "cache_read": 93770,
+     "cache_write": 9035
+    }
+   }
+  },
+  "limit_hits": 0,
+  "wall_s": 436,
+  "critical_path_s": 0,
+  "width": 0,
+  "owner_requests": {
+   "opened": [],
+   "open_at_close": []
+  }
+ },
+ "evaluator_verifications": []
+}

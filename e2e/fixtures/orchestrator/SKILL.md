@@ -1,6 +1,9 @@
 ---
 name: orchestrator
 description: "The loop's shaper. Decides what one iteration does and writes its task graph (roles, edges, limits); keeps a journal. Loaded when a task has the label `role:orchestrator`."
+startup:
+  - .session/loop-state.json
+  - .session/capabilities.json
 ---
 
 # Orchestrator

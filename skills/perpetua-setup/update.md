@@ -43,7 +43,6 @@ Decide routine cases yourself and list them in the report. Ask the owner only wh
 
 - `python3 -m unittest discover -s .github/loop/tests` (needs `git`, `bash` and `pyyaml`; no container or namespace support).
   Fix failures the merge caused. Report environment skips separately; a skip is not a pass.
-- `python3 .github/loop/setup_roles.py validate` passes.
 
 ## 6. Commit
 
@@ -61,7 +60,7 @@ If the default branch moved meanwhile, rebase `perpetua/update` onto it and re-r
 
 ## 8. Baseline and restart
 
-If the report's `definitions` is not empty, the managed definitions changed and `setup-baseline` must move. Show the owner that list and ask once to move it. On yes: `git tag -f setup-baseline HEAD && git push -f origin setup-baseline`. Then `python3 .github/loop/setup_roles.py validate --baseline setup-baseline` must pass. A change outside the definitions keeps the tag.
+If the report's `definitions` is not empty, the managed definitions changed and `setup-baseline` must move. Show the owner that list and ask once to move it. On yes: `git tag -f setup-baseline HEAD && git push -f origin setup-baseline`. A change outside the definitions keeps the tag. Either way `python3 .github/loop/setup_roles.py validate --baseline setup-baseline` must pass.
 
 Restore `AUTOPILOT` to the value from step 2. If it is `on`, run `gh workflow run watchdog.yml`: the schedule alone can take hours to start.
 

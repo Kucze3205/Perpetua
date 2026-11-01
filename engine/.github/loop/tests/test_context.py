@@ -35,6 +35,14 @@ class ContextTest(sessions.SessionCase):
         self.assertEqual(json.loads(read(os.path.join(work, ".session/loop-state.json")))["trigger"],
                          "inspect costs")
 
+    def test_engine_commit_holds_only_the_paths_it_was_given(self):
+        os.makedirs("stray/__pycache__", exist_ok=True)
+        with open("stray/__pycache__/x.pyc", "w") as fh:
+            fh.write("compiled")
+        c.commit_main({"iterations/0000.json": "{}"}, "stray files stay out")
+        changed = c.git(".", "show", "--name-only", "--format=", "HEAD").stdout.split()
+        self.assertEqual(changed, ["iterations/0000.json"])
+
     def test_long_history_is_searchable_offline_without_loading_the_full_index(self):
         files = {}
         for n in range(180):

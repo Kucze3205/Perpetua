@@ -190,6 +190,16 @@ class FirstPolicymakerTest(Flow):
         self.assertNotEqual(policy["rev_end"], rev)
         self.assertEqual((policy["session"], policy["trigger"]), (pol, "the first iteration of the loop"))
 
+    def test_the_change_merges_in_its_iteration_when_the_label_filter_lags(self):
+        self.hub.lagging_label = "awaiting:iteration"
+        it.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: faster" + chr(10)})
+        self.assertIn("faster", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.hub.issues[pol]["state"], "closed")
+        cur = self.open_iteration()
+        self.assertEqual(it.read_state(cur["number"])["policy_params"]["criterion"], "faster")
+
     def test_the_orders_alone_make_an_iteration_when_no_shaper_is_set(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()

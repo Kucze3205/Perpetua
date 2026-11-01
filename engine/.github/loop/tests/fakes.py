@@ -28,6 +28,7 @@ class FakeHub:
     def __init__(self):
         self.base = datetime.now(timezone.utc)
         self.tick = 0
+        self.lagging_label = None
         self.issues = {}
         self.cmts = {}
         self.deps = []                      # (blocked, blocker)
@@ -57,6 +58,8 @@ class FakeHub:
         return self._view(self.issues[int(n)])
 
     def list_issues(self, state="open", labels=(), limit=None):
+        if self.lagging_label in labels:
+            return []                       # GitHub's label-filtered list does not return a label added a moment ago
         out = [self._view(x) for x in self.issues.values()
                if (state == "all" or x["state"] == state) and set(labels) <= x["_labels"]]
         out = sorted(out, key=lambda x: x["number"])

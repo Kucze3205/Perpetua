@@ -807,7 +807,8 @@ def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):
     the tasks it ordered with `wake`, so it waits (`awaiting:orders`). One that `defers(number)` is not merged yet: it waits
     the same way."""
     merged = []
-    for x in sorted(c.list_issues(labels=("role:policymaker", "awaiting:iteration")), key=lambda x: x["number"]):
+    held = [x for x in c.list_issues(labels=("role:policymaker",)) if "awaiting:iteration" in c.label_names(x)]     # a filter on the new label lags
+    for x in sorted(held, key=lambda x: x["number"]):
         if defers(x["number"]):
             c.update_report(x["number"], {"status": "done", "deferred": "true"}, "Its changes merge at the end of the policy phase.")
             c.edit_labels(x["number"], add=["awaiting:orders"], remove=["awaiting:iteration"])

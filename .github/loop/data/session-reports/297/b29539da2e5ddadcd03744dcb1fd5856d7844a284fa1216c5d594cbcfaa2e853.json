@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/297\niteration: 14\nrunner: Linux\ncause: terminal_reason=completed\nturns: 9\npeak_context: 14356\ntokens_in: 12\ntokens_out: 1532\ncache_read: 70362\ncache_write: 9555\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":70362,\"cache_write\":9555,\"in\":12,\"out\":1532}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 12\ntotal_s: 29\ncommit: 2f8eb56\ngate_s: 36\nverdict: accepted\nimproved: true\ndetail: goal points 0 -> 1 of 2\nmerged: true\nstatus: done\n```\nCreated `src/greeting.txt` containing exactly `hello from perpetua` followed by a newline.\n\n- Read back with `cat -A`: `hello from perpetua$` (single line, LF ending).\n- Verification command from `## Verification` ran and exited 0.\n- `git status --untracked-files=all` shows only `src/greeting.txt` as new; no other file was created or changed.\n- No files outside `src/greeting.txt` were touched.\n",
+  "comment": 6555805144,
+  "issue": 297,
+  "snapshot": "492f8d17a0cc9407e95866e58c4f2483da7b3dcc029372faa93b01ae3c0761e2",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/297#issuecomment-6555805144"
+ },
+ "schema_version": 1
+}

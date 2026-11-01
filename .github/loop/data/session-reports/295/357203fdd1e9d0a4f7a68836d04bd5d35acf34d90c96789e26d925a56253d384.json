@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/295\niteration: 14\nrunner: Linux\ncause: terminal_reason=completed\nturns: 9\npeak_context: 21456\ntokens_in: 10\ntokens_out: 2161\ncache_read: 75682\ncache_write: 21454\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":75682,\"cache_write\":21454,\"in\":10,\"out\":2161}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 14\ntotal_s: 33\ncommit: 00b98b9\nmerged: true\nstatus: done\n```\nIteration 0014 Policymaker session. No changes to `execution/` or `policy/`, and no orders.\n\n- Loop state has no closed iteration (`iterations: []`), no audit report, no pending suggestions and no open owner requests. None of these gives evidence for a change.\n- Ordering work now would be busywork with no expected gain, so I placed none.\n- Updated `policy/working-memory.md` with the current state, this decision, open questions (including the crash of session 244, cause not in loop state) and the next checkpoint: the first closed iteration record.\n- Expected effect: none this iteration. Next check: the first closed iteration record and whether an audit is ordered.\n\nWaiting for the iteration to continue: then `policy/` merges.\n",
+  "comment": 6555746004,
+  "issue": 295,
+  "snapshot": "3ecb8c6143d0284fa1392975380235245ce472a04ce663be899bb94283f7afd8",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/295#issuecomment-6555746004"
+ },
+ "schema_version": 1
+}

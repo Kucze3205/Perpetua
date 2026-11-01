@@ -53,7 +53,7 @@ _Avoid_: success metric, stop condition
 One unit of the loop's work: a plan executed as one or more parallel jobs,
 ending in a verdict on what it produced. Exploring a wrong solution counts.
 It has two phases. In the policy phase, which a due trigger opens (always in
-the first iteration), one Policymaker session runs in passes: it changes policy
+the first iteration and after a failed one), one Policymaker session runs in passes: it changes policy
 and orders work, and, when it asks to wake, is resumed with a clean context when
 that work has ended, until a pass does not wake. The execution phase then runs the
 shaper's graph on the organization the policy phase produced. With no trigger due there is no policy phase and the iteration runs on
@@ -96,11 +96,15 @@ _Avoid_: agent, policymaker
 The agent in the policy layer that manages the loop's architecture by creating
 and revising policy, including skills in both layers and its own skill. It does
 not perform the implementation layer's work or change protected engine contracts.
-It opens an iteration when a trigger is due (always in the first), and decides how
+It opens an iteration when a trigger is due (always in the first and after a failed
+one, because the policy did not work), and decides how
 the implementation layer is organized, including the orders that become tasks and
 the order in which they run.
-It reads the results of its policy-layer orders and decides what next; the engine
-does not limit how many passes that takes.
+It reads the results of its orders and decides what next; the engine
+does not limit how many passes that takes. Within its session it may check that
+the engine would run the policy it wrote without refusing anything, and correct it
+before the execution phase runs on it. The check judges structure, not what model
+sessions will produce.
 _Avoid_: policy, politician, strategy, scheduler
 
 **Policy layer**:

@@ -8,7 +8,8 @@ deterministic rule, or remove it), the roles and the parameters.
 
 You do not run every iteration. The engine calls you at the start of an iteration when a trigger fires (the reason is
 in `trigger` in the state; until one of your sessions has ended `done`, you run at the start of every iteration); that
-iteration waits for you. An iteration has two phases. In the policy phase you run in passes, all on one issue and branch:
+iteration waits for you. After a failed iteration you are always called: the policy did not work, `trigger` names the
+failure, and the managed definitions are already rolled back to the last good state. An iteration has two phases. In the policy phase you run in passes, all on one issue and branch:
 a session that orders tasks with `"wake": true` runs again when they have ended. The execution phase (the shaper's graph)
 starts when a session does not wake. A finished session is not an applied change: the engine applies accepted changes
 when the session ends, before it starts what you ordered (see `merge` below). Pending acceptance or evaluator verification
@@ -41,7 +42,8 @@ Your editable work instructions are staged in `.session/role/SKILL.md`.
 `"wake": true`. The engine starts all valid orders when your session ends; the order of work comes from `blocked_by`,
 not from a fixed sequence of passes. With a shaper, you order only roles in `policymaker_only_roles` (the evaluator,
 the audit) and they run beside the shaper's graph. With `shaper: null`, you plan the iteration through orders of any
-registered role except yourself; they are the iteration's only tasks. No shaper and no valid orders fails the iteration.
+registered role except yourself; they are the iteration's only tasks. No shaper and no valid orders fails the iteration,
+so `shaper: null` needs you at every iteration (`policymaker_triggers.every_iterations: 1`).
 With `"wake": true` the iteration waits: after every task you ordered has ended, in any status, you run again on the same
 issue and branch, with a fresh context (`policy_pass` in the state, the merged files in the repository), and may order
 more. Without it the shaper starts at once and you do not run again in this iteration.
@@ -54,6 +56,22 @@ at the end of the policy phase.
 
 You may tune `policy/params.yml` `policymaker_session` within the owner's `engine.yml`
 `policymaker_session_ceilings`. Engine permissions, tools and safeguards remain owner configuration.
+
+## Organizing the execution phase
+
+The engine imposes no shape on it. `shaper` names the role that writes each iteration's task graph: a model role with
+its local skill, or a script role (`agent: false` and a `command` in `execution/profiles.yml`) that reads
+`.session/loop-state.json` and `.session/capabilities.json`, writes `.session/tasks.json` and exits 0. A script shaper
+lets your policy run iterations without any model planning them and without you; you are called again when a trigger
+is due or an iteration fails. Or `shaper: null`, with you ordering every iteration's work.
+
+## Checking your policy
+
+Before you end the session, check that the engine would run what you wrote without refusing it. Run your policy scripts
+with `python3` on a facts file in the format their docstrings describe, and check each prints the object the engine
+expects; run a script shaper's command and check its `.session/tasks.json` against the task-graph rules of the
+protocol (roles with profiles, aliases and efforts from the params, ceilings, at most 50 tasks). This checks structure,
+not what model sessions will produce. Whatever you miss fails the iteration that runs it and calls you back.
 
 ## What you never do
 

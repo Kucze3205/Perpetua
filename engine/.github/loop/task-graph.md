@@ -10,7 +10,8 @@ Each report JSON has `issue`, `source` (comment URL), `snapshot`
 ## The task graph (shaper and Policymaker only)
 
 The shaper writes `.session/tasks.json`; the engine creates the issues and the blocking edges. A script role
-(a deterministic rule) writes the same file. The Policymaker writes its orders in the same format to `.session/orders.json`, with an optional `"wake": true` (run again after the ordered tasks end).
+(a deterministic rule: `agent: false` and a `command` in `execution/profiles.yml`, named by `shaper` in
+`policy/params.yml`) writes the same file and exits 0; a missing or invalid file fails the iteration. The Policymaker writes its orders in the same format to `.session/orders.json`, with an optional `"wake": true` (run again after the ordered tasks end).
 
 ```json
 {"tasks": [

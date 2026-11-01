@@ -62,8 +62,8 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 1. **Start.** The watchdog or previous close starts an iteration if cadence allows.
    The trigger rule is `policy/policymaker-trigger.py`: the engine writes facts, the script runs in the tokenless job and
    prints `{"reason": "..."}` or `{"reason": null}` (at most 4 KB). Invalid output fails the iteration and rolls `execution/` and
-   `policy/` back. Whatever the script returns, the engine keeps one open Policymaker at a time and calls one at every iteration
-   until a session ended `done`.
+   `policy/` back. Whatever the script returns, the engine keeps one open Policymaker at a time, calls one at every iteration
+   until a session ended `done`, and calls one at the iteration after a failed one (the trigger names the failure).
 2. **Policy phase.** When due, the Policymaker session opens the iteration and writes proposed
    definitions and orders. `apply_policy` admits the completed candidate when the session ends
    (or, if it says `"merge": "later"` and waits for its orders, at the end of the phase); completion alone does not activate it.
@@ -75,11 +75,12 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    once) roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
    With no trigger due there is no policy phase.
 3. **Shape.** The execution phase. The optional execution shaper reads the staged state and writes
-   `.session/tasks.json`. It may be a model orchestrator or a script. The engine
+   `.session/tasks.json`. The engine
    validates and creates graph issues, blocking edges and consent requests. A graph the engine accepts also goes to
    `policy/graph-rules.py`, if present, which may add refusals (see [layer rules](managed-resources.md#layer-rules-and-activation-validation)).
-   Accepted Policymaker orders become tasks alongside it. With `shaper: null`,
-   orders are the only tasks; no valid orders means a failed iteration and a rollback of both managed roots.
+   Accepted Policymaker orders become tasks alongside it. A shaper without a valid graph, a shaper role without a profile,
+   and, with `shaper: null`, no valid orders each fail the iteration and roll both managed roots back.
+   See [organizing an iteration](#organizing-an-iteration).
    A graph holds at most 50 tasks (shaper output and orders together); a larger one is refused with that reason and
    creates no issues.
    [Task graph](../../.github/loop/task-graph.md) defines the interface.
@@ -90,6 +91,25 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
 5. **Close.** Once no session remains open, the engine writes the immutable iteration
    record, closes the issue, prunes streams, checks progress and the goal gate,
    then starts the next iteration.
+
+## Organizing an iteration
+
+The Policymaker chooses how the execution phase is organized; the engine imposes no shape on it. `shaper` in
+`policy/params.yml` names the role that writes each iteration's task graph:
+
+- **A model shaper**: an execution role with a local skill (`execution/roles/<role>/SKILL.md`). It plans every
+  iteration from the staged state.
+- **A script shaper**: an execution role with `agent: false` and a `command` in `execution/profiles.yml`, for example
+  `planner: {agent: false, command: "python3 execution/planner.py", write: []}`. The command runs in the worker tree
+  without a model or credential, reads `.session/loop-state.json` and `.session/capabilities.json`, writes
+  `.session/tasks.json` and exits 0. A policy alone then runs the iterations: no model plans them and the Policymaker
+  is called only when a trigger is due or an iteration failed.
+- **No shaper** (`shaper: null`): the Policymaker's orders are the only tasks. An iteration without a policy phase has
+  none and fails, so this needs a Policymaker at every iteration (`policymaker_triggers.every_iterations: 1`).
+
+Whatever the shaper produces is checked by the same task-graph rules, cap and change gate. A policy that does not work
+fails its iteration through the paths above; the rollback returns the last good organization and the next iteration
+starts with the Policymaker.
 
 ## The change gate
 

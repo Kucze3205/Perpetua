@@ -255,7 +255,8 @@ class FirstPolicymakerTest(Flow):
         self.assertIn("shaper: orchestrator", self.w.origin_file("policy/params.yml"))          # back to the setup baseline
         (note,) = self.hub.by_label("owner-request:notice")
         self.assertIn("no shaper is set", note["body"])
-        state = it.read_state(self.open_iteration()["number"])
+        state = it.read_state(self.session_issue("policymaker"))           # the failure calls it into the next iteration
+        self.assertTrue(state["trigger"].startswith("iteration 0000 failed: no shaper is set"))
         self.assertIn(note["number"], [x["number"] for x in state["owner_requests"]["open"]])
 
 

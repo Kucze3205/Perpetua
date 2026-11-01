@@ -1,0 +1,38 @@
+# E2E only (lives on the test branch, never in the engine): after the one iteration, with AUTOPILOT off, stage the
+# sessions the NEXT iteration would get (Policymaker, audit, a worker with every export) on the real runner, and keep
+# their `.session/` as an artifact. Nothing is run: the issues it creates are closed unstarted.
+name: e2e-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write     # staging runs policy scripts in the tokenless job (run_tokenless dispatches tokenless.yml)
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      WORKS: ${{ github.workspace }}/probe-works
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py git-identity
+          python3 e2e/probe.py
+      - if: always()
+        run: |
+          tar -czf probe.tgz -C "$WORKS" .
+          gh release create e2e-capture --title e2e-capture --notes "Session captures of the E2E test" --target "$DEFAULT_BRANCH" || true
+          gh release upload e2e-capture probe.tgz --clobber

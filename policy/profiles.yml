@@ -1,0 +1,42 @@
+audit:
+  write:
+  - audit/**
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  - Bash(git:*)
+  - Bash(python3:*)
+  effort: low
+  max_turns: 30
+  timeout_minutes: 10
+evaluator:
+  owns_evaluator: true
+  write:
+  - policy/evaluator/**
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  - Bash(git:*)
+  - Bash(python3:*)
+  effort: low
+  max_turns: 30
+  timeout_minutes: 10
+evaluator-verifier:
+  write: []
+  tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+  - Edit
+  - Bash(git:*)
+  - Bash(python3:*)
+  effort: low
+  max_turns: 30
+  timeout_minutes: 10

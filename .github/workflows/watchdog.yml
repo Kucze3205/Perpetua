@@ -1,0 +1,40 @@
+# The watchdog: a clock outside the chain. A plain script, no agent: a watchdog session could fall to the very
+# disease it cures. It kicks before it calls; it announces an outage with a red run (a cron run e-mails the author
+# of the workflow file, the only free push channel). It also starts the first iteration after arming and sweeps
+# owner requests whose `closed` event was lost.
+name: watchdog
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py git-identity
+          python3 .github/loop/loop.py watch

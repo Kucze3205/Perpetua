@@ -1126,7 +1126,7 @@ def settle_owner_merge(t, yes):
 
 def sweep_requests():
     """The safety net for a lost `issues: closed` event."""
-    for x in c.list_issues(state="closed", labels=(requests.REQ,)):
+    for x in c.list_issues(state="closed", labels=(requests.REQ,), limit=30):
         if requests.HANDLED not in c.label_names(x):
             on_request_closed(x["number"])
 

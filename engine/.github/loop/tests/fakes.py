@@ -56,10 +56,11 @@ class FakeHub:
     def issue(self, n):
         return self._view(self.issues[int(n)])
 
-    def list_issues(self, state="open", labels=()):
+    def list_issues(self, state="open", labels=(), limit=None):
         out = [self._view(x) for x in self.issues.values()
                if (state == "all" or x["state"] == state) and set(labels) <= x["_labels"]]
-        return sorted(out, key=lambda x: x["number"])
+        out = sorted(out, key=lambda x: x["number"])
+        return out[::-1][:limit] if limit else out
 
     def create_issue(self, title, body, labels=(), assignees=()):
         n = self.next_n

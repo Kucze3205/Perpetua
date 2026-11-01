@@ -419,7 +419,7 @@ def process_proposals(text, iteration, source=None):
         ref = None
         if p["kind"] in KINDS:
             ref = "proposal-" + digest(json.dumps([source if source is not None else iteration, p], sort_keys=True))
-            if any(c.marker(x["body"], "request-ref") == ref for x in c.list_issues(state="all", labels=(REQ,))):
+            if any(c.marker(x["body"], "request-ref") == ref for x in c.list_issues(state="all", labels=(REQ,), limit=100)):
                 continue
         if request_open(p["kind"], title=p["title"]):
             continue

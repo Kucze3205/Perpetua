@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/303\niteration: 16\nrunner: Linux\ncause: terminal_reason=completed\nturns: 9\npeak_context: 22549\ntokens_in: 10\ntokens_out: 2333\ncache_read: 92693\ncache_write: 8757\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":92693,\"cache_write\":8757,\"in\":10,\"out\":2333}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 14\ntotal_s: 36\ncommit: ecc4aca\nmerged: true\nstatus: done\n```\nPolicymaker session for iteration 0016. No changes to `execution/` or `policy/`, and no orders.\n\n- Iteration 0015 closed (accepted, improved). `iterations/0015.json` exists.\n- No audit report, no pending suggestions (`suggestions: []`), no open owner requests, and no no-progress signal (`no_progress: 0`).\n- The remaining goal work (`src/farewell.txt`) is execution work for the shaper. No policy or evaluator change is needed for it.\n- Expected gain of any policy change this iteration: none measured. An order without expected gain is busywork, so none was placed.\n- `policy/working-memory.md` updated with the iteration 0016 state and decision.\n- Verification: the issue has no `## Verification` section; nothing was run beyond reading the startup documents.\n\nNext check: the next closed iteration record, or an audit report if one is ordered.\n\nWaiting for the iteration to continue: then `policy/` merges.\n",
+  "comment": 6555964140,
+  "issue": 303,
+  "snapshot": "4b38de1dfab99d0a06f2148be415d02ed7736021b4a0e36e08f188a839758aab",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/303#issuecomment-6555964140"
+ },
+ "schema_version": 1
+}

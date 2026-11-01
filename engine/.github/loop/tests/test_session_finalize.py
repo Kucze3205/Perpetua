@@ -164,7 +164,8 @@ class EpilogueTest(SessionCase):
             rounds.append((self.hub.issues[n]["state"], f.get("fixes"), f["status"], f["verification"]))
         self.assertEqual(rounds, [("open", "1", "partial", "fail"), ("open", "2", "partial", "fail"), ("closed", "2", "partial", "fail")])
         self.assertIsNone(self.w.origin_file("src/a1.txt"))
-        self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % n))
+        self.assertTrue(self.w.origin_has_ref("refs/tags/iter/0001/%s" % n))
+        self.assertFalse(self.w.origin_has_ref("refs/heads/task/%s" % n))
 
     def test_a_passing_verification_runs_in_the_candidate_tree(self):
         n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/a.txt`\n")

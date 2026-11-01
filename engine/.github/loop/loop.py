@@ -424,10 +424,10 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
     k = it.policy_pass_of(n) if role == "policymaker" else 1
     for _ in range(PUSH_TRIES):
         c.sync_main()
-        c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
         existing = it.applied("changes", it.change_id(n, k))
-        if existing:
+        if existing:        # a merged session's branch is gone
             return dict(res, result="merged", change=existing)
+        c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
         branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
         if checked_commit and branch_sha != checked_commit:
             return dict(res, result="verification-stale", detail="The task branch changed after the verified snapshot.")
@@ -1013,6 +1013,8 @@ def close_out(n, i, status, upd, prose, work=None):
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"])
     succ = spawn_successor(n, i, body) if status == "partial" else None
     c.close_issue(n, "completed" if status == "done" else "not planned")
+    if not succ:        # the successor starts from this branch
+        c.git(".", "push", "-q", "origin", "--delete", "task/%s" % n, check=False, remote=True)
     if status == "done":
         unblock(n)
     elif not succ:

@@ -479,7 +479,7 @@ def begin_shape(n, it):
     deterministic rule)."""
     shaper = c.params()["shaper"]
     if shaper not in c.profiles():
-        return fail_iteration(n, "shaper role `%s` has no profile" % shaper)
+        return fail_iteration(n, "shaper role `%s` has no profile" % shaper, rollback=True)
     s = c.create_issue("Shape iteration %s" % tag(n),
                        "Decide what iteration %s does and write its task graph.\n\nInput: `.session/loop-state.json`. "
                        "Output: `.session/tasks.json` (format: the engine contract in system instructions).\n" % tag(n),
@@ -551,15 +551,19 @@ def layer_errors(cwd, activation):
 
 
 def policymaker_due(n):
-    """Why the Policymaker opens iteration n (None: it does not, the last organization stands). The engine decides two
-    things whatever policy says: one session at a time, and until a session ended `done` every iteration starts with one
-    (it sets up how the execution layer works). Otherwise `policy/policymaker-trigger.py` decides from the engine's facts.
+    """Why the Policymaker opens iteration n (None: it does not, the last organization stands). The engine decides three
+    things whatever policy says: one session at a time, until a session ended `done` every iteration starts with one
+    (it sets up how the execution layer works), and an iteration after a failed one starts with one (the policy did not
+    work). Otherwise `policy/policymaker-trigger.py` decides from the engine's facts.
     Raises PolicyScriptError when the script's output is invalid."""
     if c.list_issues(labels=("role:policymaker",)):
         return None
     if not any(c.report_fields(x["number"]).get("status") == "done"
                for x in c.list_issues(state="closed", labels=("role:policymaker",))):
         return "the first iteration of the loop"
+    last = (records() or [None])[-1]
+    if last and last["status"] == "failed":
+        return ("iteration %s failed: %s" % (tag(last["iteration"]), last.get("failure") or "no reason recorded"))[:200]
     sessions = c.list_issues(state="all", labels=("role:policymaker",))
     last = max(sessions, key=lambda x: x["number"], default=None)
     state = (read_state(last["number"], SEEN_MARK, last=True) or read_state(last["number"]) or {}) if last else {}
@@ -668,7 +672,7 @@ def advance():
     if phase == "shape":
         s = c.issue(int(f["shape_issue"]))
         if s["state"] == "closed":
-            fail_iteration(n, "the shaper produced no valid task graph")
+            fail_iteration(n, "the shaper produced no valid task graph", rollback=True)
     elif phase == "run":
         pending = [x for x in iteration_issues(n) if x["state"] == "open" and c.roles_of(c.label_names(x))]
         if not pending:

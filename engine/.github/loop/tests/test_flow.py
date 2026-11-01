@@ -162,6 +162,10 @@ class RaceTest(Flow):
 
 
 class ShaperFailureTest(Flow):
+    def setUp(self):
+        super().setUp()
+        fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")     # an armed loop has one: a failed shaper rolls back to it
+
     def test_an_invalid_task_graph_fails_the_iteration_and_the_loop_goes_on(self):
         it.start_iteration()
         s = self.session_issue("orchestrator")
@@ -187,13 +191,52 @@ class ShaperFailureTest(Flow):
         self.w.session(self.session_issue("orchestrator"))
         self.assertEqual(self.record(0)["status"], "failed")
 
+    def test_an_invalid_task_graph_rolls_policy_back_and_calls_the_policymaker(self):
+        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "criterion: broken\n"}, "a policy that does not work")
+        c.sync_main()
+        it.start_iteration()
+        self.w.session(self.session_issue("orchestrator"), session_files={"tasks.json": tasks_json(task("a", role="nobody"))})
+        self.assertEqual(self.record(0)["status"], "failed")
+        self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))            # back to the last good state
+        nxt = self.open_iteration()
+        self.assertEqual(c.report_fields(nxt["number"])["phase"], "policy")           # the policy did not work
+        trigger = it.read_state(self.session_issue("policymaker"))["trigger"]
+        self.assertEqual(trigger, "iteration 0000 failed: the shaper produced no valid task graph")
+
     def test_three_failed_iterations_in_a_row_stop_the_loop_with_an_outage(self):
         it.start_iteration()
         for k in range(3):
+            pol = self.session_issue("policymaker")                # each failure calls the Policymaker into the next
+            if pol:
+                self.w.session(pol)
             self.w.session(self.session_issue("orchestrator", n=k), session_files={"tasks.json": "{}"})
         self.assertEqual([r["status"] for r in it.records()], ["failed"] * 3)
         self.assertIsNone(self.open_iteration())
         self.assertEqual(len(self.hub.by_label("outage")), 1)
+
+
+class ScriptShaperTest(Flow):
+    """A policy alone runs the iterations: a script role is the shaper, no Policymaker orders anything."""
+    PROFILE = 'planner:\n  agent: false\n  command: "python3 execution/plan.py"\n  write: []\n'
+
+    def setUp(self):
+        super().setUp()
+        self.w.push_main({"execution/profiles.yml": fakes.EXECUTION_PROFILES + self.PROFILE,
+                          "policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: planner")}, "script shaper")
+        c.sync_main()
+
+    def test_a_script_shaper_runs_iterations_without_the_policymaker(self):
+        for k in range(2):
+            if k == 0:
+                it.start_iteration()
+            s = self.session_issue("planner", n=k)
+            self.assertIn("loop:shaper", c.label_names(self.hub.issue(s)))
+            work = self.w.session(s, session_files={"tasks.json": tasks_json(task("w%s" % k))})
+            self.assertTrue(os.path.exists(os.path.join(work, ".session", "loop-state.json")))      # it reads the loop's state
+            self.w.session(self.task_issue("w%s" % k), files={"src/w%s.txt" % k: "w"})
+            rec = self.record(k)
+            self.assertEqual((rec["status"], rec["decided_by"]), ("closed", "planner"))
+        self.assertEqual([x["number"] for x in self.hub.role_issues("policymaker", "all")], [0])    # only the fixture's old one
 
 
 class TaskCapTest(Flow):

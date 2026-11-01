@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/299\niteration: 15\nrunner: Linux\ncause: terminal_reason=completed\nturns: 10\npeak_context: 22764\ntokens_in: 10\ntokens_out: 2552\ncache_read: 92779\ncache_write: 8972\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":92779,\"cache_write\":8972,\"in\":10,\"out\":2552}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 17\ntotal_s: 39\ncommit: 57d6546\nstatus: done\nmerged: pending-iteration\n```\nIteration 0015 Policymaker session: no changes, no orders.\n\n- Iteration 0014 is closed (accepted, improved) and `iterations/0014.json` exists. `src/greeting.txt` is present.\n- The remaining goal step is `src/farewell.txt`, which needs N = the greeting's merge iteration. That is execution work for the shaper, so no policy change is needed for it.\n- No audit report, no pending suggestions, no open owner requests, no startup notices. Nothing in the evidence calls for a change to `execution/` or `policy/`.\n- No orders: an order without an expected gain is busywork. Expected effect of doing nothing: the shaper completes the farewell step on its own.\n- Verification: the issue has no `## Verification` section, so no command was run.\n- `policy/working-memory.md` updated with this iteration's decision and state.\n\n## What next\n- Next Policymaker run: when a new closed iteration or audit report arrives. Check whether `src/farewell.txt` exists and matches the greeting's merge iteration.\n- Avoid re-reading the full history; the state above is enough for the next cold session.\n\nWaiting for the iteration to continue: then `policy/` merges.\n",
+  "comment": 6555853580,
+  "issue": 299,
+  "snapshot": "ed48f0a8b4518d9b23d021bd91bc2cd66aee6ff99514a4ca52d734842e36a4e2",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/299#issuecomment-6555853580"
+ },
+ "schema_version": 1
+}

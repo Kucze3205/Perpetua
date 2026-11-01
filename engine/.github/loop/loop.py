@@ -1012,6 +1012,8 @@ def close_out(n, i, status, upd, prose, work=None):
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"])
     succ = spawn_successor(n, i, body) if status == "partial" else None
     c.close_issue(n, "completed" if status == "done" else "not planned")
+    if not succ:        # the successor starts from this branch
+        c.git(".", "push", "-q", "origin", "--delete", "task/%s" % n, check=False, remote=True)
     if status == "done":
         unblock(n)
     elif not succ:

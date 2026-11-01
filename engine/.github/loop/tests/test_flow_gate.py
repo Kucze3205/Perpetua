@@ -23,11 +23,13 @@ class OwnerGateTest(Flow):
         self.assertIsNone(self.w.origin_file("src/a.txt"))
         (req,) = [x for x in self.hub.by_label("owner-request:merge-acceptance")]
         self.assertEqual(self.hub.issues[req["number"]]["assignees"], ["ow"])
+        self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % t))           # the session can still come back
         self.assertIsNone(self.record(0))                                          # the iteration waits
         self.hub.answer(req["number"], True)
         loop.on_request_closed(req["number"])
         self.assertEqual(self.w.origin_file("src/a.txt"), "A")
         self.assertEqual(self.hub.issues[t]["state"], "closed")
+        self.assertFalse(self.w.origin_has_ref("refs/heads/task/%s" % t))
         self.assertEqual(self.hub.report(t)["merged"], "true")
         self.assertEqual(self.record(0)["status"], "closed")
         self.assertTrue(self.record(0)["outcome"]["verdict"]["improved"])
@@ -41,7 +43,7 @@ class OwnerGateTest(Flow):
         self.assertIsNone(self.w.origin_file("src/a.txt"))
         self.assertEqual(self.hub.report(t)["status"], "rejected")
         self.assertTrue(self.w.origin_has_ref("refs/tags/iter/0000/%s" % t))
-        self.assertTrue(self.w.origin_has_ref("refs/heads/task/%s" % t))
+        self.assertFalse(self.w.origin_has_ref("refs/heads/task/%s" % t))               # closed for good: only the tag remains
         self.assertFalse(self.record(0)["outcome"]["verdict"]["improved"])
 
     def test_a_request_is_handled_once(self):

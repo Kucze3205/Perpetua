@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/313\niteration: 0\nrunner: Windows-local-e2e\nturns: 13\ntokens_in: 45518\ntokens_out: 1745\ncache_read: 324352\ncache_write: 0\nmodel: gpt-6-luna\neffort: low\nagent_s: 88\ntotal_s: 290\ncommit: 05da6c5\nstatus: done\nmerged: pending-iteration\n```\nThe session issue is a bootstrap instruction rather than a scoped task with acceptance or verification sections. The checkout does not include `.session/loop-state.json`, so the goal state could not be read.\n\nNo managed policy or execution definitions needed changing for the greeting task. `policy/evaluator/gate.py` already awards its greeting point for `src/greeting.txt` containing `hello from perpetua`.\n\nWrote `.session/orders.json` with an empty task list. The configured shaper is `orchestrator`, and Policymaker orders with a shaper are limited to `evaluator` and `audit`; ordering the worker would violate that boundary. The orchestrator will create the goal-directed execution graph.\n\nNo task verification command was supplied in `.session/issue.md`; greeting verification belongs to the worker task created by the shaper.\n\nWaiting for the iteration to continue: then `policy/` merges and the orders start.\n",
+  "comment": 6580104855,
+  "issue": 313,
+  "snapshot": "8c884b4033171fb8f65765ab4c5b13f396b292b3041fcbdebd0becd2d626712c",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/313#issuecomment-6580104855"
+ },
+ "schema_version": 1
+}

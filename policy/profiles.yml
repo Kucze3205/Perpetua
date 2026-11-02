@@ -12,6 +12,7 @@ audit:
   effort: low
   max_turns: 30
   timeout_minutes: 10
+  model: gpt-6-luna
 evaluator:
   owns_evaluator: true
   write:
@@ -27,6 +28,7 @@ evaluator:
   effort: low
   max_turns: 30
   timeout_minutes: 10
+  model: gpt-6-luna
 evaluator-verifier:
   write: []
   tools:
@@ -40,3 +42,4 @@ evaluator-verifier:
   effort: low
   max_turns: 30
   timeout_minutes: 10
+  model: gpt-6-luna

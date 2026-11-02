@@ -57,7 +57,7 @@ policymaker:
   - policy/
 policymaker_session_ceilings:
   models:
-  - claude-haiku-5-5
+  - gpt-6-luna
   efforts:
   - low
   max_turns: 30
@@ -68,4 +68,4 @@ params:
   owner_wait_counts: null
 cadence:
   min_interval_minutes: 1000000
-  daily_iterations: null
+  daily_iterations: 1

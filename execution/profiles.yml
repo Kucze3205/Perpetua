@@ -10,6 +10,7 @@ orchestrator:
   effort: low
   max_turns: 30
   timeout_minutes: 10
+  model: gpt-6-luna
 worker:
   effort: low
   max_turns: 30
@@ -27,3 +28,4 @@ worker:
   - Bash(mkdir:*)
   write:
   - src/**
+  model: gpt-6-luna

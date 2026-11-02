@@ -1,13 +1,13 @@
 shaper: orchestrator
 criterion: shortest wall-clock time to the goal
 policymaker_session:
-  model: claude-haiku-5-5
+  model: gpt-6-luna
   effort: low
   max_turns: 30
   timeout_minutes: 10
 models:
-  default: claude-haiku-5-5
-  opus: claude-haiku-5-5
+  default: gpt-6-luna
+  opus: gpt-6-luna
 efforts:
 - low
 - medium
@@ -34,5 +34,5 @@ policymaker_only_roles:
 - evaluator
 - audit
 audit_exports_window: 3
-stream_retention_iterations: 8
+stream_retention_iterations: null
 startup_token_warning: 100000

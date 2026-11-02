@@ -1,0 +1,310 @@
+{
+ "schema_version": 1,
+ "iteration": 0,
+ "status": "closed",
+ "failure": null,
+ "started": "2026-11-02T14:45:38Z",
+ "ended": "2026-11-02T14:55:53Z",
+ "engine_version": "0.7.0",
+ "input_state": {
+  "schema_version": 1,
+  "iteration": 0,
+  "engine_version": "0.7.0",
+  "policy_rev": "layered-v1:aed4f30e0e265d31cc53864160fe9b334adfd70fbe73d405c19b97b3a536f554",
+  "evaluator_rev": "e3f5aa8b05a7aa76e3e5324b19cbcbd89cb4fab6",
+  "goal": {
+   "text": "# Goal\n\nCreate two files, and nothing else:\n\n1. `src/greeting.txt` containing the single line `hello from perpetua`.\n2. `src/farewell.txt` containing the single line `goodbye after iteration N`, where N is the number of the iteration in\n   which `src/greeting.txt` was merged. N must be a closed iteration with a record `iterations/NNNN.json`; an iteration\n   has no record until it closes, so this file can only be written in a later iteration than the first one.\n\nEach file is checked by the change gate (`policy/evaluator/gate.py`).\n",
+   "gate_accepted": false,
+   "gate": null
+  },
+  "policy_params": {
+   "shaper": "orchestrator",
+   "criterion": "shortest wall-clock time to the goal",
+   "models": {
+    "default": "gpt-6-luna",
+    "opus": "gpt-6-luna"
+   },
+   "efforts": [
+    "low",
+    "medium",
+    "high"
+   ],
+   "ceilings": {
+    "job_minutes": 240,
+    "iteration_minutes": 60,
+    "max_turns": 150
+   },
+   "policymaker_triggers": {
+    "every_iterations": 1,
+    "no_progress": null
+   },
+   "limits": {
+    "fix_rounds": 2,
+    "successor_generations": 3,
+    "merge_conflict_retries": 3,
+    "backoff_hours": [
+     1,
+     5,
+     24
+    ]
+   },
+   "cadence": {
+    "min_interval_minutes": null,
+    "daily_iterations": null
+   },
+   "policymaker_only_roles": [
+    "evaluator",
+    "audit"
+   ],
+   "audit_exports_window": 3,
+   "stream_retention_iterations": null,
+   "startup_token_warning": 100000,
+   "policymaker_session": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "max_turns": 30,
+    "timeout_minutes": 10
+   }
+  },
+  "engine_params": {
+   "no_progress_iterations": null,
+   "quiet_minutes": null,
+   "owner_wait_counts": null
+  },
+  "limits": {
+   "tools": [
+    "Read",
+    "Grep",
+    "Glob",
+    "Write",
+    "Edit",
+    "Skill",
+    "Bash(git:*)",
+    "Bash(python3:*)",
+    "Bash(echo:*)",
+    "Bash(printf:*)",
+    "Bash(mkdir:*)"
+   ]
+  },
+  "gate": {
+   "kind": "script",
+   "command": "python3 policy/evaluator/gate.py",
+   "timeout_minutes": 120,
+   "env_passthrough": []
+  },
+  "owner_requests": {
+   "open": [],
+   "recently_closed": [
+    {
+     "number": 252,
+     "kind": "notice",
+     "title": "policy/ rolled back",
+     "answer": "completed"
+    },
+    {
+     "number": 162,
+     "kind": "question",
+     "title": "Goal met: confirm src/greeting.txt and src/farewell.txt are the whole goal",
+     "answer": "completed"
+    }
+   ]
+  },
+  "no_progress": 0,
+  "policymaker_sessions": [
+   {
+    "issue": 313,
+    "status": "done"
+   }
+  ],
+  "outboxes": [],
+  "audit_report": null,
+  "audit_rev": null,
+  "startup_notices": [
+   {
+    "status": "unmeasured",
+    "model": "gpt-6-luna",
+    "tokens": null,
+    "limit": 100000,
+    "detail": "startup document unavailable to this recipient: .session/loop-state.json",
+    "role": "policymaker",
+    "issue": 313,
+    "id": "startup-policymaker-313",
+    "largest_documents_by_bytes": [
+     {
+      "path": ".session/role/SKILL.md",
+      "bytes": 4828,
+      "sha256": "1024ae902e69bf9644639acdb70a761443a206545e73cac2ed2f56d63482e961"
+     },
+     {
+      "path": ".session/issue.md",
+      "bytes": 380,
+      "sha256": "8f32f7cc3fa9758ab3cc10237d7c19f8d491ffd09b7c703984f8881b79b4b33e"
+     },
+     {
+      "path": "policy/working-memory.md",
+      "bytes": 277,
+      "sha256": "3a582f7a1bea28f76837413bba2dde3e131c5533d25e7ddab8db477c6b651f34"
+     }
+    ],
+    "presented_to": 313
+   }
+  ]
+ },
+ "policy": {
+  "rev_start": "layered-v1:aed4f30e0e265d31cc53864160fe9b334adfd70fbe73d405c19b97b3a536f554",
+  "rev_end": "layered-v1:aed4f30e0e265d31cc53864160fe9b334adfd70fbe73d405c19b97b3a536f554",
+  "commit_end": "eedb39c261f09d57288bc93b68859db067208e51",
+  "orders_refused": null,
+  "session": 313,
+  "trigger": "the first iteration of the loop",
+  "passes": 1,
+  "changes": []
+ },
+ "decided_by": "orchestrator",
+ "tasks": [
+  {
+   "id": "greeting",
+   "title": "Write the greeting file",
+   "role": "worker",
+   "body": "## Goal\nCreate `src/greeting.txt` containing exactly the single line `hello from perpetua`.\n\n## Acceptance\n- [ ] `src/greeting.txt` contains exactly `hello from perpetua` followed by a newline.\n\n## Verification\n`python3 -c \"import sys; sys.exit(open('src/greeting.txt').read() != 'hello from perpetua\\n')\"`\n\n## Context\n- The gate already recognizes this exact greeting content, as documented by the prior Policymaker report in `.session/history/sessions/313/8c884b4033171fb8f65765ab4c5b13f396b292b3041fcbdebd0becd2d626712c.md`.\n- This is iteration 0; the farewell must be written in a later iteration after this iteration closes and its record exists.\n\n## Budget\n- `src/greeting.txt`\n- `.session/history/sessions/313/8c884b4033171fb8f65765ab4c5b13f396b292b3041fcbdebd0becd2d626712c.md`",
+   "issue": 315
+  }
+ ],
+ "outcome": {
+  "sessions": [
+   {
+    "issue": 315,
+    "role": "worker",
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "startup": {
+     "status": "ok",
+     "model": "gpt-6-luna",
+     "tokens": 2971,
+     "limit": 100000
+    },
+    "report_snapshots": [
+     ".github/loop/data/session-reports/315\\9891bdf995e1aae86008db4fcf671dba4065c75c211b2275efd8fc23a62eaa59.json"
+    ],
+    "status": "crashed",
+    "verdict": null,
+    "improved": false,
+    "merged": false,
+    "branch": "task/315",
+    "commit": null,
+    "tokens": {
+     "in": 12593,
+     "out": 695,
+     "cache_read": 79232,
+     "cache_write": 0
+    },
+    "models": {},
+    "turns": 4,
+    "peak_context": 0,
+    "attempts": 0,
+    "agent_s": 38,
+    "gate_s": 0,
+    "total_s": 42,
+    "parked_s": 0,
+    "runner": "Windows-local-e2e",
+    "artifacts": 0
+   },
+   {
+    "issue": 314,
+    "role": "orchestrator",
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "startup": {
+     "status": "ok",
+     "model": "gpt-6-luna",
+     "tokens": 6320,
+     "limit": 100000
+    },
+    "report_snapshots": [
+     ".github/loop/data/session-reports/314\\87381d0ed0ebac3f01ddf280588dfbf3bb1220f714006cbb1c2ddabbe2f85fb5.json"
+    ],
+    "status": "done",
+    "verdict": null,
+    "improved": false,
+    "merged": true,
+    "branch": "task/314",
+    "commit": "0e5485f",
+    "tokens": {
+     "in": 17695,
+     "out": 1587,
+     "cache_read": 142976,
+     "cache_write": 0
+    },
+    "models": {},
+    "turns": 10,
+    "peak_context": 0,
+    "attempts": 0,
+    "agent_s": 39,
+    "gate_s": 0,
+    "total_s": 43,
+    "parked_s": 0,
+    "runner": "Windows-local-e2e",
+    "artifacts": 0
+   }
+  ],
+  "shaper": {
+   "issue": 314,
+   "role": "orchestrator",
+   "model": "gpt-6-luna",
+   "effort": "low",
+   "startup": {
+    "status": "ok",
+    "model": "gpt-6-luna",
+    "tokens": 6320,
+    "limit": 100000
+   },
+   "report_snapshots": [
+    ".github/loop/data/session-reports/314\\87381d0ed0ebac3f01ddf280588dfbf3bb1220f714006cbb1c2ddabbe2f85fb5.json"
+   ],
+   "status": "done",
+   "verdict": null,
+   "improved": false,
+   "merged": true,
+   "branch": "task/314",
+   "commit": "0e5485f",
+   "tokens": {
+    "in": 17695,
+    "out": 1587,
+    "cache_read": 142976,
+    "cache_write": 0
+   },
+   "models": {},
+   "turns": 10,
+   "peak_context": 0,
+   "attempts": 0,
+   "agent_s": 39,
+   "gate_s": 0,
+   "total_s": 43,
+   "parked_s": 0,
+   "runner": "Windows-local-e2e",
+   "artifacts": 0
+  },
+  "verdict": {
+   "value": "none",
+   "issuer": "script",
+   "evaluator_rev": "e3f5aa8b05a7aa76e3e5324b19cbcbd89cb4fab6",
+   "improved": false
+  },
+  "tokens": {
+   "in": 30288,
+   "out": 2282,
+   "cache_read": 222208,
+   "cache_write": 0,
+   "by_model": {}
+  },
+  "limit_hits": 0,
+  "wall_s": 616,
+  "critical_path_s": 42,
+  "width": 1,
+  "owner_requests": {
+   "opened": [],
+   "open_at_close": []
+  }
+ },
+ "evaluator_verifications": []
+}

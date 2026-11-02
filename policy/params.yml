@@ -1,0 +1,38 @@
+shaper: orchestrator
+criterion: shortest wall-clock time to the goal
+policymaker_session:
+  model: claude-haiku-5-5
+  effort: low
+  max_turns: 30
+  timeout_minutes: 10
+models:
+  default: claude-haiku-5-5
+  opus: claude-haiku-5-5
+efforts:
+- low
+- medium
+- high
+ceilings:
+  job_minutes: 240
+  iteration_minutes: 60
+  max_turns: 150
+policymaker_triggers:
+  every_iterations: 1
+  no_progress: null
+limits:
+  fix_rounds: 2
+  successor_generations: 3
+  merge_conflict_retries: 3
+  backoff_hours:
+  - 1
+  - 5
+  - 24
+cadence:
+  min_interval_minutes: null
+  daily_iterations: null
+policymaker_only_roles:
+- evaluator
+- audit
+audit_exports_window: 3
+stream_retention_iterations: 8
+startup_token_warning: 100000

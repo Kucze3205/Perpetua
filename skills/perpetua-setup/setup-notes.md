@@ -99,5 +99,7 @@ as described in `docs/perpetua/session-context.md`. Keep other references condit
 The initial memory organization lets the selected shaper maintain
 `journal/working-memory.md` and the Policymaker maintain `policy/working-memory.md`;
 the Policymaker may revise that organization and each role's default `exports`.
+If the owner's choices replace how the engine calls a model, for example with one process per turn, implement "Model transports" in `docs/perpetua/session-boundary.md` and check `cache_read_share` on a live session before arming: a transport that passes every test can still rewrite its whole prompt on each turn.
+
 The estimate is made by `policy/session-startup.py`; no API key is involved. A startup package over 100k tokens notifies
 the Session and Policymaker; it does not block arming or execution.

@@ -10,6 +10,14 @@ from fakes import common as c, iteration as it, loop
 REPORT = c.MARK + "\n```yaml\nstatus: done\ncommit: 9f3c1ab\n```\nProse.\n\n## What next\n- nothing\n"
 
 
+class CacheReadShareTest(unittest.TestCase):
+    def test_the_share_counts_all_context_tokens_and_not_the_output(self):
+        self.assertEqual(it.cache_read_share({"in": 10, "out": 999, "cache_read": 60, "cache_write": 30}), 0.6)
+
+    def test_no_context_tokens_is_no_share(self):
+        self.assertIsNone(it.cache_read_share({"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}))
+
+
 class ReportTest(unittest.TestCase):
     def test_fields_reads_scalars(self):
         self.assertEqual(c.fields(REPORT), {"status": "done", "commit": "9f3c1ab"})

@@ -129,6 +129,20 @@ file interfaces; scripts launch no model and consume no instruction tokens.
 not budgeted; the engine has no money limit. Policymaker tuning in
 `policy/params.yml` also respects owner ceilings in `engine.yml`.
 
+## Model transports
+
+The engine runs one `claude -p` process per session, and the CLI keeps its prompt cache working. A loop that changes
+this, for example to one stateless process per turn, must keep each request an extension of the previous one, because
+the cache matches from the start of the request up to a block boundary:
+
+- Stable parts (instructions, schema, profile) go in the system prompt, not in the message that grows.
+- Each turn of history is its own content block, with nothing fixed after the newest turn.
+- Every process of a session uses the same working directory: the Claude CLI writes that path into its system prompt.
+  A new random directory per turn alone drops the read to about 1 200 tokens per turn.
+- Cutting history moves its start, so cut in rare batches and never one turn per request.
+
+Check it on a live session: `cache_read_share` in the iteration record should stay far above a few percent.
+
 Files over `large_file_bytes` and binaries go in `.session/artifacts/`; the epilogue
 uploads release assets to `iter-NNNN` and lists them in the report. Consumers name
 them in `inputs`. Raw session streams use artifact `stream-NNNN-<issue>` and

@@ -804,7 +804,7 @@ def close_iteration(n, status, failure=None):
             "outcome": {"sessions": list(sessions.values()), "shaper": shp,
                         "verdict": {"value": value, "issuer": c.cfg()["gate"]["kind"], "evaluator_rev": evaluator_rev(),
                                     "improved": any(s["improved"] for s in work)},
-                        "tokens": dict(sums, by_model=by_model), "limit_hits": sum(s["attempts"] for s in sessions.values()), "wall_s": int((c.now() - started).total_seconds()),
+                        "tokens": dict(sums, by_model=by_model, cache_read_share=cache_read_share(sums)), "limit_hits": sum(s["attempts"] for s in sessions.values()), "wall_s": int((c.now() - started).total_seconds()),
                         "critical_path_s": critical_path(list(sessions.values()), tasks), "width": int(f.get("width", 0) or 0),
                         "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in requests.open_requests()]}},
         }
@@ -817,6 +817,12 @@ def close_iteration(n, status, failure=None):
     note_no_progress(n)
     check_goal()
     start_iteration()
+
+
+def cache_read_share(tokens):
+    """Which part of the context tokens came from the prompt cache; None when there were none."""
+    total = tokens["in"] + tokens["cache_read"] + tokens["cache_write"]
+    return round(tokens["cache_read"] / total, 3) if total else None
 
 
 def prune_streams(n):

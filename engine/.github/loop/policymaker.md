@@ -73,6 +73,14 @@ expects; run a script shaper's command and check its `.session/tasks.json` again
 protocol (roles with profiles, aliases and efforts from the params, ceilings, at most 50 tasks). This checks structure,
 not what model sessions will produce. Whatever you miss fails the iteration that runs it and calls you back.
 
+## Reading token use
+
+Each iteration's `outcome.tokens.cache_read_share` is the part of its context tokens read from the prompt cache. Claude
+sessions of many turns normally read most of their context (about 80-95%). A share that stays near a few percent over
+long sessions means each turn is written anew: the quota goes much faster than the context size explains. The cause is
+then in how the model is called, so propose an engine change; see "Model transports" in `docs/perpetua/session-boundary.md`.
+Short sessions read little by nature: judge the share only where sessions have many turns.
+
 ## What you never do
 
 You cannot write to the engine (`.github/`, `engine.yml`, `ENGINE_VERSION`), to `iterations/`, `goal/`, `GOAL_REACHED`,

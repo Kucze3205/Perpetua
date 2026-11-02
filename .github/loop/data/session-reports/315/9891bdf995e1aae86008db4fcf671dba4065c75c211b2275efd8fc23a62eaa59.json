@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/315\niteration: 0\nrunner: Windows-local-e2e\nturns: 4\ntokens_in: 12593\ntokens_out: 695\ncache_read: 79232\ncache_write: 0\nmodel: gpt-6-luna\neffort: low\nagent_s: 38\ntotal_s: 42\nstatus: crashed\n```\nPracuj� nad zadaniem po odczytaniu dokument�w startowych.\n\nThe agent left no terminal status (no cause).\n",
+  "comment": 6580268074,
+  "issue": 315,
+  "snapshot": "4d7936498f4dcfc0205e841ac4aab11875b614725465a46605bd8cb36ef4e817",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/315#issuecomment-6580268074"
+ },
+ "schema_version": 1
+}

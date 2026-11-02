@@ -1,0 +1,30 @@
+{
+ "policymaker": {
+  "status": "unmeasured",
+  "model": "gpt-6-luna",
+  "tokens": null,
+  "limit": 100000,
+  "detail": "startup document unavailable to this recipient: .session/loop-state.json",
+  "role": "policymaker",
+  "issue": 313,
+  "id": "startup-policymaker-313",
+  "largest_documents_by_bytes": [
+   {
+    "path": ".session/role/SKILL.md",
+    "bytes": 4828,
+    "sha256": "1024ae902e69bf9644639acdb70a761443a206545e73cac2ed2f56d63482e961"
+   },
+   {
+    "path": ".session/issue.md",
+    "bytes": 380,
+    "sha256": "8f32f7cc3fa9758ab3cc10237d7c19f8d491ffd09b7c703984f8881b79b4b33e"
+   },
+   {
+    "path": "policy/working-memory.md",
+    "bytes": 277,
+    "sha256": "3a582f7a1bea28f76837413bba2dde3e131c5533d25e7ddab8db477c6b651f34"
+   }
+  ],
+  "presented_to": 313
+ }
+}

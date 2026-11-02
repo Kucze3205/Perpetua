@@ -1,0 +1,18 @@
+[
+ {
+  "id": "write-greeting",
+  "title": "Write src/greeting.txt",
+  "role": "worker",
+  "model": "default",
+  "effort": "low",
+  "body": "## Goal\nCreate exactly one file, `src/greeting.txt`, containing the single line `hello from perpetua`. Write nothing else.\n## Acceptance\n- [ ] `src/greeting.txt` exists and its content is exactly `hello from perpetua` followed by a newline\n- [ ] no other file is created or changed\n## Verification\n`python3 -c \"import sys; sys.exit(open('src/greeting.txt').read() != 'hello from perpetua\\n')\"`\n## Context\n- goal: `.session/loop-state.json` `goal.text` defines the file and its content\n## Budget\n- `src/greeting.txt` (the only file to write)",
+  "blocked_by": [],
+  "start_branch": null,
+  "limits": {
+   "timeout_minutes": 20,
+   "max_turns": 20
+  },
+  "inputs": [],
+  "issue": 319
+ }
+]

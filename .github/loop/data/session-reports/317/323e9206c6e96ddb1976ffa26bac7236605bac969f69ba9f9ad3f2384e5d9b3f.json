@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/317\niteration: 17\nrunner: Linux\ncause: terminal_reason=completed\nturns: 8\npeak_context: 21493\ntokens_in: 8\ntokens_out: 1830\ncache_read: 56549\ncache_write: 21491\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":56549,\"cache_write\":21491,\"in\":8,\"out\":1830}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 13\ntotal_s: 76\ncommit: 6c8510e\nmerged: false\nstatus: done\n```\nIteration 0017 policy phase: no changes to `execution/` or `policy/`, no orders, no requests.\n\nEvidence from `.session/loop-state.json`:\n- `iteration: 17`, `iterations: []`, history `records: 0`: no iteration has closed yet, so there is no measurement to act on.\n- `no_progress: 0`, `policymaker_sessions` all `done`, `suggestions: []`, `suggestion_diagnostics: []`, `startup_notices: []`.\n- `owner_requests.open: []`. Goal is `gate_accepted: false`, and the gate is `policy/evaluator/gate.py`.\n- The current organization (orchestrator shaper, models and ceilings in `policy_params`) has not yet been exercised by a closed iteration, so changing it now would not be grounded in evidence.\n\nExpected effect: none in this iteration. The shaper runs on the current organization.\n\nNext check: when the first iteration closes and `iterations/NNNN.json` exists, review its outcome and update `policy/working-memory.md`.\n\n`policy/working-memory.md` is unchanged; it already states that no closed iteration has been considered.\n\nWaiting for the iteration to continue: then `policy/` merges.\n\nNo changes to merge.\n",
+  "comment": 6586155432,
+  "issue": 317,
+  "snapshot": "58054ebda6aba3350ae1783495d037357fd159b964cab0899f72f512ad60d14a",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/317#issuecomment-6586155432"
+ },
+ "schema_version": 1
+}

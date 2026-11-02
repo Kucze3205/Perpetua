@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/314\niteration: 0\nrunner: Windows-local-e2e\nturns: 10\ntokens_in: 17695\ntokens_out: 1587\ncache_read: 142976\ncache_write: 0\nmodel: gpt-6-luna\neffort: low\nagent_s: 39\ntotal_s: 43\ncommit: 0e5485f\nmerged: true\nstatus: done\n```\n## Shaped\n\nCreated `.session/tasks.json` with one `worker` task to write and verify `src/greeting.txt` as `hello from perpetua`. The prior Policymaker report confirms the gate accepts that content.\n\nThe farewell is deferred to a later iteration: no closed iteration record exists yet, and its required number is the iteration in which the greeting file was merged. The baton is recorded in [journal/0000.md](journal/0000.md).\n",
+  "comment": 6580229510,
+  "issue": 314,
+  "snapshot": "41b9c49352d0e2e90c431f0d8822e1aff5ea32b3a30d3e7ae83b0e105060362c",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/314#issuecomment-6580229510"
+ },
+ "schema_version": 1
+}

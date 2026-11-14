@@ -52,15 +52,18 @@ def steps(ev, think=False):
             mid = e["message"].get("id")
             if mid != last_msg:
                 turn, last_msg = turn + 1, mid
+            u = e["message"].get("usage") or {}
+            ctx = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+            has_tool = any(b["type"] == "tool_use" for b in e["message"]["content"])
             for b in e["message"]["content"]:
                 if b["type"] == "thinking" and think:
-                    out.append({"k": "think", "turn": turn, "at": at, "tokens": tok, "text": b.get("thinking") or ""})
+                    out.append({"k": "think", "turn": turn, "at": at, "tokens": tok, "text": b.get("thinking") or "", "mid": mid, "ctx": ctx, "tool": has_tool})
                     tok = None
                 if b["type"] == "text":
-                    out.append({"k": "say", "turn": turn, "at": at, "text": b["text"].strip()})
+                    out.append({"k": "say", "turn": turn, "at": at, "text": b["text"].strip(), "mid": mid, "ctx": ctx, "tool": has_tool})
                 elif b["type"] == "tool_use":
                     i = b["input"]
-                    s = {"k": "use", "turn": turn, "at": at, "tool": b["name"], "input": i, "result": None,
+                    s = {"k": "use", "turn": turn, "at": at, "tool": b["name"], "input": i, "result": None, "mid": mid, "ctx": ctx,
                          "path": rel(i["file_path"]) if "file_path" in i else None}
                     out.append(s)
                     calls[b["id"]] = s
@@ -70,6 +73,17 @@ def steps(ev, think=False):
                     r = b["content"]
                     calls[b["tool_use_id"]]["result"] = r if isinstance(r, str) else "\n".join(x.get("text", "") for x in r)
                     calls[b["tool_use_id"]]["done"] = at
+    # n = the session's turn number, the same count as the report's `turns`: every tool call is a turn, and so is a closing message
+    n = 0
+    for s in out:
+        if s["k"] == "use":
+            n += 1
+            s["n"] = n
+        elif s["k"] == "say" and not s["tool"]:
+            n += 1
+            s["n"] = n
+        else:
+            s["n"] = n + 1      # thinking, or words said just before the next call: part of the turn that follows
     return out
 
 
@@ -284,17 +298,23 @@ def cell(t):
 
 
 def timeline_table(st):
-    """Session timeline as one table; the model's words are rows between the tool rows. Thinking: a row, folded open-able when the CLI gives the text."""
-    L = ["### Session timeline", "", "| # | At | What |", "|--:|--:|---|"]
-    for i, s in enumerate(st, 1):
+    """Session timeline: one table, the model's words are rows between the tool rows. Thinking is a row too, always with its size."""
+    L = ["### Session timeline", "", "| Turn | At | Context | What |", "|--:|--:|--:|---|"]
+    seen = set()
+    for s in st:
         if s["k"] == "think":
-            lab = "🧠 thinking" + (" · ~%d tokens" % s["tokens"] if s["tokens"] else "")
+            tk = s["tokens"] or (len(s["text"]) // 4 if s["text"] else None)
+            lab = "🧠 thinking · %s tokens" % ("~%d" % tk if tk else "<50")
             what = "<details><summary>%s</summary><i>%s</i></details>" % (lab, cell(s["text"])) if s["text"] else lab
         elif s["k"] == "say":
             what = "💬 " + cell(s["text"])
         else:
             what = "%s **%s** `%s`" % (ICON.get(s["tool"], "🔧"), s["tool"], cell(short(arg(s), 90)))
-        L.append("| %d | +%ss | %s |" % (i, s["at"], what))
+        ctx = ""
+        if s["mid"] not in seen:        # the model's context at this call, shown once per call
+            seen.add(s["mid"])
+            ctx = fmt(s["ctx"])
+        L.append("| %d | +%ss | %s | %s |" % (s["n"], s["at"], ctx, what))
     return L
 
 
@@ -320,9 +340,7 @@ def summary(variant):
                 L.append("- [diff of `%s`](%s)" % (p, link_diff(p, sha)))
         L += ["", "<sub>cache write %s · peak context %s</sub>" % (fmt(n["cw"]), fmt(int(f["peak_context"])))]
     elif variant == "D":    # the owner's pick: B's start, C's table with what the model says between the rows, A's tree, prose last
-        L += ["## " + header(issue, f), ""] + stats_table(f) + [
-              "", "<sub>**Peak context**: the most the model had in view at one moment, i.e. the biggest single call (new + cached input). "
-              "The fuller it gets, the worse the model works. **Cache hit**: share of input read from the cache, which is cheaper than reading it fresh.</sub>", ""]
+        L += ["## " + header(issue, f), ""] + stats_table(f) + [""]
         L += timeline_table(steps(ev, think=True))
         L += ["", "### Files", "", "📌 read at start · 📖 read later · ✏️ changed", ""] + tree_lines(info, sha)
         L += ["", "### Result", "", f["_body"]]

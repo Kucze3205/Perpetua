@@ -31,3 +31,6 @@ jobs:
       - name: Summary D · the owner's mix
         run: |
           { echo "---"; echo "# Variant D · the owner's mix (B start, C table, A tree, prose last)"; python3 prototype/session-views/render.py summary D; echo; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary D · timeline when thinking text exists (sample)
+        run: |
+          { echo "---"; echo "# Variant D · timeline with thinking text (sample: older model, thinking summaries on)"; python3 prototype/session-views/render.py sample; echo; } >> "$GITHUB_STEP_SUMMARY"

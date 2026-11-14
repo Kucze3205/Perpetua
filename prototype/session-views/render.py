@@ -54,7 +54,7 @@ def steps(ev, think=False):
                 turn, last_msg = turn + 1, mid
             for b in e["message"]["content"]:
                 if b["type"] == "thinking" and think:
-                    out.append({"k": "think", "turn": turn, "at": at, "tokens": tok})
+                    out.append({"k": "think", "turn": turn, "at": at, "tokens": tok, "text": b.get("thinking") or ""})
                     tok = None
                 if b["type"] == "text":
                     out.append({"k": "say", "turn": turn, "at": at, "text": b["text"].strip()})
@@ -277,6 +277,27 @@ def transcript(st, full=True):
     return out
 
 
+def cell(t):
+    """Text inside one table cell: pipes escaped, line breaks as <br>."""
+    BS, NL = chr(92), chr(10)
+    return t.replace("|", BS + "|").replace(NL + NL, "<br><br>").replace(NL, "<br>")
+
+
+def timeline_table(st):
+    """Session timeline as one table; the model's words are rows between the tool rows. Thinking: a row, folded open-able when the CLI gives the text."""
+    L = ["### Session timeline", "", "| # | At | What |", "|--:|--:|---|"]
+    for i, s in enumerate(st, 1):
+        if s["k"] == "think":
+            lab = "🧠 thinking" + (" · ~%d tokens" % s["tokens"] if s["tokens"] else "")
+            what = "<details><summary>%s</summary><i>%s</i></details>" % (lab, cell(s["text"])) if s["text"] else lab
+        elif s["k"] == "say":
+            what = "💬 " + cell(s["text"])
+        else:
+            what = "%s **%s** `%s`" % (ICON.get(s["tool"], "🔧"), s["tool"], cell(short(arg(s), 90)))
+        L.append("| %d | +%ss | %s |" % (i, s["at"], what))
+    return L
+
+
 def summary(variant):
     ev, f, start, issue = load()
     st = steps(ev)
@@ -299,17 +320,10 @@ def summary(variant):
                 L.append("- [diff of `%s`](%s)" % (p, link_diff(p, sha)))
         L += ["", "<sub>cache write %s · peak context %s</sub>" % (fmt(n["cw"]), fmt(int(f["peak_context"])))]
     elif variant == "D":    # the owner's pick: B's start, C's table with what the model says between the rows, A's tree, prose last
-        L += ["## " + header(issue, f), "", "%s · %s · %s turns · %ss · in %s / out %s · cache read %s (**%.0f%%** hit)" %
-              (f["model"], f["effort"], f["turns"], f["agent_s"], fmt(n["in"]), fmt(n["out"]), fmt(n["cr"]), n["hit"]), ""]
-        L += ["### Session timeline", "", "| # | At | What |", "|--:|--:|---|"]
-        for i, s in enumerate(steps(ev, think=True), 1):
-            if s["k"] == "think":
-                what = "🧠 _thinking%s_" % (" · ~%d tokens" % s["tokens"] if s["tokens"] else "")
-            elif s["k"] == "say":
-                what = "💬 " + s["text"].replace("|", "\\|").replace("\n\n", "<br><br>").replace("\n", "<br>")
-            else:
-                what = "%s **%s** `%s`" % (ICON.get(s["tool"], "🔧"), s["tool"], short(arg(s), 90).replace("|", "\\|"))
-            L.append("| %d | +%ss | %s |" % (i, s["at"], what))
+        L += ["## " + header(issue, f), ""] + stats_table(f) + [
+              "", "<sub>**Peak context**: the most the model had in view at one moment, i.e. the biggest single call (new + cached input). "
+              "The fuller it gets, the worse the model works. **Cache hit**: share of input read from the cache, which is cheaper than reading it fresh.</sub>", ""]
+        L += timeline_table(steps(ev, think=True))
         L += ["", "### Files", "", "📌 read at start · 📖 read later · ✏️ changed", ""] + tree_lines(info, sha)
         L += ["", "### Result", "", f["_body"]]
     else:                   # C: everything as tables, timeline = one row per step, results only on demand
@@ -331,6 +345,15 @@ def summary(variant):
     print("\n".join(L))
 
 
+def sample():
+    """Timeline of a recording that has thinking text (older model, showThinkingSummaries on): how the folded thinking row looks when text exists."""
+    ev = [json.loads(l) for l in open(os.path.join(HERE, "data/thinking-sample.ndjson"), encoding="utf-8")]
+    print(chr(10).join(timeline_table(steps(ev, think=True))))
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
+    if sys.argv[1] == "sample":
+        sample()
+        sys.exit()
     {"log": log, "summary": summary}[sys.argv[1]](sys.argv[2])

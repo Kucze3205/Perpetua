@@ -87,34 +87,28 @@ def policy_lines(ic):
 
 def roles_table(ic):
     p = ic["input_state"]["policy_params"]
-    rows = {}
+    out = ["| Role | Model | Effort | In | Out | Cache read | Cache write |", "|---|---|---|---|---|---|---|"]
     for x in ic["outcome"]["sessions"]:
-        r = rows.setdefault(x["role"], {"s": x, "n": 0, "t": {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}})
-        r["n"] += 1
-        for key in r["t"]:
-            r["t"][key] += x["tokens"][key]
-    out = ["| Role | Model | Effort | Sessions | In | Out | Cache read | Cache write |", "|---|---|---|---|---|---|---|---|"]
-    for role, r in rows.items():
-        s0, t = r["s"], r["t"]
-        out.append(f"| {role} | {short_model(s0['model'])} | {s0['effort']} | {r['n']} | {k(t['in'])} | {k(t['out'])} | {k(t['cache_read'])} ({tokens(t)[1]:.0f}%) | {k(t['cache_write'])} |")
+        t = x["tokens"]
+        out.append(f"| {x['role']} #{abs(x['issue'])} | {short_model(x['model'])} | {x['effort']} | {k(t['in'])} | {k(t['out'])} | {k(t['cache_read'])} ({tokens(t)[1]:.0f}%) | {k(t['cache_write'])} |")
     pm = p["policymaker_session"]
-    out.append(f"| policymaker | {short_model(pm['model'])} | {pm['effort']} | – | – | – | – | – |")
+    out.append(f"| policymaker | {short_model(pm['model'])} | {pm['effort']} | – | – | – | – |")
     return "\n".join(out)
 
 
 def graph_mermaid(ic, sessions):
-    lines = ["```mermaid", "flowchart LR"]
+    lines = ["```mermaid", "%%{init: {'themeVariables': {'fontSize': '13px'}}}%%", "flowchart LR"]
     cls = {"✅": "ok", "⚠️": "warn", "❌": "bad", "🔄": "run", "⏳": "wait"}
     for t in ic["tasks"]:
         icon, label = task_status(t, sessions)
         title = t["title"].replace('"', "'")
-        lines.append(f'  {t["id"].replace("-", "_")}["{icon} {title}<br/>{t["role"]} · {label}"]:::{cls[icon]}')
+        lines.append(f'  {t["id"].replace("-", "_")}("{icon} {title}<br/>{t["role"]} · {label}"):::{cls[icon]}')
     for t in ic["tasks"]:
         for b in t.get("blocked_by") or []:
             lines.append(f'  {b.replace("-", "_")} --> {t["id"].replace("-", "_")}')
-    lines += ["  classDef ok fill:#dafbe1,stroke:#1a7f37,color:#1f2328", "  classDef warn fill:#fff8c5,stroke:#9a6700,color:#1f2328",
-              "  classDef bad fill:#ffebe9,stroke:#cf222e,color:#1f2328", "  classDef run fill:#ddf4ff,stroke:#0969da,color:#1f2328",
-              "  classDef wait fill:#f6f8fa,stroke:#8c959f,color:#1f2328", "```"]
+    lines += ["  classDef ok fill:#e9f7ee,stroke:#8fd0a3,stroke-width:1px,color:#57606a", "  classDef warn fill:#fff9db,stroke:#e0c872,stroke-width:1px,color:#57606a",
+              "  classDef bad fill:#fdeeed,stroke:#e5a3a0,stroke-width:1px,color:#57606a", "  classDef run fill:#e8f4fd,stroke:#8cc2ee,stroke-width:1px,color:#57606a",
+              "  classDef wait fill:#f6f8fa,stroke:#c4cad1,stroke-width:1px,color:#57606a", "```"]
     return "\n".join(lines)
 
 
@@ -164,12 +158,6 @@ Started {ic['started'][:16].replace('T',' ')} UTC · took {mins(ic['outcome']['w
 
 ### Policy changes
 {chr(10).join('- ' + p for p in pol) if pol else '_none this iteration_'}
-
-### Tokens and cache
-| | in | out | cache read | cache write |
-|---|---|---|---|---|
-| This iteration | {k(ic['outcome']['tokens']['in'])} | {k(ic['outcome']['tokens']['out'])} | {k(ic['outcome']['tokens']['cache_read'])} | {k(ic['outcome']['tokens']['cache_write'])} |
-| Last {len(history)} iterations | {k(all_t['in'])} | {k(all_t['out'])} | {k(all_t['cache_read'])} | {k(all_t['cache_write'])} |
 
 ### Session summaries
 {chr(10).join('- ' + (link(s['issue'], f"{s['role']} #{s['issue']}") + f" → [Session summary]({URL}/issues/{s['issue']})" if s['issue'] > 0 else s['role'] + ' (synthetic)') for s in sessions)}

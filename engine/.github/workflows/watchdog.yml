@@ -1,7 +1,7 @@
 # The watchdog: a clock outside the chain. A plain script, no agent: a watchdog session could fall to the very
 # disease it cures. It kicks before it calls; it announces an outage with a red run (a cron run e-mails the author
 # of the workflow file, the only free push channel). It also starts the first iteration after arming and sweeps
-# owner requests whose `closed` event was lost.
+# owner requests the owner has closed.
 name: watchdog
 
 on:

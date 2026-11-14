@@ -328,7 +328,10 @@ def is_unblocked(n):
 
 
 def workflow_run(workflow, **inputs):
-    """True when GitHub accepted the dispatch (a token without `actions: write` is refused)."""
+    """True when GitHub accepted the dispatch (a token without `actions: write` is refused). With AUTOPILOT off nothing
+    is dispatched: every loop workflow would start and end Skipped."""
+    if not autopilot_on():
+        return False
     args = ["workflow", "run", workflow]
     for k, v in inputs.items():
         args += ["-f", "%s=%s" % (k, v)]

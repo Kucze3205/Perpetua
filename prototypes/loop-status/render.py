@@ -88,16 +88,17 @@ def policy_lines(ic):
 def roles_table(ic):
     p = ic["input_state"]["policy_params"]
     rows = {}
-    for s in ic["outcome"]["sessions"]:
-        rows.setdefault(s["role"], s)
-    plain = [t for t in ic["input_state"]["limits"]["tools"] if "(" not in t]
-    bash = [t[5:-3] for t in ic["input_state"]["limits"]["tools"] if t.startswith("Bash(")]
-    tools = ", ".join(plain + ([f"Bash ({', '.join(bash)})"] if bash else []))
-    out = ["| Role | Model | Effort | Tools |", "|---|---|---|---|"]
-    for role, s in rows.items():
-        out.append(f"| {role} | {short_model(s['model'])} | {s['effort']} | {tools} |")
+    for x in ic["outcome"]["sessions"]:
+        r = rows.setdefault(x["role"], {"s": x, "n": 0, "t": {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}})
+        r["n"] += 1
+        for key in r["t"]:
+            r["t"][key] += x["tokens"][key]
+    out = ["| Role | Model | Effort | Sessions | In | Out | Cache read | Cache write |", "|---|---|---|---|---|---|---|---|"]
+    for role, r in rows.items():
+        s0, t = r["s"], r["t"]
+        out.append(f"| {role} | {short_model(s0['model'])} | {s0['effort']} | {r['n']} | {k(t['in'])} | {k(t['out'])} | {k(t['cache_read'])} ({tokens(t)[1]:.0f}%) | {k(t['cache_write'])} |")
     pm = p["policymaker_session"]
-    out.append(f"| policymaker | {short_model(pm['model'])} | {pm['effort']} | Read, Grep, Glob, Write, Edit |")
+    out.append(f"| policymaker | {short_model(pm['model'])} | {pm['effort']} | – | – | – | – | – |")
     return "\n".join(out)
 
 
@@ -111,9 +112,9 @@ def graph_mermaid(ic, sessions):
     for t in ic["tasks"]:
         for b in t.get("blocked_by") or []:
             lines.append(f'  {b.replace("-", "_")} --> {t["id"].replace("-", "_")}')
-    lines += ["  classDef ok fill:#dafbe1,stroke:#1a7f37", "  classDef warn fill:#fff8c5,stroke:#9a6700",
-              "  classDef bad fill:#ffebe9,stroke:#cf222e", "  classDef run fill:#ddf4ff,stroke:#0969da",
-              "  classDef wait fill:#f6f8fa,stroke:#8c959f", "```"]
+    lines += ["  classDef ok fill:#dafbe1,stroke:#1a7f37,color:#1f2328", "  classDef warn fill:#fff8c5,stroke:#9a6700,color:#1f2328",
+              "  classDef bad fill:#ffebe9,stroke:#cf222e,color:#1f2328", "  classDef run fill:#ddf4ff,stroke:#0969da,color:#1f2328",
+              "  classDef wait fill:#f6f8fa,stroke:#8c959f,color:#1f2328", "```"]
     return "\n".join(lines)
 
 
@@ -159,7 +160,7 @@ Started {ic['started'][:16].replace('T',' ')} UTC · took {mins(ic['outcome']['w
 {roles_table(ic)}
 
 ### Task graph
-{graph_table(ic, sessions)}
+{graph_mermaid(ic, sessions)}
 
 ### Policy changes
 {chr(10).join('- ' + p for p in pol) if pol else '_none this iteration_'}

@@ -138,6 +138,24 @@ def session_line(s, tasks):
 
 
 # ---- Variant A: panel (tables, everything visible at once) ---------------------------------
+def working_on(ic, sessions):
+    """Deterministic summary from existing data: the goal's first paragraph + tasks grouped by status."""
+    text = " ".join(x for x in ic["input_state"]["goal"]["text"].split() if x != "#" and x != "Goal")
+    goal = text if len(text) <= 220 else text[:217].rstrip() + "..."
+    groups = {}
+    for t in ic["tasks"]:
+        icon, label = task_status(t, sessions)
+        groups.setdefault(label, []).append(t["title"])
+    order = ["running", "waiting", "done, not merged", "merged"]
+    lines = [f"**Goal:** {goal}"]
+    for lab in sorted(groups, key=lambda x: order.index(x) if x in order else 9):
+        head_ = {"running": "Working on now", "waiting": "Waiting", "merged": "Done"}.get(lab, lab.capitalize())
+        lines.append(f"- **{head_}:** " + "; ".join(groups[lab]))
+    if not ic["tasks"]:
+        lines.append("- **No tasks yet:** the iteration has not produced a task graph")
+    return "\n".join(lines)
+
+
 def variant_a(history, ic, note=""):
     icon, st, goal = head(ic)
     sessions = ic["outcome"]["sessions"]
@@ -149,6 +167,9 @@ def variant_a(history, ic, note=""):
     return f"""{note}## {icon} Iteration {ic['iteration']} · {st} · goal {goal}
 
 Started {ic['started'][:16].replace('T',' ')} UTC · took {mins(ic['outcome']['wall_s'])} · engine {ic['engine_version']}
+
+### Working on
+{working_on(ic, sessions)}
 
 ### Active roles
 {roles_table(ic)}

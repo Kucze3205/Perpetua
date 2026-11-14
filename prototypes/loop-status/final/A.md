@@ -2,6 +2,10 @@
 
 Started 2026-11-02 19:10 UTC · took 15m 06s · engine 0.7.0
 
+### Working on
+**Goal:** Create two files, and nothing else: 1. `src/greeting.txt` containing the single line `hello from perpetua`. 2. `src/farewell.txt` containing the single line `goodbye after iteration N`, where N is the number of the it...
+- **Done:** Write src/greeting.txt
+
 ### Active roles
 | Role | Model | Effort | In | Out | Cache read | Cache write |
 |---|---|---|---|---|---|---|

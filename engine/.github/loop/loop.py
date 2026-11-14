@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 import common as c
 import managed_resources as resources
 import iteration as it
+import loop_status
 import owner_requests as requests
 import session_security as security
 import session_inputs
@@ -1304,8 +1305,17 @@ def git_identity():
         c.git(".", "config", "--global", "author.email", a["email"])
 
 
+STATUS_MOMENTS = ("epilogue", "request-closed", "watch")        # the end of a session, an owner answer, a watchdog check
+
+
 def main(argv):
-    cmd, args = argv[1], argv[2:]
+    code = command(argv[1], argv[2:])
+    if argv[1] in STATUS_MOMENTS:
+        loop_status.refresh()
+    return code
+
+
+def command(cmd, args):
     if cmd == "guard":
         return 0 if c.guard_ok() else 10
     if cmd == "probe":

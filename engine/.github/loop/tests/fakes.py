@@ -21,7 +21,8 @@ import session_artifact  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
-           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless", "probe_limit"]
+           "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless", "probe_limit",
+           "edit_issue_body", "pin_issue"]
 
 
 class FakeHub:
@@ -71,6 +72,13 @@ class FakeHub:
         self.issues[n] = {"number": n, "id": 1000 + n, "title": title, "body": body, "state": "open", "state_reason": None,
                           "_labels": set(labels), "assignees": list(assignees), "created_at": self.ts(), "closed_at": None}
         return n
+
+    def edit_issue_body(self, n, body):
+        self.issues[int(n)]["body"] = body
+
+    def pin_issue(self, n):
+        self.pinned = int(n)
+        return True
 
     def edit_labels(self, n, add=(), remove=()):
         x = self.issues[int(n)]

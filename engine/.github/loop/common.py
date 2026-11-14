@@ -263,6 +263,17 @@ def edit_labels(n, add=(), remove=()):
         gh(*args, check=False)
 
 
+def edit_issue_body(n, body):
+    api("repos/%s/issues/%s" % (REPO, n), "body=@-", method="PATCH", inp=body)
+
+
+def pin_issue(n):
+    """Pins issue n (GraphQL only; at most three per repo). False when the token may not."""
+    q = "mutation($id: ID!) { pinIssue(input: {issueId: $id}) { issue { number } } }"
+    r = subprocess.run(["gh", "api", "graphql", "-f", "query=" + q, "-f", "id=" + issue(n)["node_id"]], capture_output=True, text=True)
+    return r.returncode == 0
+
+
 def close_issue(n, reason="completed"):
     gh("issue", "close", str(n), "--reason", reason, check=False)
 

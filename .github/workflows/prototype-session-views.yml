@@ -28,3 +28,6 @@ jobs:
       - name: Summary C · tables
         run: |
           { echo "---"; echo "# Variant C · tables"; python3 prototype/session-views/render.py summary C; echo; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary D · the owner's mix
+        run: |
+          { echo "---"; echo "# Variant D · the owner's mix (B start, C table, A tree, prose last)"; python3 prototype/session-views/render.py summary D; echo; } >> "$GITHUB_STEP_SUMMARY"

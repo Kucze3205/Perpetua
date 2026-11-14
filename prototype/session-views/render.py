@@ -39,11 +39,13 @@ def ts(e):
     return datetime.fromisoformat(e["timestamp"].replace("Z", "+00:00")).timestamp() if e.get("timestamp") else None
 
 
-def steps(ev):
+def steps(ev, think=False):
     """Normalised timeline: one dict per thing the agent said / ran, tool results paired to their calls. turn = model call."""
     t0 = next(ts(e) for e in ev if ts(e))
-    out, calls, turn, last_msg = [], {}, 0, None
+    out, calls, turn, last_msg, tok = [], {}, 0, None, None
     for e in ev:
+        if e["type"] == "system" and e.get("subtype") == "thinking_tokens":
+            tok = e.get("estimated_tokens")
         t = ts(e)
         at = round(t - t0, 1) if t else None
         if e["type"] == "assistant":
@@ -51,6 +53,9 @@ def steps(ev):
             if mid != last_msg:
                 turn, last_msg = turn + 1, mid
             for b in e["message"]["content"]:
+                if b["type"] == "thinking" and think:
+                    out.append({"k": "think", "turn": turn, "at": at, "tokens": tok})
+                    tok = None
                 if b["type"] == "text":
                     out.append({"k": "say", "turn": turn, "at": at, "text": b["text"].strip()})
                 elif b["type"] == "tool_use":
@@ -293,6 +298,20 @@ def summary(variant):
             if marker(m) == "changed" and admitted(p):
                 L.append("- [diff of `%s`](%s)" % (p, link_diff(p, sha)))
         L += ["", "<sub>cache write %s · peak context %s</sub>" % (fmt(n["cw"]), fmt(int(f["peak_context"])))]
+    elif variant == "D":    # the owner's pick: B's start, C's table with what the model says between the rows, A's tree, prose last
+        L += ["## " + header(issue, f), "", "%s · %s · %s turns · %ss · in %s / out %s · cache read %s (**%.0f%%** hit)" %
+              (f["model"], f["effort"], f["turns"], f["agent_s"], fmt(n["in"]), fmt(n["out"]), fmt(n["cr"]), n["hit"]), ""]
+        L += ["### Session timeline", "", "| # | At | What |", "|--:|--:|---|"]
+        for i, s in enumerate(steps(ev, think=True), 1):
+            if s["k"] == "think":
+                what = "🧠 _thinking%s_" % (" · ~%d tokens" % s["tokens"] if s["tokens"] else "")
+            elif s["k"] == "say":
+                what = "💬 " + s["text"].replace("|", "\\|").replace("\n\n", "<br><br>").replace("\n", "<br>")
+            else:
+                what = "%s **%s** `%s`" % (ICON.get(s["tool"], "🔧"), s["tool"], short(arg(s), 90).replace("|", "\\|"))
+            L.append("| %d | +%ss | %s |" % (i, s["at"], what))
+        L += ["", "### Files", "", "📌 read at start · 📖 read later · ✏️ changed", ""] + tree_lines(info, sha)
+        L += ["", "### Result", "", f["_body"]]
     else:                   # C: everything as tables, timeline = one row per step, results only on demand
         L += ["## " + header(issue, f), "", f["_body"], "",
               "| | |", "|---|---|",

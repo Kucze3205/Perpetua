@@ -1,0 +1,35 @@
+{
+ "model": "claude-haiku-5-5",
+ "limit": 100000,
+ "tokens": null,
+ "status": "unmeasured",
+ "detail": "ANTHROPIC_API_KEY is not configured for trusted staging",
+ "documents": [
+  {
+   "path": ".session/issue.md",
+   "bytes": 464,
+   "sha256": "5cf45a0ab28a0bf7c5c4e09059271c8ff314240aed0313f4259dd4bad81dafa7"
+  },
+  {
+   "path": ".session/role/SKILL.md",
+   "bytes": 4301,
+   "sha256": "74a4c3ba63317ed30bffdea72756bf947ad0d70af50abc5ea92737d79b9959f0"
+  },
+  {
+   "path": ".session/policymaker.md",
+   "bytes": 171,
+   "sha256": "1ed2e69ddb5ddff0876f8db021de428fc8691b7922cb2c6b3ced197be0250bf4"
+  },
+  {
+   "path": ".session/loop-state.json",
+   "bytes": 2193,
+   "sha256": "be6298f88e38d11927e2a455e5a59e67504ebae18e5985da5bb3a4689258197a"
+  },
+  {
+   "path": "policy/working-memory.md",
+   "bytes": 277,
+   "sha256": "3a582f7a1bea28f76837413bba2dde3e131c5533d25e7ddab8db477c6b651f34"
+  }
+ ],
+ "measurement": "Provider estimate of the contract, bootstrap and declared documents; excludes this diagnostic output, CLI internals and later reads."
+}

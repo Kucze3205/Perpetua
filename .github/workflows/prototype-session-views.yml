@@ -1,0 +1,30 @@
+# PROTOTYPE (issue #335), throwaway branch only. Replays one recorded session as the three log forms and three Summary forms.
+name: Prototype · session views
+run-name: Prototype · session timeline and summary (replay)
+on:
+  push:
+    branches: [prototype/335-session-views]
+permissions:
+  contents: read
+jobs:
+  replay:
+    name: Replay a recorded session
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the recording
+        uses: actions/checkout@v4
+      - name: Timeline A · one group per turn
+        run: python3 prototype/session-views/render.py log A
+      - name: Timeline B · flat transcript
+        run: python3 prototype/session-views/render.py log B
+      - name: Timeline C · one group per tool call
+        run: python3 prototype/session-views/render.py log C
+      - name: Summary A · report card
+        run: |
+          { echo "# Variant A · report card"; python3 prototype/session-views/render.py summary A; echo; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary B · transcript first
+        run: |
+          { echo "---"; echo "# Variant B · transcript first"; python3 prototype/session-views/render.py summary B; echo; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary C · tables
+        run: |
+          { echo "---"; echo "# Variant C · tables"; python3 prototype/session-views/render.py summary C; echo; } >> "$GITHUB_STEP_SUMMARY"

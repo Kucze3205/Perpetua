@@ -31,6 +31,7 @@ import policymaker_session
 import executor_boundary
 import session_context
 import session_startup
+import session_summary
 
 MAX_AGE_DAYS = 30
 MAX_KICKS = 3
@@ -779,7 +780,10 @@ def epilogue(n, artifact, baseline, digest):
     with open(os.path.join(tmp, "trusted", "executor-baseline.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh)
     session_artifact.receive_commits(artifact, ".", n)
-    finalize(n, work)
+    try:
+        finalize(n, work)
+    finally:
+        session_summary.write(n, os.environ.get("ROLE") or "session", work, tmp)
 
 
 def hold_policymaker_output(n, work):

@@ -217,3 +217,19 @@ class VerificationRulesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DispatchTest(unittest.TestCase):
+    def test_nothing_is_dispatched_while_autopilot_is_off(self):
+        """A workflow dispatched with the switch off would start and end Skipped: an empty run in the owner's list."""
+        from unittest import mock
+        with mock.patch.object(c, "autopilot_on", return_value=False), mock.patch.object(c.subprocess, "run") as run:
+            self.assertFalse(c.workflow_run("session.yml", issue=1))
+        run.assert_not_called()
+
+    def test_a_workflow_is_dispatched_while_autopilot_is_on(self):
+        from unittest import mock
+        with mock.patch.object(c, "autopilot_on", return_value=True), \
+                mock.patch.object(c.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            self.assertTrue(c.workflow_run("session.yml", issue=1))
+        self.assertEqual(run.call_args[0][0], ["gh", "workflow", "run", "session.yml", "-f", "issue=1"])

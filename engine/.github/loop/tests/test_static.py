@@ -117,7 +117,7 @@ class WorkflowTest(unittest.TestCase):
             if f not in ("watchdog.yml", "tokenless-job.yml"):          # the reusable job is only called from tokenless.yml
                 self.assertIn("vars.AUTOPILOT == 'on'", text, f)               # the first condition of every loop workflow
         if not IN_LOOP_REPO:
-            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "owner-request.yml", "tokenless.yml", "tokenless-job.yml"})
+            self.assertEqual(seen, {"session.yml", "resume.yml", "watchdog.yml", "tokenless.yml", "tokenless-job.yml"})
 
     def test_run_names_keep_their_hash(self):
         """An unquoted ' #' in a YAML value is a comment: run-name became 'session' and no run matched its session (#84)."""

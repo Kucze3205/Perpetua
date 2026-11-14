@@ -4,7 +4,7 @@
 Always run from a checkout of the default branch, never from a task branch. The agent's work arrives as commits
 fetched into this checkout; nothing is executed inside the agent's directory.
 
-Commands: guard, probe, resolve, stage, epilogue, request-closed, watch, resume, start, git-identity.
+Commands: guard, probe, resolve, stage, epilogue, watch, resume, start, git-identity.
 """
 import hashlib
 import json
@@ -1128,7 +1128,7 @@ def settle_owner_merge(t, yes):
 
 
 def sweep_requests():
-    """The safety net for a lost `issues: closed` event."""
+    """The only way an owner's answer reaches the loop: it looks at closed requests no one has handled yet."""
     for x in c.list_issues(state="closed", labels=(requests.REQ,), limit=30):
         if requests.HANDLED not in c.label_names(x):
             on_request_closed(x["number"])
@@ -1318,8 +1318,6 @@ def main(argv):
         stage(int(args[0]), args[1], args[2])
     elif cmd == "epilogue":
         epilogue(int(args[0]), *args[1:4])
-    elif cmd == "request-closed":
-        on_request_closed(int(args[0]))
     elif cmd == "watch":
         return watch()
     elif cmd == "resume":

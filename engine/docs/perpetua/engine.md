@@ -201,3 +201,17 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 - `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, both managed roots are rolled back to the
   state in which the last iteration closed (at the start: the `setup-baseline` tag), and a `notice` is opened for the owner.
   Time spent waiting for the owner counts only when `params.owner_wait_counts` is true.
+
+## Loop status
+
+One issue labelled `loop:status`, pinned, that the engine overwrites (`loop_status.py`) at three moments: the end of
+every session's epilogue, every owner answer and every watchdog check. It shows the open iteration, or the last recorded
+one: a header (iteration, state, goal reached or not, start, duration, engine version), **Working on** (the goal on one
+line, then the tasks by status), **Active roles** (one row per session: model, effort, tokens, cache), the **task graph**
+(Mermaid), this iteration's **policy changes** and a link to each session's run Summary.
+
+It only shows. It is rendered from the facts the iteration record is built from (`iteration.build_record`), nothing is
+stored for it, and nothing in the loop reads it: it has no iteration label and no role. A failure to write it is said in
+the log and never fails the command. The issue appears with the first iteration; unchanged facts do not edit it. The
+engine pins it when it creates it; when the token may not pin, the log says so and the owner pins it once by hand. An
+owner who closes it gets a new one at the next moment.

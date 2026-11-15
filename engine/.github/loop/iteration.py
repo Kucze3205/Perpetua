@@ -758,6 +758,53 @@ def claim_closing(it):
     return bool(claims) and claims[0] == me.split()[2]
 
 
+def build_record(n, it, status, failure=None):
+    """The iteration record from the facts on GitHub and the default branch. `close_iteration` stores it; Loop status
+    renders an open iteration from the same facts, so the two never disagree."""
+    f = c.report_fields(it["number"])
+    issues = iteration_issues(n)
+    streams = {a["name"] for a in c.list_artifacts()}
+    sessions = {x["number"]: session_summary(x, streams) for x in issues if c.roles_of(c.label_names(x))}
+
+    shp = sessions.get(int(f["shape_issue"])) if f.get("shape_issue", "").isdigit() else None
+    tasks = graph.read(n)
+    work = [s for s in sessions.values() if s is not shp]
+    verdicts = [s["verdict"] for s in work if s.get("verdict")]
+    value = "accepted" if "accepted" in verdicts else ("rejected" if "rejected" in verdicts else ("inconclusive" if verdicts else "none"))
+    sums = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
+    by_model = {}
+    for s in sessions.values():
+        for k in sums:
+            sums[k] += s["tokens"][k]
+        for m, t in s["models"].items():
+            b = by_model.setdefault(m, {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0})
+            for k in b:
+                b[k] += t.get(k, 0)
+    started = c.parse_time(f["started"]) if f.get("started") else c.now()
+
+    opened = [x["number"] for x in c.list_issues(state="all", labels=(requests.REQ, c.ITER + str(n)))]
+    record = {
+        "schema_version": 1, "iteration": n, "status": status, "failure": failure,
+        "started": f.get("started"), "ended": c.iso(), "engine_version": c.engine_version(),
+        "input_state": {k: v for k, v in (read_state(it["number"]) or {}).items() if k != "iterations"},
+        "policy": {"rev_start": f.get("policy_rev_start"), "rev_end": policy_rev(), "commit_end": c.head(),
+                   "orders_refused": f.get("orders_refused"), "session": int(f["policy_issue"]) if f.get("policy_issue", "").isdigit() else None,
+                   "trigger": f.get("policy_trigger"),
+                   "passes": policy_pass_of(int(f["policy_issue"])) if f.get("policy_issue", "").isdigit() else 0},
+        "decided_by": f.get("shaper"),
+        "tasks": tasks,
+        "outcome": {"sessions": list(sessions.values()), "shaper": shp,
+                    "verdict": {"value": value, "issuer": c.cfg()["gate"]["kind"], "evaluator_rev": evaluator_rev(),
+                                "improved": any(s["improved"] for s in work)},
+                    "tokens": dict(sums, by_model=by_model, cache_read_share=cache_read_share(sums)), "limit_hits": sum(s["attempts"] for s in sessions.values()), "wall_s": int((c.now() - started).total_seconds()),
+                    "critical_path_s": critical_path(list(sessions.values()), tasks), "width": int(f.get("width", 0) or 0),
+                    "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in requests.open_requests()]}},
+    }
+    record["policy"]["changes"] = applied_list(f, "changes")
+    record["evaluator_verifications"] = applied_list(f, "verifications")
+    return record
+
+
 def close_iteration(n, status, failure=None):
     """Write the iteration record (only the engine does), close the iteration, then look at what follows:
     stream pruning, no-progress, the goal gate, the next iteration."""
@@ -768,48 +815,8 @@ def close_iteration(n, status, failure=None):
     if not claim_closing(it["number"]):
         c.say("iteration %s: another run is closing it" % tag(n))
         return
-    f = c.report_fields(it["number"])
     if not os.path.exists(record_path(n)):
-        issues = iteration_issues(n)
-        streams = {a["name"] for a in c.list_artifacts()}
-        sessions = {x["number"]: session_summary(x, streams) for x in issues if c.roles_of(c.label_names(x))}
-
-        shp = sessions.get(int(f["shape_issue"])) if f.get("shape_issue", "").isdigit() else None
-        tasks = graph.read(n)
-        work = [s for s in sessions.values() if s is not shp]
-        verdicts = [s["verdict"] for s in work if s.get("verdict")]
-        value = "accepted" if "accepted" in verdicts else ("rejected" if "rejected" in verdicts else ("inconclusive" if verdicts else "none"))
-        sums = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
-        by_model = {}
-        for s in sessions.values():
-            for k in sums:
-                sums[k] += s["tokens"][k]
-            for m, t in s["models"].items():
-                b = by_model.setdefault(m, {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0})
-                for k in b:
-                    b[k] += t.get(k, 0)
-        started = c.parse_time(f["started"]) if f.get("started") else c.now()
-
-        opened = [x["number"] for x in c.list_issues(state="all", labels=(requests.REQ, c.ITER + str(n)))]
-        record = {
-            "schema_version": 1, "iteration": n, "status": status, "failure": failure,
-            "started": f.get("started"), "ended": c.iso(), "engine_version": c.engine_version(),
-            "input_state": {k: v for k, v in (read_state(it["number"]) or {}).items() if k != "iterations"},
-            "policy": {"rev_start": f.get("policy_rev_start"), "rev_end": policy_rev(), "commit_end": c.head(),
-                       "orders_refused": f.get("orders_refused"), "session": int(f["policy_issue"]) if f.get("policy_issue", "").isdigit() else None,
-                       "trigger": f.get("policy_trigger"),
-                       "passes": policy_pass_of(int(f["policy_issue"])) if f.get("policy_issue", "").isdigit() else 0},
-            "decided_by": f.get("shaper"),
-            "tasks": tasks,
-            "outcome": {"sessions": list(sessions.values()), "shaper": shp,
-                        "verdict": {"value": value, "issuer": c.cfg()["gate"]["kind"], "evaluator_rev": evaluator_rev(),
-                                    "improved": any(s["improved"] for s in work)},
-                        "tokens": dict(sums, by_model=by_model, cache_read_share=cache_read_share(sums)), "limit_hits": sum(s["attempts"] for s in sessions.values()), "wall_s": int((c.now() - started).total_seconds()),
-                        "critical_path_s": critical_path(list(sessions.values()), tasks), "width": int(f.get("width", 0) or 0),
-                        "owner_requests": {"opened": opened, "open_at_close": [x["number"] for x in requests.open_requests()]}},
-        }
-        record["policy"]["changes"] = applied_list(f, "changes")
-        record["evaluator_verifications"] = applied_list(f, "verifications")
+        record = build_record(n, it, status, failure)
         c.commit_main({record_path(n): json.dumps(record, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: record (%s)" % (tag(n), status))
     c.update_report(it["number"], {"phase": "closed", "status": status})
     c.close_issue(it["number"], "completed" if status == "closed" else "not planned")

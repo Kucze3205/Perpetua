@@ -7,8 +7,8 @@ import os
 import tarfile
 import unittest
 
-import artifact_pin
 import fakes
+import artifact_pin
 import session_finalize
 import session_artifact as artifact
 

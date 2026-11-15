@@ -16,7 +16,9 @@ state of the sibling tickets and the parent spec. Read it in full first.
   - Earlier commits on this branch come from a previous attempt at this ticket. Continue from them.
 - Before adding anything, question whether it is needed and delete what this ticket makes unnecessary: code, tests,
   docs, configuration. Then simplify what remains.
-- Match the surrounding code: naming, idiom, comment density and the style of existing tests.
+- Match the existing style: naming, idiom, comment density and the style of existing tests.
+- New behaviour with its own inputs and outputs goes into its own module next to the others, not at the end of an
+  existing large file.
 - Test behaviour from the outside, as the spec's Testing Decisions say:
   - use the loop test world (the in-memory GitHub fake and the `Flow` fixtures);
   - use the static workflow test for workflow properties;

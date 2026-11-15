@@ -3,7 +3,7 @@
 The engine owns the common contract in `.github/loop/session-protocol.md`, the
 report-reader and task-graph sections in `.github/loop/task-graph.md`,
 and the Policymaker's ownership/order contract in `.github/loop/policymaker.md`.
-`loop.session_contract` selects sections by the engine-selected role and shaper label,
+`session_start.session_contract` selects sections by the engine-selected role and shaper label,
 and adds verification/delivery instructions from shell access, and for execution roles the request not to read `policy/`.
 Every role delivers file bytes, committed or not. A session is staged with a
 baseline (`executor_boundary.record`); the epilogue builds one commit on it from the final files of the working tree
@@ -113,7 +113,7 @@ the job ids (`prep`, `session`, `epilogue`) stay the same.
 - `session` (`permissions: {}`; only the Claude token and the secrets the owner consented to): unpacks the staged
   bundle, installs the agent tool (named from the engine's output, for agent sessions only), runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
   (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.
-- `epilogue`, *Take in results* (GitHub token, a fresh runner): `take-results` (`loop.epilogue`) takes the artifact in as data
+- `epilogue`, *Take in results* (GitHub token, a fresh runner): `take-results` (`session_finalize.epilogue`) takes the artifact in as data
   (`session_artifact.py`). It refuses a tree with a path that escapes, one written through a link, a special file or an
   oversized file; links and hard links that stay are unpacked unfollowed and refused by the admission below. It checks
   the baseline against the staged digest, reads the commits from the bundle (kept under `refs/session/<issue>/`, never

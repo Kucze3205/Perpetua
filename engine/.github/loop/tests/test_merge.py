@@ -3,7 +3,8 @@ import sys
 import unittest
 
 import fakes
-from fakes import common as c, iteration as it, loop
+from fakes import common as c, iteration as it
+import merge
 import session_reports
 
 from gate_fixtures import GATE_SH, SCRIPT_GATE
@@ -25,7 +26,7 @@ class MergeCase(unittest.TestCase):
 
     def merge(self, files, role="worker", **kw):
         self.w.branch(self.n, files, delete=kw.pop("delete", ()))
-        return loop.merge_branch(self.n, role, self.w.hub.issue(self.n), **kw)
+        return merge.merge_branch(self.n, role, self.w.hub.issue(self.n), **kw)
 
 
 class GateTest(MergeCase):
@@ -39,14 +40,14 @@ class GateTest(MergeCase):
         r = self.merge({"src/a.txt": "BAD"})
         self.assertEqual(r["result"], "gate-rejected")
         self.assertIsNone(self.w.origin_file("src/a.txt"))
-        st, upd, prose = loop.merge_outcome(r)
+        st, upd, prose = merge.merge_outcome(r)
         self.assertEqual((st, upd["verdict"], upd["merged"]), ("rejected", "rejected", "false"))
 
     def test_no_verdict_is_not_a_yes(self):
         r = self.merge({"src/silent.txt": "x"})
         self.assertEqual(r["result"], "gate-inconclusive")
         self.assertIsNone(self.w.origin_file("src/silent.txt"))
-        self.assertEqual(loop.merge_outcome(r)[0], "partial")
+        self.assertEqual(merge.merge_outcome(r)[0], "partial")
 
     def test_the_gate_runs_in_the_tokenless_job(self):
         self.merge({"src/a.txt": "good"})
@@ -74,7 +75,7 @@ class GateTest(MergeCase):
         try:
             w2.branch(5, {"src/a.txt": "x"})
             i = w2.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 1"])
-            self.assertEqual(loop.merge_branch(5, "worker", w2.hub.issue(i))["result"], "gate-inconclusive")
+            self.assertEqual(merge.merge_branch(5, "worker", w2.hub.issue(i))["result"], "gate-inconclusive")
         finally:
             w2.close()
 
@@ -83,7 +84,7 @@ class GateTest(MergeCase):
         try:
             w2.branch(5, {"src/a.txt": "x"})
             i = w2.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 1"])
-            self.assertEqual(loop.merge_branch(5, "worker", w2.hub.issue(i))["result"], "check")
+            self.assertEqual(merge.merge_branch(5, "worker", w2.hub.issue(i))["result"], "check")
         finally:
             w2.close()
 
@@ -96,7 +97,7 @@ class GateTest(MergeCase):
             fakes.sh(w2.loop, "git", "push", "-q", "origin", "main")
             w2.branch(5, {"src/a.txt": "x"})
             i = w2.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 1"])
-            self.assertEqual(loop.merge_branch(5, "worker", w2.hub.issue(i))["result"], "merged")
+            self.assertEqual(merge.merge_branch(5, "worker", w2.hub.issue(i))["result"], "merged")
         finally:
             w2.close()
 
@@ -135,29 +136,29 @@ class RefusalTest(MergeCase):
         try:
             w2.branch(5, {"src/big.bin": "x" * 100})
             i = w2.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 1"])
-            r = loop.merge_branch(5, "worker", w2.hub.issue(i))
+            r = merge.merge_branch(5, "worker", w2.hub.issue(i))
             self.assertEqual(r["result"], "large")
         finally:
             w2.close()
 
     def test_an_empty_change_has_nothing_to_merge(self):
         self.w.branch(self.n, {})
-        r = loop.merge_branch(self.n, "worker", self.w.hub.issue(self.n))
+        r = merge.merge_branch(self.n, "worker", self.w.hub.issue(self.n))
         self.assertEqual(r["result"], "nothing")
-        self.assertEqual(loop.merge_outcome(r)[0], "done")
+        self.assertEqual(merge.merge_outcome(r)[0], "done")
 
     def test_a_conflict_is_reported_not_forced(self):
         self.w.push_main({"src/a.txt": "base\n"})
         self.w.branch(self.n, {"src/a.txt": "mine\n"}, base="origin/main")
         self.w.push_main({"src/a.txt": "theirs\n"})
-        r = loop.merge_branch(self.n, "worker", self.w.hub.issue(self.n))
+        r = merge.merge_branch(self.n, "worker", self.w.hub.issue(self.n))
         self.assertEqual(r["result"], "conflict")
         self.assertEqual(self.w.origin_file("src/a.txt"), "theirs\n")
 
     def test_a_rebase_lets_independent_work_through(self):
         self.w.branch(self.n, {"src/a.txt": "mine"}, base="origin/main")
         self.w.push_main({"src/other.txt": "theirs"})
-        self.assertEqual(loop.merge_branch(self.n, "worker", self.w.hub.issue(self.n))["result"], "merged")
+        self.assertEqual(merge.merge_branch(self.n, "worker", self.w.hub.issue(self.n))["result"], "merged")
         self.assertEqual((self.w.origin_file("src/a.txt"), self.w.origin_file("src/other.txt")), ("mine", "theirs"))
 
 
@@ -169,7 +170,7 @@ class EvaluatorChangeTest(MergeCase):
 
     def test_after_the_verifier_the_change_merges(self):
         self.w.branch(self.n, {"policy/evaluator/new.sh": "x"})
-        r = loop.merge_branch(self.n, "evaluator", self.w.hub.issue(self.n), verified=True)
+        r = merge.merge_branch(self.n, "evaluator", self.w.hub.issue(self.n), verified=True)
         self.assertEqual(r["result"], "merged")
         self.assertEqual(self.w.origin_file("policy/evaluator/new.sh"), "x")
 
@@ -177,7 +178,7 @@ class EvaluatorChangeTest(MergeCase):
 class NotesTest(MergeCase):
     def test_an_unfinished_session_still_leaves_its_journal(self):
         self.w.branch(self.n, {"journal/0001.md": "state", "src/a.txt": "half"})
-        self.assertTrue(loop.merge_notes(self.n, "orchestrator"))
+        self.assertTrue(merge.merge_notes(self.n, "orchestrator"))
         self.assertIsNone(self.w.origin_file("journal/0001.md"))          # queued: it joins the session's report commit
         session_reports.capture(self.n)
         self.assertEqual(self.w.origin_file("journal/0001.md"), "state")
@@ -185,7 +186,7 @@ class NotesTest(MergeCase):
 
     def test_nothing_to_leave(self):
         self.w.branch(self.n, {"src/a.txt": "half"})
-        self.assertFalse(loop.merge_notes(self.n, "worker"))
+        self.assertFalse(merge.merge_notes(self.n, "worker"))
 
 
 class RollbackTest(MergeCase):

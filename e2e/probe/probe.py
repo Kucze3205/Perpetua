@@ -2,7 +2,7 @@
 
 Creates three issues exactly as the engine would for the next iteration (Policymaker via the engine's own
 `start_policymaker`, an audit session, a worker with an `exports` marker for every source), stages each with the real
-`loop.stage` into its own copy of the checkout, writes what it staged (sizes, prompt, contract) and closes the issues
+`session_start.stage` into its own copy of the checkout, writes what it staged (sizes, prompt, contract) and closes the issues
 unstarted. With AUTOPILOT off `launch` is a no-op, so no session runs."""
 import json
 import os
@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, ".github/loop")
 import common as c      # noqa: E402
 import iteration as it  # noqa: E402
-import loop             # noqa: E402
+import session_start    # noqa: E402
 
 WORKS = Path(os.environ["WORKS"])
 if c.autopilot_on():
@@ -34,7 +34,7 @@ for name, number in issues.items():
     trusted = WORKS / name / "trusted"
     shutil.copytree(".", work, ignore=shutil.ignore_patterns("probe-works"), symlinks=True)
     try:
-        loop.stage(number, str(work), str(trusted))
+        session_start.stage(number, str(work), str(trusted))
         sizes = {p.relative_to(work / ".session").as_posix(): p.stat().st_size
                  for p in (work / ".session").rglob("*") if p.is_file()}
         summary["staged"][name] = {"issue": number, "files": sizes, "bytes": sum(sizes.values())}

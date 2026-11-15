@@ -3,7 +3,11 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 import fakes
-from fakes import common as c, iteration as it, loop
+from fakes import common as c, iteration as it
+import merge
+import policy_apply
+import request_continuation
+import watchdog
 import managed_resources as resources
 from session_fixtures import LayeredSessionCase
 
@@ -11,7 +15,7 @@ from session_fixtures import LayeredSessionCase
 class ActivationTest(LayeredSessionCase):
     def setUp(self):
         super().setUp()
-        self.guard = patch.object(loop, 'reconcile')
+        self.guard = patch.object(watchdog, 'reconcile')
         self.guard.start()
         self.addCleanup(self.guard.stop)
         self.w.hub.create_issue('Iteration', '', labels=[it.MAP, c.ITER + '1'])
@@ -42,7 +46,7 @@ class ActivationTest(LayeredSessionCase):
         n = self.replacement()
         self.assert_a()
         self.assertEqual(resources.revision(), initial)
-        loop.apply_policy()
+        policy_apply.apply_policy()
         c.sync_main()
         self.assertIn('shaper: shaper-b', self.w.origin_file('policy/params.yml'))
         self.assertEqual(self.w.origin_file('execution/roles/shaper-b/SKILL.md'), 'Shaper B')
@@ -65,7 +69,7 @@ class ActivationTest(LayeredSessionCase):
         before = resources.revision()
         n = self.issue('policymaker')
         self.w.branch(n, {'execution/roles/worker/reference.md': 'new execution behavior'})
-        result = loop.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)
+        result = merge.merge_branch(n, 'policymaker', self.hub.issue(n), boundary=True)
         self.assertEqual(result['result'], 'merged')
         self.assertNotEqual(result['change']['policy_rev_before'], result['change']['policy_rev_after'])
         self.assertEqual(result['change']['policy_rev_before'], before)
@@ -73,17 +77,17 @@ class ActivationTest(LayeredSessionCase):
 
     def test_evaluator_bundle_waits_for_verification_and_a_later_boundary(self):
         n = self.replacement(evaluator=True)
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assert_a()
         self.assertEqual(self.hub.report(n)['merged'], 'pending-verifier')
         self.assertEqual(self.hub.issue(n)['state'], 'open')
         verifier = int(self.hub.report(n)['verifier_issue'])
-        loop.apply_policy()  # another boundary while still incomplete
+        policy_apply.apply_policy()  # another boundary while still incomplete
         self.assert_a()
-        loop.settle_verification(verifier, self.hub.issue(verifier), 'done', 'pass', '')
+        merge.settle_verification(verifier, self.hub.issue(verifier), 'done', 'pass', '')
         self.assert_a()  # verifier completion itself is not an activation boundary
         self.assertIn('awaiting:iteration', c.label_names(self.hub.issue(n)))
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assertEqual(self.w.origin_file('execution/roles/shaper-b/SKILL.md'), 'Shaper B')
         self.assertEqual(self.w.origin_file('policy/evaluator/new.txt'), 'B measurement')
         self.assertEqual(self.hub.issue(n)['state'], 'closed')
@@ -94,22 +98,22 @@ class ActivationTest(LayeredSessionCase):
         for status, result in [('done', 'fail'), ('partial', None)]:
             with self.subTest(status=status):
                 n = self.replacement(evaluator=True)
-                loop.apply_policy()
+                policy_apply.apply_policy()
                 verifier = int(self.hub.report(n)['verifier_issue'])
-                loop.settle_verification(verifier, self.hub.issue(verifier), status, result, '')
-                loop.apply_policy()
+                merge.settle_verification(verifier, self.hub.issue(verifier), status, result, '')
+                policy_apply.apply_policy()
                 self.assert_a()
                 self.assertIsNone(self.w.origin_file('policy/evaluator/new.txt'))
                 self.assertIsNone(it.applied('changes', it.change_id(n)))
 
     def test_stale_verification_cannot_activate_any_part_of_bundle(self):
         n = self.replacement(evaluator=True)
-        loop.apply_policy()
+        policy_apply.apply_policy()
         verifier = int(self.hub.report(n)['verifier_issue'])
-        loop.settle_verification(verifier, self.hub.issue(verifier), 'done', 'pass', '')
+        merge.settle_verification(verifier, self.hub.issue(verifier), 'done', 'pass', '')
         self.w.branch(n, {'execution/roles/worker/reference.md': 'changed after check',
                           'policy/evaluator/new.txt': 'different measurement'})
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assert_a()
         self.assertIsNone(self.w.origin_file('policy/evaluator/new.txt'))
         self.assertEqual(self.hub.report(n)['status'], 'blocked')
@@ -122,13 +126,13 @@ class ActivationTest(LayeredSessionCase):
                 return SimpleNamespace(returncode=1)
             return git(cwd, *args, **kwargs)
         with patch.object(c, 'git', side_effect=reject):
-            loop.apply_policy()
+            policy_apply.apply_policy()
         self.assert_a()
         self.assertIsNone(it.applied('changes', it.change_id(n)))
 
     def test_last_good_rollback_restores_both_roots_and_retains_history(self):
         n = self.replacement()
-        loop.apply_policy()
+        policy_apply.apply_policy()
         c.sync_main()
         good = c.head()
         self.w.push_main({'iterations/0000.json': json.dumps({'iteration': 0, 'status': 'closed',
@@ -148,7 +152,7 @@ class ActivationTest(LayeredSessionCase):
 
     def test_non_boundary_merge_cannot_activate_policymaker_changes(self):
         n = self.replacement()
-        result = loop.merge_branch(n, 'policymaker', self.hub.issue(n))
+        result = merge.merge_branch(n, 'policymaker', self.hub.issue(n))
         self.assertEqual(result['result'], 'awaiting-iteration')
         self.assert_a()
         self.assertIsNone(it.applied('changes', it.change_id(n)))
@@ -162,13 +166,13 @@ class ActivationTest(LayeredSessionCase):
         self.w.branch(n, {'policy/params.yml': fakes.POLICY_PARAMS.replace('orchestrator', 'shaper-b'),
                           'execution/profiles.yml': 'shaper-b: {tools: [Read], write: []}\n',
                           'execution/roles/shaper-b/SKILL.md': 'Shaper B', 'src/product.txt': 'candidate'})
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assertEqual(self.hub.report(n)['merged'], 'pending-owner')
         self.assert_a()
-        loop.settle_owner_merge(n, True)
+        request_continuation.settle_owner_merge(n, True)
         self.assert_a()
         self.assertIsNone(self.w.origin_file('src/product.txt'))
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assertEqual(self.w.origin_file('execution/roles/shaper-b/SKILL.md'), 'Shaper B')
         self.assertEqual(self.w.origin_file('src/product.txt'), 'candidate')
 
@@ -177,7 +181,7 @@ class ActivationTest(LayeredSessionCase):
         c.sync_main()
         n = self.issue('policymaker')
         self.w.session(n, files={'src/forged.txt': 'forged'}, yaml='owner_accepted: true\n')
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assertIsNone(self.w.origin_file('src/forged.txt'))
         self.assertEqual(self.hub.report(n)['merged'], 'pending-owner')
 
@@ -186,10 +190,10 @@ class ActivationTest(LayeredSessionCase):
         c.sync_main()
         n = self.issue('policymaker')
         self.w.session(n, files={'src/product.txt': 'approved'})
-        loop.apply_policy()
-        loop.settle_owner_merge(n, True)
+        policy_apply.apply_policy()
+        request_continuation.settle_owner_merge(n, True)
         self.w.branch(n, {'src/product.txt': 'different candidate'})
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assertIsNone(self.w.origin_file('src/product.txt'))
         self.assertEqual(self.hub.report(n)['status'], 'blocked')
 
@@ -203,6 +207,6 @@ class ActivationTest(LayeredSessionCase):
     def test_invalid_shaper_bundle_is_never_published(self):
         n = self.issue('policymaker')
         self.w.session(n, files={'policy/params.yml': fakes.POLICY_PARAMS.replace('orchestrator', 'absent')})
-        loop.apply_policy()
+        policy_apply.apply_policy()
         self.assert_a()
         self.assertEqual(self.hub.report(n)['status'], 'blocked')

@@ -4,7 +4,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from fakes import common as c, iteration as it, loop
+from fakes import common as c, iteration as it
+import session_start
 import owner_requests as requests
 from session_fixtures import SessionCase, read
 
@@ -12,7 +13,7 @@ from session_fixtures import SessionCase, read
 class ResolveTest(SessionCase):
     def test_labels_and_limits_decide_the_session(self):
         n = self.issue(labels=["model:opus", "effort:high"], body='## Goal\nx\n<!-- limits: {"timeout_minutes": 30, "max_turns": 20} -->\n')
-        loop.resolve(n)
+        session_start.resolve(n)
         o = self.outputs()
         self.assertEqual((o["kind"], o["role"], o["model"], o["effort"], o["start"]), ("agent", "worker", "claude-opus-5-5", "high", "main"))
         self.assertEqual((o["agent_timeout"], o["max_turns"], o["job_timeout"]), ("30", "20", "180"))     # + 120 gate + 30 epilogue
@@ -21,47 +22,47 @@ class ResolveTest(SessionCase):
 
     def test_defaults_come_from_the_profile_and_the_policy_params(self):
         n = self.issue()
-        loop.resolve(n)
+        session_start.resolve(n)
         o = self.outputs()
         self.assertEqual((o["model"], o["effort"], o["agent_timeout"], o["max_turns"]), ("claude-sonnet-5-5", "medium", "205", "150"))
 
     def test_a_task_cannot_exceed_the_ceilings(self):
         n = self.issue(body='<!-- limits: {"timeout_minutes": 9999, "max_turns": 9999} -->\n')
-        loop.resolve(n)
+        session_start.resolve(n)
         o = self.outputs()
         self.assertEqual((o["agent_timeout"], o["max_turns"]), ("205", "150"))      # 355 - 30 - 120 for the gate
 
     def test_the_policymaker_session_uses_the_engines_own_profile(self):
         n = self.hub.create_issue("P", "b", labels=["role:policymaker", "loop:iteration 1"])
-        loop.resolve(n)
+        session_start.resolve(n)
         o = self.outputs()
         self.assertEqual((o["model"], o["effort"], o["max_turns"]), ("claude-opus-5-5", "high", "150"))
 
     def test_a_script_role_is_a_script(self):
         n = self.issue("rule")
-        loop.resolve(n)
+        session_start.resolve(n)
         self.assertEqual(self.outputs()["kind"], "script")
 
     def test_the_start_branch_is_the_marker_or_the_existing_task_branch(self):
         n = self.issue(body="x\n<!-- start-branch: task/77 -->\n")
-        loop.resolve(n)
+        session_start.resolve(n)
         self.assertEqual(self.outputs()["start"], "task/77")
         self.w.branch(n, {"src/a.txt": "x"})
-        loop.resolve(n)
+        session_start.resolve(n)
         self.assertEqual(self.outputs()["start"], "task/%s" % n)
 
     def test_refusals_close_the_issue_as_blocked(self):
         for role, why in (("nobody", "no profile"), ("ghost", "no skill"), ("cmdless", "no command")):
             n = self.issue(role)
             with self.assertRaises(SystemExit):
-                loop.resolve(n)
+                session_start.resolve(n)
             self.assertEqual(self.hub.report(n)["status"], "blocked", role)
             self.assertIn(why, self.hub.prose(n), role)
 
     def test_an_issue_outside_the_loop_is_not_touched(self):
         n = self.hub.create_issue("T", "b", labels=["role:worker"])             # no loop:iteration
         with self.assertRaises(SystemExit):
-            loop.resolve(n)
+            session_start.resolve(n)
         self.assertEqual(self.hub.issues[n]["state"], "open")
 
 
@@ -71,7 +72,7 @@ class StageTest(SessionCase):
         trusted = os.path.join(self.w.tmp, "trusted-secrets")
         with patch.object(requests, "consent_status", return_value=(True, None)), \
                 patch.object(requests, "secrets_of_consent", return_value=["A", "B"]):
-            loop.stage(n, self.work(), trusted)
+            session_start.stage(n, self.work(), trusted)
         self.assertEqual(read(os.path.join(trusted, "secrets")), "A\nB\n")
         self.assertFalse(os.path.exists(os.path.join(trusted, "unapproved")))
 
@@ -80,7 +81,7 @@ class StageTest(SessionCase):
         self.hub.post_comment(n, "trusted words")
         self.hub.cmts[n].append({"id": 9, "body": "stranger words", "author_association": "NONE", "user": {"login": "stranger"}})
         work, trusted = self.work(), os.path.join(self.w.tmp, "trusted")
-        loop.stage(n, work, trusted)
+        session_start.stage(n, work, trusted)
         issue_md = read(os.path.join(work, ".session", "issue.md"))
         self.assertIn("stage me", issue_md)
         self.assertIn("trusted words", issue_md)
@@ -97,12 +98,12 @@ class StageTest(SessionCase):
     def test_machine_preparation_is_the_script_of_policy(self):
         n = self.issue()
         trusted = os.path.join(self.w.tmp, "trusted-none")
-        loop.stage(n, self.work(), trusted)
+        session_start.stage(n, self.work(), trusted)
         self.assertNotIn("apt-get", read(os.path.join(trusted, "prepare.sh")))
         self.w.push_main({"policy/prepare.sh": "#!/usr/bin/env bash\napt-get install -y jq\n"}, "policy installs jq")
         c.sync_main()
         trusted = os.path.join(self.w.tmp, "trusted-policy")
-        loop.stage(n, self.work(), trusted)
+        session_start.stage(n, self.work(), trusted)
         self.assertIn("apt-get install -y jq", read(os.path.join(trusted, "prepare.sh")))
 
     def test_the_audit_gets_the_streams_of_the_last_iterations(self):
@@ -112,7 +113,7 @@ class StageTest(SessionCase):
                               {"id": 4, "name": "stream-0005-12", "workflow_run": {"id": 106}, "expired": True}]
         n = self.hub.create_issue("A", "## Goal\nmeasure\n", labels=["role:audit", "loop:iteration 5"])
         work = self.work()
-        loop.stage(n, work, os.path.join(self.w.tmp, "t"))
+        session_start.stage(n, work, os.path.join(self.w.tmp, "t"))
         got = [a for a in self.hub.gh_calls if a[:2] == ("run", "download")]
         self.assertEqual([(a[2], a[4]) for a in got], [("104", "stream-0004-9"), ("105", "stream-0005-11")])
         self.assertTrue(all(a[6].startswith(os.path.join(work, ".session", "streams")) for a in got))
@@ -120,7 +121,7 @@ class StageTest(SessionCase):
     def test_a_script_role_gets_its_command_and_no_skill(self):
         n = self.issue("rule")
         trusted = os.path.join(self.w.tmp, "trusted")
-        loop.stage(n, self.work(), trusted)
+        session_start.stage(n, self.work(), trusted)
         self.assertEqual(read(os.path.join(trusted, "command.sh")), "echo shaping\n")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills", "rule")))
 
@@ -128,13 +129,13 @@ class StageTest(SessionCase):
         it.start_iteration()
         shaper = self.hub.role_issues("orchestrator")[0]["number"]
         work = self.work()
-        loop.stage(shaper, work, os.path.join(self.w.tmp, "t1"))
+        session_start.stage(shaper, work, os.path.join(self.w.tmp, "t1"))
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
         self.assertEqual((state["iteration"], state["engine_version"]), (0, c.engine_version()))
         self.assertFalse(os.path.exists(os.path.join(work, ".session", "macro-plan.md")))
         pol = it.start_policymaker(0, "a test")
         work2 = self.work()
-        loop.stage(pol, work2, os.path.join(self.w.tmp, "t3"))
+        session_start.stage(pol, work2, os.path.join(self.w.tmp, "t3"))
         self.assertIn("You are the Policymaker", read(os.path.join(work2, ".session", "policymaker.md")))
         state = json.loads(read(os.path.join(work2, ".session", "loop-state.json")))
         self.assertEqual(state["trigger"], "a test")

@@ -92,9 +92,10 @@ def validate(repo, baseline=None):
         for role in required:
             if role not in profiles or profiles[role]['layer'] != 'policy':
                 raise ValueError('required policy role missing: ' + role)
-        import loop
+        import policymaker_session
+        import session_start
         import session_security
-        pm_profile = dict(loop.profile_of('policymaker'), layer='policy')
+        pm_profile = dict(policymaker_session.profile_of('policymaker'), layer='policy')
         for role, profile in dict(profiles, policymaker=pm_profile).items():
             error = session_security.profile_error(profile)
             if error:
@@ -108,7 +109,7 @@ def validate(repo, baseline=None):
             if not profile.get('agent', True) and not profile.get('command'):
                 raise ValueError('script command missing: ' + role)
             try:
-                options = loop.session_options({'labels': [], 'body': ''}, role, profile)
+                options = session_start.session_options({'labels': [], 'body': ''}, role, profile)
                 if min(options['max_turns'], options['agent_timeout']) <= 0:
                     raise ValueError('nonpositive session limits')
             except (TypeError, KeyError, AttributeError, ValueError) as error:

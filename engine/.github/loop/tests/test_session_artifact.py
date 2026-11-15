@@ -8,7 +8,7 @@ import tarfile
 import unittest
 
 import fakes
-from fakes import loop
+import session_finalize
 import session_artifact as artifact
 
 
@@ -94,7 +94,7 @@ class EpilogueBaselineTest(unittest.TestCase):
             with open(os.path.join(baseline, "executor-baseline.json"), "w") as fh:
                 fh.write('{"baseline": "forged", "paths": [], "work": "/"}')
             with self.assertRaises(SystemExit):
-                loop.epilogue(1, os.path.join(w.tmp, "none"), baseline, "0" * 64)
+                session_finalize.epilogue(1, os.path.join(w.tmp, "none"), baseline, "0" * 64)
         finally:
             w.close()
 

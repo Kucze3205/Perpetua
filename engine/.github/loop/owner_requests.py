@@ -134,7 +134,7 @@ def instructions(proposal):
 
 def freeze(n, proposal, body):
     proposal = dict(proposal, issue=n, body_sha=digest(body))
-    c.commit_main({path(n): json.dumps(proposal, indent=2) + "\n"}, "freeze owner request #%s" % n,
+    c.commit_main({path(n): json.dumps(proposal, indent=2) + "\n"}, "owner-request #%s: frozen" % n,
                   expected={path(n): None})
 
 
@@ -238,7 +238,7 @@ def prepare_pr(n, state, body, branch):
     base = c.head()
     bundle = stage_patch(".", diff, state.get("test"))
     try:
-        result, why = read_result(c.run_tokenless(bundle, PATCH_MINUTES))
+        result, why = read_result(c.run_tokenless(bundle, PATCH_MINUTES, "engine change for #%s" % n))
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
     if why:
@@ -256,7 +256,7 @@ def prepare_pr(n, state, body, branch):
             os.chmod(path, 0o755 if f["x"] else 0o644)
         c.git(".", "add", "-A", "--", *(list(result["files"]) + result["deleted"]))
         files = sorted(result["files"]) + sorted(result["deleted"])
-        c.git(".", "commit", "-q", "-m", title)
+        c.git(".", "commit", "-q", "-m", "owner-request #%s: %s" % (n, title[:1].lower() + title[1:]))
         c.git(".", "push", "-f", "origin", "HEAD:refs/heads/%s" % branch, remote=True)
     finally:
         c.sync_main()
@@ -336,7 +336,7 @@ def settle(n, issue):
     state.update(extra, status=status, detail=detail, decided_at=c.iso())
     files[path(n)] = json.dumps(state, indent=2) + "\n"
     try:
-        c.commit_main(files, "owner request #%s: %s" % (n, status), expected=expected)
+        c.commit_main(files, "owner-answer #%s: %s" % (n, status), expected=expected)
     except c.ConcurrentChange:
         # A push race: reload the winning decision/configuration, never reapply stale bytes.
         return settle(n, issue)

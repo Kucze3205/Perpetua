@@ -175,7 +175,7 @@ keep trusted snapshots and durable decisions so repeated events cannot reapply a
 
 The watchdog notices a closed request on its next run (up to 30 minutes). There is no workflow on `issues: closed`: GitHub starts a run for every closed issue, and one that is not a request would end Skipped.
 
-**Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list) gets a `consent` request that blocks it with a native edge. `resolve`
+**Consent.** A task whose role's profile is beyond the accepted limits (`limits` in `engine.yml`: tools outside the list) gets a `consent` request that blocks it with a native edge. `session-settings`
 starts the session only when that request is closed as completed, and then only that one session runs with the profile.
 The task can also carry `consent.secrets` (names only); the frozen text of its granted consent decides which pool
 secrets of the `Session` step of `session.yml` that one session gets, and a missing one blocks the task with

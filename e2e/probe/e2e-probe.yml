@@ -29,7 +29,6 @@ jobs:
           persist-credentials: false
       - run: |
           pip install -q pyyaml
-          python3 .github/loop/loop.py git-identity
           python3 e2e/probe.py
       - if: always()
         run: |

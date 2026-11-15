@@ -110,7 +110,7 @@ def fetch_runs(out, R, begun):
         r["jobs_list"] = api_items("repos/%s/actions/runs/%s/jobs?per_page=100" % (R, r["id"]), "jobs")
         write_json(d / "jobs.json", r["jobs_list"])
         found = re.match(r"session #(\d+)", r.get("display_title") or "")       # session.yml's run-name
-        r["issue"] = int(found.group(1)) if found and r["name"] == "session" else None
+        r["issue"] = int(found.group(1)) if found and r["name"].lower() == "session" else None
         write_json(d / "run.json", {k: v for k, v in r.items() if k != "jobs_list"})
     return runs
 

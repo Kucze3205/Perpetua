@@ -352,34 +352,41 @@ def workflow_run(workflow, **inputs):
     return r.returncode == 0
 
 
-def run_tokenless(bundle, timeout_minutes, poll=15):
+def run_tokenless(bundle, timeout_minutes, purpose="command", poll=15):
     """Run `bundle/run.sh` in the tokenless job (tokenless.yml, `permissions: {}`) and return the directory of its
     outputs (`stdout.txt`, `stderr.txt`, `exit-code`), or None when the job left none. The bundle is a directory the
-    caller staged; it travels as one tarball on a throwaway branch (data for the job; a tarball holds no workflow
-    file the token would be refused to push), and the branch is deleted afterwards."""
+    caller staged; it travels as one tarball on a throwaway ref outside the branches (`refs/tokenless/<key>`: data for
+    the job, in no branch list and in no history; a tarball holds no workflow file the token would be refused to push),
+    and the ref is deleted afterwards. `purpose` only names the run for the owner."""
     key = uuid.uuid4().hex[:12]
-    branch = "tokenless/%s" % key
+    ref = "refs/tokenless/%s" % key
     shipment = tempfile.mkdtemp(prefix="shipment-")
     shutil.make_archive(os.path.join(shipment, "bundle"), "gztar", bundle)
     git(shipment, "init", "-q", "-b", "bundle")
     git(shipment, "add", "-A")
-    git(shipment, "commit", "-q", "-m", "bundle")
+    git(shipment, "commit", "-q", "-m", "tokenless bundle %s" % key)
     url = "https://github.com/%s.git" % REPO
-    git(shipment, "push", "-q", url, "HEAD:refs/heads/%s" % branch, remote=True)
+    git(shipment, "push", "-q", url, "HEAD:%s" % ref, remote=True)
     out = os.path.join(shipment, "out")
     try:
-        if not workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes):
+        if not workflow_run("tokenless.yml", key=key, timeout_minutes=timeout_minutes, purpose=purpose):
             return None                 # no run will appear: do not wait out the deadline for it
+        title = tokenless_title(purpose, key)
         deadline = time.time() + (timeout_minutes + 15) * 60
         while time.time() < deadline:
             time.sleep(poll)
-            run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == "tokenless #%s" % key), None)
+            run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == title), None)
             if run and run["status"] == "completed":
                 gh("run", "download", str(run["databaseId"]), "-n", "result-%s" % key, "-D", out, check=False)
                 return out if os.path.isdir(out) else None
         return None
     finally:
-        git(shipment, "push", "-q", url, "--delete", branch, check=False, remote=True)
+        git(shipment, "push", "-q", url, "--delete", ref, check=False, remote=True)
+
+
+def tokenless_title(purpose, key):
+    """The run name `tokenless.yml` gives a run (its `run-name` must match): the key is how the engine finds its own run."""
+    return "Tokenless: %s [%s]" % (purpose, key)
 
 
 def run_list(workflow):
@@ -681,9 +688,24 @@ def auth_args():
     return ["-c", "http.https://github.com/.extraheader=AUTHORIZATION: basic %s" % b64]
 
 
+GIT_BOT = ("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com")
+WRITES_HISTORY = {"commit", "rebase", "merge", "cherry-pick", "revert"}
+
+
+def identity_env(args):
+    """The engine commits as the Actions bot (and, when `engine.yml` names an author, authors as that person). It sets
+    this itself on every git call that writes history: nothing depends on a global git config of the machine."""
+    sub = next((a for i, a in enumerate(args) if a[:1] != "-" and (i == 0 or args[i - 1] != "-c")), "")
+    if sub not in WRITES_HISTORY:
+        return {}
+    a = cfg()["author"]
+    name, email = (a["name"], a["email"]) if a.get("name") and a.get("email") else GIT_BOT
+    return {"GIT_COMMITTER_NAME": GIT_BOT[0], "GIT_COMMITTER_EMAIL": GIT_BOT[1], "GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email}
+
+
 def git(cwd, *args, check=True, remote=False, inp=None):
     cmd = ["git"] + (auth_args() if remote else []) + list(args)
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    env = {**identity_env(args), **os.environ, "GIT_TERMINAL_PROMPT": "0"}
     r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, input=inp, env=env)
     if check and r.returncode:
         raise SystemExit("git %s: %s" % (" ".join(args), (r.stderr or r.stdout).strip()))
@@ -757,7 +779,7 @@ def clean_env(extra=()):
     return env
 
 
-def run_command(cmd, tree, timeout_minutes=60):
+def run_command(cmd, tree, timeout_minutes=60, purpose="command"):
     """A shell command from the repo (check, verification, goal gate) run on a copy of `tree` in the tokenless job, never
     on a machine with the token. Returns a CompletedProcess; a job that left no output counts as a failed command."""
     bundle = tempfile.mkdtemp(prefix="bundle-")
@@ -765,7 +787,7 @@ def run_command(cmd, tree, timeout_minutes=60):
         shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
         with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write('cd "$(dirname "$0")/tree"\nbash -c %s\n' % shlex.quote(cmd))
-        out = run_tokenless(bundle, timeout_minutes)
+        out = run_tokenless(bundle, timeout_minutes, purpose)
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
 

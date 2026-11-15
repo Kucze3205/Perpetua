@@ -81,15 +81,15 @@ reads its graph only on `done`. Covered by
 
 A session sees a secret only when the owner approved its name for that task. Three parts, each with one owner:
 
-- **Pool** (the owner, `session.yml`): one line per secret the loop may ever hand out, in the `env` of the `Session`
-  step, gated on the name: `NAME: ${{ contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || '' }}`.
+- **Pool** (the owner, `session.yml`): one line per secret the loop may ever hand out, in the `env` of the step that runs the
+  session (`Run LLM session`), gated on the name: `NAME: ${{ contains(needs.prep.outputs.secrets, '|NAME|') && secrets.NAME || '' }}`.
   Without an approved name the line is empty.
 - **Approval** (the owner, per task): the shaper lists `consent.secrets: [NAME…]` (names only); the list is frozen in
-  the `consent` request and closing it as completed approves it. `resolve` outputs `secrets` (`|A|B|`) from that frozen
+  the `consent` request and closing it as completed approves it. `session-settings` outputs `secrets` (`|A|B|`) from that frozen
   text, so two sessions with different consents get different names. A new session of the same task uses the same
   consent; a changed list is a new request.
-- **Start** (trusted code): `resolve` blocks the task with `secret-missing:NAME` when an approved name has no line in
-  the `Session` step. `stage` writes the approved names to the trusted `secrets` file and, before any agent code runs,
+- **Start** (trusted code): `session-settings` blocks the task with `secret-missing:NAME` when an approved name has no line in
+  the session's run step. `stage-inputs` writes the approved names to the trusted `secrets` file and, before any agent code runs,
   `agent.sh` checks that every one is non-empty (pool names that are not approved are already empty by the expression);
   if one is not, the agent does not start, the task is `blocked:
   secret-missing:NAME` and a `capability` request (no value) goes to the owner. Closing it creates nothing.
@@ -103,15 +103,17 @@ when updating a loop.
 
 ## Session lifecycle and outputs
 
-`session.yml` runs `prep` (guard, credential probe, resolve), then three jobs:
+`session.yml` (displayed as *Session*) runs three jobs. Every job, step and command has a name that says what it does;
+the job ids (`prep`, `session`, `epilogue`) stay the same.
 
-- `stage` (GitHub token): checks out the engine and the worker tree, stages the session and ships it as an artifact.
-  The executor baseline goes in an artifact of its own, pinned by its sha256 in a job output; the session never
-  receives it.
+- `prep`, *Prepare the session* (GitHub token): checks AUTOPILOT and the LLM provider credentials
+  (`check-autopilot`, `check-credentials`), loads the session settings (`session-settings`), checks out the engine and
+  the worker tree, stages the session (`stage-inputs`) and ships it as an artifact. The executor baseline goes in an
+  artifact of its own, pinned by its sha256 in a job output; the session never receives it.
 - `session` (`permissions: {}`; only the Claude token and the secrets the owner consented to): unpacks the staged
-  bundle, runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
+  bundle, installs the agent tool (named from the engine's output, for agent sessions only), runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
   (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.
-- `epilogue` (GitHub token, a fresh runner): `loop.epilogue` takes the artifact in as data
+- `epilogue`, *Take in results* (GitHub token, a fresh runner): `take-results` (`loop.epilogue`) takes the artifact in as data
   (`session_artifact.py`). It refuses a tree with a path that escapes, one written through a link, a special file or an
   oversized file; links and hard links that stay are unpacked unfollowed and refused by the admission below. It checks
   the baseline against the staged digest, reads the commits from the bundle (kept under `refs/session/<issue>/`, never

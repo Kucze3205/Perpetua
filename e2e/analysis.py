@@ -45,7 +45,7 @@ def saved_runs(out, numbers=None):
         r["jobs_list"] = json.loads(read(path.parent / "jobs.json"))
         if "issue" not in r:  # Legacy run.json predates the saved log association.
             found = re.search(r"ISSUE: (\d+)", read(path.parent / "log.txt"))
-            r["issue"] = int(found.group(1)) if found and r["name"] == "session" else None
+            r["issue"] = int(found.group(1)) if found and is_session_run(r) else None
         runs.append(r)
     return runs
 
@@ -86,6 +86,11 @@ def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=1, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
+
+
+def is_session_run(r):
+    """A run of the session workflow (named `session` before the engine named it `Session`)."""
+    return r["name"].lower() == "session"
 
 
 def read(path):
@@ -288,7 +293,7 @@ def actions_timing(runs):
                                    for s in j.get("steps", [])]})
             if j.get("started_at") and j.get("completed_at"):
                 minutes += math.ceil(seconds(j["started_at"], j["completed_at"]) / 60)
-                if r["name"] == "session":
+                if is_session_run(r):
                     intervals.append((parse_time(j["started_at"]), parse_time(j["completed_at"]), r["display_title"]))
         row = {"run": r["id"], "workflow": r["name"], "title": r.get("display_title"), "event": r["event"], "status": r["status"],
                "conclusion": r["conclusion"], "created_at": r["created_at"], "run_started_at": r.get("run_started_at"),
@@ -420,19 +425,21 @@ def actions_overhead(sessions, runs):
     """What Actions spends around the agent, per session run, and how wide the iteration is: these, not the agent, decide
     how an iteration scales. Steps: prep job; in the session job `Tools`, `Prepare the machine` + `Stage the session`,
     `Session` (the agent), `Epilogue`."""
-    def step(job, *names):
-        return round(sum(seconds(x.get("started_at"), x.get("completed_at")) or 0 for x in job.get("steps", []) if x["name"] in names), 1)
+    def step(job, *names, prefix=None):
+        """Seconds of the job's steps with these names (the old ones) or this prefix (the new ones: `Install Claude Code 2.1.284`)."""
+        return round(sum(seconds(x.get("started_at"), x.get("completed_at")) or 0 for x in job.get("steps", [])
+                         if x["name"] in names or (prefix and x["name"].startswith(prefix))), 1)
     rows = []
     by_id = {r["id"]: r for r in runs}
     for s in sessions:
         for run_id in s["runs"]:
             jobs = {j["name"]: j for j in by_id[run_id].get("jobs_list", [])}
-            prep, job = jobs.get("prep"), jobs.get("session")
+            prep, job = jobs.get("Prepare the session") or jobs.get("prep"), jobs.get("session")
             if not job:
                 continue
             row = {"issue": s["issue"], "role": s["role"], "run": run_id, "prep_s": seconds(prep.get("started_at"), prep.get("completed_at")) if prep else None,
-                   "tools_s": step(job, "Tools"), "stage_s": step(job, "Prepare the machine", "Stage the session"),
-                   "agent_step_s": step(job, "Session"), "epilogue_s": step(job, "Epilogue"),
+                   "tools_s": step(job, "Tools", prefix="Install "), "stage_s": step(job, "Prepare the machine", "Stage the session"),
+                   "agent_step_s": step(job, "Session", prefix=("Run LLM session", "Run script session")), "epilogue_s": step(job, "Epilogue"),
                    "session_job_s": seconds(job.get("started_at"), job.get("completed_at")), "agent_s": s["report"].get("agent_s")}
             row["around_agent_s"] = round((row["prep_s"] or 0) + (row["session_job_s"] or 0) - (row["agent_step_s"] or 0), 1)
             rows.append(row)

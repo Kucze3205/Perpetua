@@ -21,7 +21,7 @@ def pending():
     return [value for value in notices().values() if not value.get("delivered_to")]
 
 
-def change_notices(n, change):
+def change_notices(n, change, step):
     for attempt in range(5):
         baseline = c.file_digest(STATE)
         old = notices()
@@ -31,7 +31,7 @@ def change_notices(n, change):
             return list(new.values())
         try:
             c.commit_main({STATE: json.dumps(new, ensure_ascii=False, indent=1) + "\n"},
-                          "session #%s: startup budget notice" % n, expected={STATE: baseline})
+                          "%s #%s: startup budget notice" % (step, n), expected={STATE: baseline})
             return list(new.values())
         except c.ConcurrentChange:
             if attempt == 4:
@@ -66,7 +66,7 @@ def record(n, role, budget):
         if role == "policymaker":
             for value in new.values():
                 value["presented_to"] = n
-    return change_notices(n, update)
+    return change_notices(n, update, "stage")
 
 
 def acknowledge(n):
@@ -75,7 +75,7 @@ def acknowledge(n):
         for value in new.values():
             if value.get("presented_to") == n:
                 value["delivered_to"] = n
-    return change_notices(n, update)
+    return change_notices(n, update, "epilogue")
 
 
 def summary(n):

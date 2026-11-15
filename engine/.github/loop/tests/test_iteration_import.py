@@ -22,7 +22,7 @@ suite = unittest.TestSuite([
     test_flow_policymaker.FirstPolicymakerTest(
         'test_the_first_iteration_starts_with_the_policymaker_and_its_orders_become_its_tasks'),
     test_flow.FirstIterationTest(
-        'test_script_entry_begins_work_without_a_due_policymaker'),
+        'test_an_iteration_begins_work_without_a_due_policymaker'),
 ])
 result = unittest.TextTestRunner().run(suite)
 raise SystemExit(0 if result.wasSuccessful() else 1)

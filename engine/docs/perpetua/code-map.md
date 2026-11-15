@@ -47,6 +47,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Task validation, dependencies, inputs and frozen graph | `task_graph.validate_tasks`, `create_tasks`, `read`, `width`; `iteration.validate_tasks` adds `policy/graph-rules.py` | [Task graph format](../../.github/loop/task-graph.md) | `test_task_graph.py`, `test_flow.py` |
 | Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | [Output admission](session-boundary.md#output-admission); [change gate](engine.md#the-change-gate) | `test_merge.py`, `test_flow_gate.py`, `test_change_records.py` |
 | Policymaker triggers, orders and policy phases | `iteration.start_policymaker`, `policymaker_due`; `loop.apply_policy` | [Policymaker contract](../../.github/loop/policymaker.md); [layered activation](managed-resources.md#layered-activation-and-recovery) | `test_flow_policymaker.py`, `test_policy_admission.py`, `test_activation.py` |
+| Policymaker session profile: tuning from `policy/params.yml` within the owner's ceilings | `policymaker_session.py` (`profile`), used by `loop.py` | [Policymaker contract](../../.github/loop/policymaker.md) | `test_exports.py` |
 | Owner consent and approved secrets | `owner_requests.consent_status`, `secrets_of_consent`, `limits_exceeded`; `loop.secret_pool`, `stage`, `finalize` | [Owner requests](engine.md#owner-requests); [session secrets](session-boundary.md#session-secrets) | `test_flow_consent.py` |
 | Goal gate and owner confirmation | `iteration.run_goal_gate`; `loop.on_request_closed` | [The goal gate](engine.md#the-goal-gate-and-the-end) | `test_flow_goal.py` |
 | Owner requests | `owner_requests.open_request`, `process_proposals`, `settle`; `loop.on_request_closed` | [Owner requests](engine.md#owner-requests) | `test_owner_requests.py` |
@@ -59,6 +60,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Startup notices (the reads, prompt and estimate are `policy/session-startup.py`) and offline history | `session_context.py`, `session_startup.py` | [Session context](session-context.md) | `test_context.py` |
 | Isolation, credentials and data-only admission; the session artifact | `session_security.py`, `executor_boundary.py`, `session_artifact.py`, `agent.sh` | [Session boundary](session-boundary.md) | `test_security.py`, `test_session_artifact.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | [The watchdog](engine.md#the-watchdog) | `test_watchdog.py`, `test_stream.py` |
+| Session time-left hook (PostToolUse: minutes until `SESSION_END`) | `remaining.py`, installed by `session_security.py`, copied by `loop.stage` | [Session boundary](session-boundary.md) | `test_session.py`, `test_stream.py` |
 
 `managed_resources.py` describes the managed definition tree and its role, prompt,
 configuration, admission, revision and restore boundaries. See

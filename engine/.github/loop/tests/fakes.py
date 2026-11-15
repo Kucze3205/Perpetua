@@ -22,6 +22,7 @@ import session_artifact  # noqa: E402
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
            "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless", "probe_limit"]
+GH_HANDLED = {("run", "download"), ("release", "create"), ("release", "upload"), ("release", "download")}
 
 
 class FakeHub:
@@ -157,6 +158,10 @@ class FakeHub:
         return self.limit
 
     def gh(self, *args, inp=None, check=True):
+        """The `gh` calls the tests rely on (only recorded). Any other call, `api` ones included, fails: a helper built on
+        it would otherwise pass against an empty answer and nothing would show its effect missing."""
+        if args[:2] not in GH_HANDLED:
+            raise AssertionError("FakeHub.gh does not handle this call: gh %s (inp=%r, check=%r)" % (" ".join(args), inp, check))
         self.gh_calls.append(args)
         return ""
 

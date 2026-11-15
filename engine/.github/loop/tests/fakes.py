@@ -9,6 +9,13 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 
+# Every test module imports this one, so this is the one place that stops the suite on Windows: git and bash through
+# MSYS cost ~46 ms a process (an hour for the suite), and the sandbox, symlink and POSIX-shell cases cannot run there.
+if sys.platform == "win32":
+    sys.stderr.write("The engine tests run only on Linux: run them in WSL (Ubuntu-24.04).\n")
+    sys.stderr.flush()
+    os._exit(1)      # not sys.exit: `unittest discover` catches SystemExit raised by an import and goes on to the next module
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOOP_DIR = os.path.dirname(HERE)
 ENGINE = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
@@ -154,7 +161,7 @@ class FakeHub:
         if fault == "no-artifact":
             return None
         out = tempfile.mkdtemp(prefix="tokenless-out-")
-        r = subprocess.run([os.environ.get("LOOP_BASH", "bash"), os.path.join(bundle, "run.sh")], env=common.clean_env(),
+        r = subprocess.run(["bash", os.path.join(bundle, "run.sh")], env=common.clean_env(),
                            capture_output=True, text=True, timeout=timeout_minutes * 60)
         for name, text in (("stdout.txt", r.stdout), ("stderr.txt", r.stderr), ("exit-code", "%d\n" % (1 if fault == "failed" else r.returncode))):
             with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as fh:
@@ -224,17 +231,9 @@ class World:
         home = os.path.join(self.tmp, "fixture-home")
         os.mkdir(home)
         os.environ["HOME"] = home
-        if os.name == "nt":
-            os.environ["USERPROFILE"] = home
         for k, v in dict(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
                          DEFAULT_BRANCH="main", GITHUB_REPOSITORY="o/r", GITHUB_REPOSITORY_OWNER="ow").items():
             os.environ[k] = v
-        if os.name == "nt":      # `bash` on PATH may be WSL's, which cannot run engine commands: put Git's first
-            for cand in ("C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe"):
-                if os.path.exists(cand):
-                    os.environ["LOOP_BASH"] = cand
-                    os.environ["PATH"] = os.path.dirname(cand) + os.pathsep + os.environ["PATH"]
-                    break
         os.environ.pop("GH_TOKEN", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works

@@ -104,7 +104,8 @@ python -m unittest discover -s .github/loop/tests -p test_merge.py
 Repeat with the other named files for the behavior you changed. Omit `-p` and its
 filename to run the engine suite. Use `python3` if needed. Python with PyYAML and
 git on PATH are required; some checks also use a POSIX shell.
-Windows skips kernel isolation, symlink and native-CLI cases. For Linux packages,
+The engine tests run only on Linux: on Windows they stop at once with a pointer to
+WSL (Ubuntu-24.04). For Linux packages,
 kernel settings, the pinned CLI and opt-in live-provider checks, follow
 [validation](validation.md). A skip leaves that check unverified. Local suites
 simulate GitHub/provider outputs and never arm a real loop.

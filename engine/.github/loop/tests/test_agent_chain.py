@@ -43,7 +43,6 @@ class AgentChainCase(sessions.SessionCase):
         return work, output, trusted
 
 
-@unittest.skipIf(os.name == "nt", "requires a POSIX shell: bash on Windows may be WSL")
 class PlainPromptTest(AgentChainCase):
     def test_a_prompt_over_the_argv_limit_reaches_the_cli_whole(self):
         n = self.issue("audit")

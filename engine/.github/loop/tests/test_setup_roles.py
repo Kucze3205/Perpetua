@@ -1,5 +1,6 @@
 import os, shutil, tempfile, unittest, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import fakes  # noqa: F401  (stops the run on Windows)
 import setup_roles
 
 def write_skill(repo, layer, role, text=None, **files):

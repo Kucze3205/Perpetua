@@ -4,6 +4,8 @@ import subprocess
 import sys
 import unittest
 
+import fakes  # noqa: F401  (stops the run on Windows)
+
 
 class IterationImportTest(unittest.TestCase):
     def test_fresh_iteration_uses_real_activation(self):

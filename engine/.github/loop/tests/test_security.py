@@ -37,11 +37,7 @@ class CompositionTest(SessionCase):
                 target = tempfile.mkdtemp(dir=self.w.tmp)
                 link = os.path.join(work, *name.split("/"))
                 os.makedirs(os.path.dirname(link), exist_ok=True)
-                if os.name == "nt":
-                    import _winapi
-                    _winapi.CreateJunction(target, link)
-                else:
-                    os.symlink(target, link, target_is_directory=True)
+                os.symlink(target, link, target_is_directory=True)
                 with self.assertRaisesRegex(SystemExit, "session.*redirect|redirect.*session"):
                     loop.stage(n, work, os.path.join(self.w.tmp, "redirected-trusted"))
                 self.assertEqual(os.listdir(target), [])

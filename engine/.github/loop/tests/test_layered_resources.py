@@ -164,7 +164,6 @@ class LayeredSessionTest(LayeredSessionCase):
         result = loop.merge_branch(n, 'worker', self.hub.issue(n), override={'verdict': 'accepted'})
         self.assertEqual(result['result'], 'merged')
 
-    @unittest.skipIf(os.name == 'nt', 'symlink cases run on Linux')
     def test_staging_rejects_redirected_skills_and_references(self):
         targets = ['execution/roles/worker', 'execution/roles/worker/SKILL.md',
                    'execution/roles/worker/reference.md']

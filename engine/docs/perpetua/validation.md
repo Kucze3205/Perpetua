@@ -18,8 +18,8 @@ independent evaluator verification and atomic activation of dependent definition
 Use `python3` on Linux if that is the interpreter name. The host requirements of the
 Linux tests (packages, kernel settings, the pinned CLI) are the install step of
 [`engine-tests.yml`](https://github.com/Kucze3205/Perpetua/blob/main/.github/workflows/engine-tests.yml); nothing else lists them.
-Windows skips the tests that need a POSIX shell, the symlink cases and the kernel-isolation tests, so a Windows run
-does not prove isolation. The script boundary tests must execute on Linux; an environment skip is an outstanding check, not proof.
+The engine tests do not run on Windows: they stop at once with a pointer to WSL (Ubuntu-24.04). The script boundary
+tests must execute on Linux; an environment skip is an outstanding check, not proof.
 The opt-in live provider procedure is below. A passing fake CLI or a live API error
 does not establish the real provider guarantee: the pinned CLI must successfully
 call its model while subprocess probes demonstrate the network restrictions.

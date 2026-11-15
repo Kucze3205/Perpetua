@@ -133,7 +133,6 @@ class ConsentSecretsTest(Flow):
         with open(os.path.join(trusted, "secrets")) as fh:
             self.assertEqual(fh.read(), "")
 
-    @unittest.skipIf(os.name == "nt", "requires a POSIX shell: bash on Windows may be WSL")
     def test_an_empty_approved_secret_stops_a_really_staged_start(self):
         import subprocess
         self.grant("a")

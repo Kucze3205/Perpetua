@@ -98,8 +98,8 @@ python -m unittest discover -s e2e
 ```
 
 Use `python3` if that is the interpreter name. These suites use temporary local
-repositories and simulated GitHub/provider outputs. Some checks need a POSIX shell;
-Windows skips Linux isolation, symlink and native-CLI cases. Linux dependencies,
+repositories and simulated GitHub/provider outputs. The engine tests run only on
+Linux; on Windows they stop at once and point to WSL (Ubuntu-24.04). Linux dependencies,
 kernel settings and the pinned CLI are in
 [engine-tests.yml](.github/workflows/engine-tests.yml); the
 [validation guide](engine/docs/perpetua/validation.md) explains the separate

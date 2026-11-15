@@ -79,7 +79,6 @@ class PolicymakerAdmissionTest(Flow):
         self.w.session(pol, delete=["policy/old.md"], commit=False)
         self.assertIsNone(self.w.origin_file("policy/old.md"))
 
-    @unittest.skipIf(sys.platform == "win32", "symlinks")
     def test_a_symlink_in_the_tree_refuses_the_admission(self):
         pol = self.pol()
         self.w.session(pol, files=MEMORY, commit=False, links={"policy/link.md": "/etc/passwd"})
@@ -87,7 +86,6 @@ class PolicymakerAdmissionTest(Flow):
         self.assertIsNone(self.w.origin_file("policy/working-memory.md"))
         self.assertFalse(self.w.origin_has_ref("task/%s" % pol))
 
-    @unittest.skipIf(sys.platform == "win32", "symlinks")
     def test_an_untracked_symlink_outside_the_write_paths_is_debris_not_a_refusal(self):
         pol = self.pol()
         self.w.session(pol, files=MEMORY, commit=False, links={".venv/bin/python": "/usr/bin/python3"})

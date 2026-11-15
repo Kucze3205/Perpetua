@@ -2,7 +2,8 @@
 import json
 import unittest
 
-from fakes import common as c, iteration as it, loop, task
+from fakes import common as c, iteration as it, task
+import request_continuation
 from flow_fixtures import Flow
 
 
@@ -33,7 +34,7 @@ class GoalGateTest(Flow):
         (req,) = self.hub.by_label("owner-request:result-confirmation")
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
         self.hub.answer(req["number"], True)
-        loop.on_request_closed(req["number"])
+        request_continuation.on_request_closed(req["number"])
         self.assertIn("confirmed by the owner", self.w.origin_file("GOAL_REACHED"))
         c.sync_main()
         self.assertFalse(c.guard_ok())
@@ -43,7 +44,7 @@ class GoalGateTest(Flow):
         self.finish_one()
         (req,) = self.hub.by_label("owner-request:result-confirmation")
         self.hub.answer(req["number"], False)
-        loop.on_request_closed(req["number"])
+        request_continuation.on_request_closed(req["number"])
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
         self.assertTrue(c.guard_ok())
         self.assertTrue(it.confirmation_declined(c.marker(self.hub.issues[req["number"]]["body"], "request-ref")))
@@ -59,7 +60,7 @@ class GoalGateTest(Flow):
         self.w.session(self.policymaker_session(0), session_files={"requests.json": prop})
         (req,) = self.hub.by_label("owner-request:goal-gate")
         self.hub.answer(req["number"], True)
-        loop.on_request_closed(req["number"])
+        request_continuation.on_request_closed(req["number"])
         self.assertEqual(self.w.origin_file("goal/gate.yml"), "command: x\nowner_confirms: true\n")
 
     def test_an_edited_proposal_is_not_applied(self):
@@ -69,7 +70,7 @@ class GoalGateTest(Flow):
         (req,) = self.hub.by_label("owner-request:goal-change")
         self.hub.issues[req["number"]]["body"] = self.hub.issues[req["number"]]["body"].replace("Make it great", "Make it terrible")
         self.hub.answer(req["number"], True)
-        loop.on_request_closed(req["number"])
+        request_continuation.on_request_closed(req["number"])
         self.assertIsNone(self.w.origin_file("goal/goal.md"))
         self.assertIn("Not applied", self.hub.cmts[req["number"]][-1]["body"])
 

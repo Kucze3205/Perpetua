@@ -27,3 +27,9 @@ def profile():
             raise ValueError("policymaker_session %s and its owner ceiling must be positive integers" % key)
         base[key] = min(value, ceiling)
     return base
+
+
+def profile_of(role):
+    if role == "policymaker":
+        return profile()
+    return c.profiles().get(role)

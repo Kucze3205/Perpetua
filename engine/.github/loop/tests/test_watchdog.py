@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
+import watchdog
 from gate_fixtures import GATE_SH, SCRIPT_GATE
 
 
@@ -80,7 +81,7 @@ class JamTest(WatchCase):
         self.hub.runs.clear()
         c.LAUNCHED.clear()
         before = len(self.hub.dispatched)
-        self.assertEqual(loop.kick(), 0)
+        self.assertEqual(watchdog.kick(), 0)
         self.assertEqual(len(self.hub.dispatched), before + 1)
         self.assertEqual(self.hub.report(s)["kicks"], "1")
 
@@ -90,23 +91,23 @@ class JamTest(WatchCase):
         for _ in range(4):
             self.hub.runs.clear()
             c.LAUNCHED.clear()
-            rc = loop.kick()
+            rc = watchdog.kick()
         self.assertEqual(rc, 1)
         self.assertEqual(len(self.hub.by_label("outage")), 1)
 
     def test_a_run_in_progress_is_a_commitment(self):
         it.start_iteration()
         c.LAUNCHED.clear()
-        self.assertTrue(loop.commitments())            # the shaper's run is queued
+        self.assertTrue(watchdog.commitments())            # the shaper's run is queued
         self.hub.runs.clear()
-        self.assertFalse(loop.commitments())
+        self.assertFalse(watchdog.commitments())
 
     def test_three_crashes_without_a_commit_are_an_outage_but_one_commit_is_not(self):
         for k in range(3):
             n = self.hub.create_issue("T%s" % k, "b", labels=["role:worker", "loop:iteration 1"])
             c.update_report(n, {"status": "crashed"})
             self.hub.close_issue(n, "not planned")
-        self.assertEqual(loop.drive(), 1)
+        self.assertEqual(watchdog.drive(), 1)
         self.assertEqual(len(self.hub.by_label("outage")), 1)
 
     def test_a_crash_with_a_commit_does_not_count(self):
@@ -114,17 +115,17 @@ class JamTest(WatchCase):
             n = self.hub.create_issue("T%s" % k, "b", labels=["role:worker", "loop:iteration 1"])
             c.update_report(n, {"status": "crashed", "commit": "abc" if k == 1 else None})
             self.hub.close_issue(n, "not planned")
-        self.assertFalse(loop.crash_streak())
+        self.assertFalse(watchdog.crash_streak())
 
     def test_closing_an_outage_resets_the_count(self):
         for k in range(3):
             n = self.hub.create_issue("T%s" % k, "b", labels=["role:worker", "loop:iteration 1"])
             c.update_report(n, {"status": "crashed"})
             self.hub.close_issue(n, "not planned")
-        loop.drive()
+        watchdog.drive()
         (o,) = self.hub.by_label("outage")
         self.hub.close_issue(o["number"])
-        self.assertFalse(loop.crash_streak())
+        self.assertFalse(watchdog.crash_streak())
 
 
 class StallTest(WatchCase):
@@ -137,7 +138,7 @@ class StallTest(WatchCase):
         self.later(45)
         self.hub.runs.clear()
         c.LAUNCHED.clear()
-        loop.drive()
+        watchdog.drive()
         self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))          # rolled back to the good state
         self.assertEqual(json.loads(self.w.origin_file(it.record_path(1)))["status"], "failed")
         self.assertIn("stalled; policy/ rolled back", json.loads(self.w.origin_file(it.record_path(1)))["failure"])
@@ -175,7 +176,7 @@ class StallTest(WatchCase):
         it.start_iteration()
         self.later(45)
         self.hub.runs.clear()
-        loop.drive()
+        watchdog.drive()
         self.assertEqual(json.loads(self.w.origin_file(it.record_path(0)))["status"], "failed")
         self.assertEqual(it.iteration_number(it.open_iteration()), 1)
 
@@ -187,7 +188,7 @@ class CeilingTest(WatchCase):
         it.start_iteration()
         self.later(10)
         self.hub.runs.clear()
-        loop.drive()
+        watchdog.drive()
         rec = json.loads(self.w.origin_file(it.record_path(0)))
         self.assertEqual(rec["status"], "failed")
         self.assertIn("ceiling", rec["failure"])
@@ -197,7 +198,7 @@ class CeilingTest(WatchCase):
         it.start_iteration()
         self.hub.runs[0]["status"] = "in_progress"
         self.later(10)
-        loop.drive()
+        watchdog.drive()
         self.assertEqual(self.hub.cancelled, [self.hub.runs[0]["databaseId"]])
 
 

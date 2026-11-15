@@ -36,23 +36,24 @@ from role instructions instead of copying its schemas into each role.
 
 ## Execution and tests
 
-All Python paths below are in `.github/loop/`. Workflows call `loop.py main`.
-The engine uses the accepted checkout; files left by a session (committed or not) enter through `fetch_candidate`.
+All Python paths below are in `.github/loop/`. Workflows call `loop.py <command>`; `loop.py` only dispatches, and each
+command's code lives in the module named in its row. The engine uses the accepted checkout; files left by a session
+(committed or not) enter through `merge.fetch_candidate`.
 
 | Behavior | Implementation entry points | Contract | Tests in `tests/` |
 |---|---|---|---|
-| Session resolution and staging | `loop.resolve` (`session-settings`), `loop.stage` (`stage-inputs`) | [Session boundary](session-boundary.md); [session lifecycle](session-boundary.md#session-lifecycle-and-outputs) | `test_session.py`, `test_agent_chain.py` |
-| Session finalization, retries and outputs | `loop.finalize`, `loop.resume` (`resume-after-limit`) | [Session lifecycle and outputs](session-boundary.md#session-lifecycle-and-outputs) | `test_session_finalize.py` |
+| Session resolution and staging | `session_start.py` (`resolve`: `session-settings`; `stage`: `stage-inputs`); `release_assets.fetch_inputs` | [Session boundary](session-boundary.md); [session lifecycle](session-boundary.md#session-lifecycle-and-outputs) | `test_session.py`, `test_agent_chain.py` |
+| Session finalization, retries and outputs | `session_finalize.py` (`epilogue`: `take-results`, `finalize`); `agent_result.py` (what the CLI left); `release_assets.py` (`upload_artifacts`); `closing.py` (`close_out`, successors, dependents); `watchdog.resume` (`resume-after-limit`) | [Session lifecycle and outputs](session-boundary.md#session-lifecycle-and-outputs) | `test_session_finalize.py` |
 | Iteration lifecycle and session launch | `iteration.start_iteration`, `instantiate`, `advance`, `close_iteration` | [One iteration](engine.md#one-iteration) | `test_flow.py`, `test_iteration_import.py` |
 | Task validation, dependencies, inputs and frozen graph | `task_graph.validate_tasks`, `create_tasks`, `read`, `width`; `iteration.validate_tasks` adds `policy/graph-rules.py` | [Task graph format](../../.github/loop/task-graph.md) | `test_task_graph.py`, `test_flow.py` |
-| Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | [Output admission](session-boundary.md#output-admission); [change gate](engine.md#the-change-gate) | `test_merge.py`, `test_flow_gate.py`, `test_change_records.py` |
-| Policymaker triggers, orders and policy phases | `iteration.start_policymaker`, `policymaker_due`; `loop.apply_policy` | [Policymaker contract](../../.github/loop/policymaker.md); [layered activation](managed-resources.md#layered-activation-and-recovery) | `test_flow_policymaker.py`, `test_policy_admission.py`, `test_activation.py` |
-| Policymaker session profile: tuning from `policy/params.yml` within the owner's ceilings | `policymaker_session.py` (`profile`), used by `loop.py` | [Policymaker contract](../../.github/loop/policymaker.md) | `test_exports.py` |
-| Owner consent and approved secrets | `owner_requests.consent_status`, `secrets_of_consent`, `limits_exceeded`; `loop.secret_pool`, `stage`, `finalize` | [Owner requests](engine.md#owner-requests); [session secrets](session-boundary.md#session-secrets) | `test_flow_consent.py` |
-| Goal gate and owner confirmation | `iteration.run_goal_gate`; `loop.on_request_closed` | [The goal gate](engine.md#the-goal-gate-and-the-end) | `test_flow_goal.py` |
-| Owner requests | `owner_requests.open_request`, `process_proposals`, `settle`; `loop.on_request_closed` | [Owner requests](engine.md#owner-requests) | `test_owner_requests.py` |
+| Candidate checks, change gate, evaluator verification | `merge.py` (`merge_branch`, `settle_verification`); `iteration.run_gate`, `common.run_tokenless` | [Output admission](session-boundary.md#output-admission); [change gate](engine.md#the-change-gate) | `test_merge.py`, `test_flow_gate.py`, `test_change_records.py` |
+| Policymaker triggers, orders and policy phases | `iteration.start_policymaker`, `policymaker_due`; `policy_apply.py` (`apply_policy`) | [Policymaker contract](../../.github/loop/policymaker.md); [layered activation](managed-resources.md#layered-activation-and-recovery) | `test_flow_policymaker.py`, `test_policy_admission.py`, `test_activation.py` |
+| Policymaker session profile: tuning from `policy/params.yml` within the owner's ceilings | `policymaker_session.py` (`profile`, `profile_of`), used by `session_start.py` and `merge.py` | [Policymaker contract](../../.github/loop/policymaker.md) | `test_exports.py` |
+| Owner consent and approved secrets | `owner_requests.consent_status`, `secrets_of_consent`, `limits_exceeded`; `session_start.secret_pool`, `stage`; `session_finalize.finalize` | [Owner requests](engine.md#owner-requests); [session secrets](session-boundary.md#session-secrets) | `test_flow_consent.py` |
+| Goal gate and owner confirmation | `iteration.run_goal_gate`; `request_continuation.on_request_closed` | [The goal gate](engine.md#the-goal-gate-and-the-end) | `test_flow_goal.py` |
+| Owner requests | `owner_requests.open_request`, `process_proposals`, `settle`; `request_continuation.py` (`on_request_closed`, `sweep_requests`) | [Owner requests](engine.md#owner-requests) | `test_owner_requests.py` |
 | Reports and the suggestion archive | `session_reports.py`; `policy/session-state.py`; report parsing/publication in `common.py` | [Session reports](session-reports.md) | `test_reports.py`, `test_pure.py` |
-| Session timeline (live job log) and Session summary (run Summary, written by `loop.epilogue`) | `stream_filter.Live`; `session_summary.py` | [Session reports](session-reports.md) | `test_stream.py`, `test_session_summary.py` |
+| Session timeline (live job log) and Session summary (run Summary, written by `session_finalize.epilogue`) | `stream_filter.Live`; `session_summary.py` | [Session reports](session-reports.md) | `test_stream.py`, `test_session_summary.py` |
 | Loop status: the pinned issue the engine overwrites after each session, owner answer and watchdog check | `loop_status.py` (`refresh`), called by `loop.main` | [Loop status](engine.md#loop-status) | `test_loop_status.py` |
 | Fresh-template integration (simulated GitHub/provider) | `setup_roles.py`, `loop.py`, `iteration.py` | [Validation](validation.md) | `test_template_flow.py` |
 | Setup role registration and baseline validation | `setup_roles.prepare`, `install`, `validate` | [New-loop setup](managed-resources.md#new-loop-setup) | `test_setup_roles.py` |
@@ -61,8 +62,8 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | [Session exports](session-exports.md) | `test_exports.py`, `test_input_boundary.py` |
 | Startup notices (the reads, prompt and estimate are `policy/session-startup.py`) and offline history | `session_context.py`, `session_startup.py` | [Session context](session-context.md) | `test_context.py` |
 | Isolation, credentials and data-only admission; the session artifact | `session_security.py`, `executor_boundary.py`, `session_artifact.py`, `agent.sh` | [Session boundary](session-boundary.md) | `test_security.py`, `test_session_artifact.py`, `test_static.py` |
-| Recovery and parked sessions | `loop.watch`, `drive`, `resume`; `stream_filter.py` | [The watchdog](engine.md#the-watchdog) | `test_watchdog.py`, `test_stream.py` |
-| Session time-left hook (PostToolUse: minutes until `SESSION_END`) | `remaining.py`, installed by `session_security.py`, copied by `loop.stage` | [Session boundary](session-boundary.md) | `test_session.py`, `test_stream.py` |
+| Recovery and parked sessions | `loop.watch`; `watchdog.py` (`drive`, `resume`, `park`); `stream_filter.py` | [The watchdog](engine.md#the-watchdog) | `test_watchdog.py`, `test_stream.py` |
+| Session time-left hook (PostToolUse: minutes until `SESSION_END`) | `remaining.py`, installed by `session_security.py`, copied by `session_start.stage` | [Session boundary](session-boundary.md) | `test_session.py`, `test_stream.py` |
 
 `managed_resources.py` describes the managed definition tree and its role, prompt,
 configuration, admission, revision and restore boundaries. See
@@ -149,11 +150,11 @@ still reaches its implementation, contract and checks.
   updates phase/statistics second, then launches sessions. Policymaker orders use
   the same graph implementation while their phase handling stays in `iteration`.
 - `owner_requests.py` owns request creation, frozen proposals and consent rules;
-  `loop.on_request_closed` owns the resulting continuation. Startup checks consent
+  `request_continuation.on_request_closed` owns the resulting continuation. Startup checks consent
   again during staging so a changed profile or decision cannot use a stale check.
-- `iteration.begin_work` imports and calls `loop.apply_policy` when work begins.
-  This local import keeps the dependency explicit without requiring callers to
-  import `loop.py` first; the two modules still depend on each other.
+- `iteration.begin_work` imports and calls `policy_apply.apply_policy` when work begins.
+  This local import (like `merge.Tree` and `closing.close_out` in `iteration`)
+  keeps the dependency explicit; `iteration` and those modules still depend on each other.
 - A Policymaker session's iteration label identifies its trigger. Policy changes
   take effect when its pass ends (or at the end of the policy phase); implementation-layer
   orders start in the execution phase. Completion and

@@ -342,7 +342,7 @@ def start_iteration():
 def begin_work(n, it):
     """The execution phase: the policy phase is over. The shaper and the tasks the Policymaker ordered make the
     iteration's graph. A Policymaker that failed twice in a row is reverted: the iteration runs on the last good policy."""
-    from loop import apply_policy
+    from policy_apply import apply_policy
 
     c.update_report(it, {"phase": "starting"})         # leaves "policy": a second run of advance() does not begin again
     orders = orders_of(apply_policy())      # apply_policy: a session left over from an earlier iteration
@@ -365,7 +365,7 @@ def begin_work(n, it):
 def policy_pass(n, it):
     """A Policymaker session is over: merge its changes and start the tasks it ordered; their dependencies set the order
     of work. With `wake` the session waits for them and runs again in this iteration; otherwise the policy phase ends."""
-    from loop import apply_policy
+    from policy_apply import apply_policy
     placed = {}         # session -> whether it waits for the tasks it ordered
 
     def settle(p):
@@ -443,7 +443,7 @@ def resume_policymaker(p):
     c.update_report(p, dict({x: None for x in spent}, **{"pass": k}), "Pass %s: the ordered sessions ended, the Policymaker runs again." % k)
     c.sync_main()
     if f.get("deferred") == "true":          # its changes have not merged: the branch keeps them and moves onto what has
-        from loop import Tree
+        from merge import Tree
         c.git(".", "fetch", "-q", "origin", "+refs/heads/task/%s:refs/remotes/origin/task/%s" % (p, p), remote=True)
         with Tree("origin/task/%s" % p) as cand:
             if c.git(cand, "rebase", "origin/%s" % c.default_branch(), check=False).returncode:
@@ -705,7 +705,7 @@ def fail_iteration(n, why, rollback=False):
                         c.cancel_run(r["databaseId"])
                 c.update_report(x["number"], {"status": "crashed", "cause": "iteration-failed"}, why)
                 c.close_issue(x["number"], "not planned")
-        from loop import close_out
+        from closing import close_out
         for x in c.list_issues(labels=("role:policymaker", "awaiting:orders")):       # no one would relaunch it
             close_out(x["number"], x, "crashed", {"cause": "iteration-failed"}, why)
         close_iteration(n, "failed", why)

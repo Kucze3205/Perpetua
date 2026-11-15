@@ -8,7 +8,8 @@ import time
 import unittest
 
 import fakes
-from fakes import LOOP_DIR, loop
+from fakes import LOOP_DIR
+import agent_result
 
 
 def run_filter(events):
@@ -74,7 +75,7 @@ class StreamFilterTest(unittest.TestCase):
         ev = {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour", "resetsAt": 1790000000}}
         r, out, result = run_filter([ev])
         self.assertEqual(result["terminal_reason"], "rate_limit")
-        cause, limited, reset = loop.machine_cause(os.path.join(out, "claude-execution-output.json"), "143")
+        cause, limited, reset = agent_result.machine_cause(os.path.join(out, "claude-execution-output.json"), "143")
         self.assertTrue(limited)
         self.assertEqual(int(reset.timestamp()), 1790000000)
 
@@ -85,7 +86,7 @@ class StreamFilterTest(unittest.TestCase):
 
     def test_the_peak_reaches_the_report_fields(self):
         r, out, result = run_filter([assistant(500), {"type": "result", "num_turns": 1}])
-        self.assertEqual(loop.usage_fields(os.path.join(out, "claude-execution-output.json"))["peak_context"], 515)
+        self.assertEqual(agent_result.usage_fields(os.path.join(out, "claude-execution-output.json"))["peak_context"], 515)
 
 
 class RemainingHookTest(unittest.TestCase):

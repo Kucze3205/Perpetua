@@ -25,6 +25,8 @@ import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
 import session_artifact  # noqa: E402
+import session_finalize  # noqa: E402
+import session_start  # noqa: E402
 
 PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "close_issue", "ensure_label", "comments",
            "post_comment", "patch_comment", "blockers", "blocking", "add_blocker", "workflow_run", "run_list",
@@ -343,7 +345,7 @@ class World:
         os.environ["RUNNER_TEMP"] = rt
         # Model the real staging/admission handshake (the baseline) even when the session's
         # output itself is supplied by the test rather than executed.
-        loop.stage(n, work, os.path.join(rt, "trusted"))
+        session_start.stage(n, work, os.path.join(rt, "trusted"))
         for p, t in (files or {}).items():
             self.write(work, p, t)
         for p in delete:
@@ -387,7 +389,7 @@ class World:
         fresh = os.path.join(rt, "epilogue")
         os.makedirs(fresh)
         os.environ["RUNNER_TEMP"] = fresh
-        loop.epilogue(n, artifact, baseline, digest)
+        session_finalize.epilogue(n, artifact, baseline, digest)
 
     def branch(self, n, files, base="origin/main", delete=()):
         """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""

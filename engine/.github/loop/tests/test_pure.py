@@ -5,7 +5,9 @@ import tempfile
 import unittest
 
 import fakes
-from fakes import common as c, iteration as it, loop
+from fakes import common as c, iteration as it
+import agent_result
+import merge
 
 REPORT = c.MARK + "\n```yaml\nstatus: done\ncommit: 9f3c1ab\n```\nProse.\n\n## What next\n- nothing\n"
 
@@ -137,7 +139,7 @@ class CauseTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
             fh.write(payload if isinstance(payload, str) else json.dumps(payload))
         try:
-            return loop.machine_cause(fh.name, exit_code)
+            return agent_result.machine_cause(fh.name, exit_code)
         finally:
             os.unlink(fh.name)
 
@@ -154,17 +156,17 @@ class CauseTest(unittest.TestCase):
 
     def test_reset_from_the_cli_text(self):
         ref = c.parse_time("2026-09-26T06:24:22Z")
-        self.assertEqual(loop.text_reset("hit your session limit · resets 7:20am (UTC)", ref), c.parse_time("2026-09-26T07:20:00Z"))
-        self.assertEqual(loop.text_reset("resets 5am (UTC)", ref), c.parse_time("2026-09-27T05:00:00Z"))
-        self.assertEqual(loop.text_reset("resets 3pm (Europe/Warsaw)", ref), c.parse_time("2026-09-26T13:00:00Z"))
-        self.assertEqual(loop.text_reset("resets Oct 2, 5am (UTC)", ref), c.parse_time("2026-10-02T05:00:00Z"))
-        self.assertIsNone(loop.text_reset("no date", ref))
+        self.assertEqual(agent_result.text_reset("hit your session limit · resets 7:20am (UTC)", ref), c.parse_time("2026-09-26T07:20:00Z"))
+        self.assertEqual(agent_result.text_reset("resets 5am (UTC)", ref), c.parse_time("2026-09-27T05:00:00Z"))
+        self.assertEqual(agent_result.text_reset("resets 3pm (Europe/Warsaw)", ref), c.parse_time("2026-09-26T13:00:00Z"))
+        self.assertEqual(agent_result.text_reset("resets Oct 2, 5am (UTC)", ref), c.parse_time("2026-10-02T05:00:00Z"))
+        self.assertIsNone(agent_result.text_reset("no date", ref))
 
     def test_plain_failure(self):
         self.assertEqual(self.cause({"is_error": False, "result": "ok"}, exit_code="124"), ("exit=124", False, None))
 
     def test_no_file(self):
-        cause, limited, _ = loop.machine_cause("/no/such.json", "1")
+        cause, limited, _ = agent_result.machine_cause("/no/such.json", "1")
         self.assertIn("no-execution-file", cause)
         self.assertFalse(limited)
 
@@ -175,14 +177,14 @@ class CauseTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
             json.dump(got, fh)
         try:
-            u = loop.usage_fields(fh.name)
+            u = agent_result.usage_fields(fh.name)
         finally:
             os.unlink(fh.name)
         self.assertEqual((u["tokens_in"], u["tokens_out"], u["cache_read"], u["cache_write"], u["turns"]), (11, 6, 3, 2, 4))
         self.assertEqual(json.loads(u["models"])["a"]["in"], 10)
 
     def test_usage_without_a_file(self):
-        self.assertIsNone(loop.usage_fields("/no/such.json")["turns"])
+        self.assertIsNone(agent_result.usage_fields("/no/such.json")["turns"])
 
 
 class RunIssueTest(unittest.TestCase):
@@ -208,11 +210,11 @@ class VerdictTest(unittest.TestCase):
 class VerificationRulesTest(unittest.TestCase):
     def test_the_session_may_run_its_own_one_line_verification(self):
         body = '## Verification\n`test "$(cat a.txt)" = "x (1)"`\n## Context\n'
-        self.assertEqual(loop.verification_rules(body), [r'Bash(test "$\(cat a.txt\)" = "x \(1\)")'])
+        self.assertEqual(merge.verification_rules(body), [r'Bash(test "$\(cat a.txt\)" = "x \(1\)")'])
 
     def test_no_rule_without_a_verification_or_for_a_multi_line_one(self):
-        self.assertEqual(loop.verification_rules("## Goal\nx"), [])
-        self.assertEqual(loop.verification_rules("## Verification\n```\na\nb\n```\n"), [])
+        self.assertEqual(merge.verification_rules("## Goal\nx"), [])
+        self.assertEqual(merge.verification_rules("## Verification\n```\na\nb\n```\n"), [])
 
 
 if __name__ == "__main__":

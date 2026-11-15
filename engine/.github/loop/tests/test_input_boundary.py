@@ -3,7 +3,9 @@ import json
 import os
 
 import fakes
-from fakes import common as c, iteration as it, loop, task
+from fakes import common as c, iteration as it, task
+import policy_apply
+import session_start
 import task_graph as graph
 import session_reports as reports
 from proposal_fixtures import PROPOSAL
@@ -13,7 +15,7 @@ from session_fixtures import LayeredSessionCase, read
 class InputBoundaryTest(LayeredSessionCase):
     def started_issue(self, *args, **kwargs):
         n = self.issue(*args, **kwargs)
-        loop.resolve(n)
+        session_start.resolve(n)
         return n
 
     def stage_inputs(self, role='worker', body='', shaper=False, state=None, work=None):
@@ -22,7 +24,7 @@ class InputBoundaryTest(LayeredSessionCase):
             it.store_state(n, state)
         work = work or self.work()
         trusted = os.path.join(self.w.tmp, 'trusted-input-%s' % n)
-        loop.stage(n, work, trusted)
+        session_start.stage(n, work, trusted)
         return n, os.path.join(work, '.session'), trusted
 
     def test_shaper_gets_execution_catalog_and_the_loop_state(self):
@@ -140,7 +142,7 @@ class InputBoundaryTest(LayeredSessionCase):
         self.assertEqual(self.w.origin_file('iterations/suggestions/%s.json' % worker), raw)
         pol = it.start_policymaker(1, 'new session suggestions')
         policy_work = self.work()
-        loop.stage(pol, policy_work, os.path.join(self.w.tmp, 'pol-trusted'))
+        session_start.stage(pol, policy_work, os.path.join(self.w.tmp, 'pol-trusted'))
         staged = json.loads(read(os.path.join(policy_work, '.session/loop-state.json')))
         self.assertEqual(staged['suggestions'][0]['what'], 'Reduce worker context')
         self.assertEqual(staged['suggestions'][0]['source']['issue'], worker)
@@ -151,4 +153,4 @@ class InputBoundaryTest(LayeredSessionCase):
         self.w.session(pol, files={'execution/roles/worker/reference.md': 'new guidance',
                                    'policy/suggestion-decisions.json': json.dumps(decision)},
                        report_extra='PRIVATE POLICY')
-        loop.apply_policy()
+        policy_apply.apply_policy()

@@ -4,7 +4,9 @@ import os
 
 from unittest.mock import patch
 
-from fakes import common as c, iteration as it, loop
+from fakes import common as c, iteration as it
+import closing
+import session_start
 import session_reports as reports
 import session_startup as startup
 import session_fixtures as sessions
@@ -20,7 +22,7 @@ class ContextTest(sessions.SessionCase):
             it.store_state(n, state)
         work = self.work()
         trusted = os.path.join(self.w.tmp, "context-trusted-%s" % n)
-        loop.stage(n, work, trusted)
+        session_start.stage(n, work, trusted)
         return n, work, trusted
 
     def test_policymaker_reads_one_state_snapshot_and_keeps_task_comments(self):
@@ -28,7 +30,7 @@ class ContextTest(sessions.SessionCase):
         it.store_state(n, {"trigger": "inspect costs", "iterations": []})
         self.hub.post_comment(n, "Owner context worth keeping")
         work = self.work()
-        loop.stage(n, work, os.path.join(self.w.tmp, "one-state"))
+        session_start.stage(n, work, os.path.join(self.w.tmp, "one-state"))
         issue = read(os.path.join(work, ".session/issue.md"))
         self.assertNotIn(it.STATE_MARK, issue)
         self.assertIn("Owner context worth keeping", issue)
@@ -61,7 +63,7 @@ class ContextTest(sessions.SessionCase):
 
     def test_shaper_can_find_old_frozen_reports(self):
         public = self.issue()
-        loop.resolve(public)
+        session_start.resolve(public)
         c.update_report(public, {"status": "done"}, "Old public finding\nUseful second line")
         reports.capture(public)
         frozen = reports.source_records(public)[0][1]["report"]
@@ -107,7 +109,7 @@ class ContextTest(sessions.SessionCase):
         pol, policy_work, _ = self.stage(state={"iterations": []})
         policy_budget = json.loads(read(os.path.join(policy_work, ".session/startup.json")))
         self.assertEqual(policy_budget["policy_notices"][0]["issue"], worker)
-        loop.close_out(pol, c.issue(pol), "done", {}, "Handled startup notice")
+        closing.close_out(pol, c.issue(pol), "done", {}, "Handled startup notice")
         self.over(BIG * 2)
         self.stage("worker")
         self.assertIsNone(it.policymaker_due(2))
@@ -126,7 +128,7 @@ class ContextTest(sessions.SessionCase):
         self.assertIsNone(budget["tokens"])
         self.assertEqual(budget["policy_notices"][0]["issue"], n)
         self.assertTrue(os.path.isfile(os.path.join(trusted, "agent.sh")))
-        loop.close_out(n, c.issue(n), "done", {}, "Handled own startup notice")
+        closing.close_out(n, c.issue(n), "done", {}, "Handled own startup notice")
         self.assertIsNone(it.policymaker_due(1))
 
     def test_staging_does_not_consume_a_notice_if_policymaker_fails(self):
@@ -134,7 +136,7 @@ class ContextTest(sessions.SessionCase):
         self.stage("worker")
         pol, work, trusted = self.stage(state={"iterations": []})
         self.assertIn("read .session/startup.json", read(os.path.join(trusted, "prompt.md")))
-        loop.close_out(pol, c.issue(pol), "crashed", {}, "Session failed before handling the notice")
+        closing.close_out(pol, c.issue(pol), "crashed", {}, "Session failed before handling the notice")
         self.assertEqual(it.policymaker_due(2), "startup budget needs attention")
 
     def test_policy_can_narrow_shaper_history_using_existing_export_selectors(self):
@@ -202,7 +204,7 @@ class ContextTest(sessions.SessionCase):
         self.assertIn("read .session/startup.json", read(os.path.join(trusted, "prompt.md")))
         c.commit_main({"policy/roles/audit/SKILL.md": "---\nname: audit\nstartup: [journal/focus.md]\n---\nAudit.\n"}, "audit reads")
         self.stage("audit")
-        loop.close_out(pol, c.issue(pol), "done", {}, "Handled the worker notice")
+        closing.close_out(pol, c.issue(pol), "done", {}, "Handled the worker notice")
         self.assertEqual([item["role"] for item in startup.pending()], ["audit"])
 
     def test_parallel_notice_update_reloads_other_roles_instead_of_overwriting_them(self):

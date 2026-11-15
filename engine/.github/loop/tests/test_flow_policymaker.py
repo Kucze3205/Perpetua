@@ -5,7 +5,8 @@ import unittest
 from datetime import timedelta
 
 import fakes
-from fakes import common as c, iteration as it, loop, task, tasks_json
+from fakes import common as c, iteration as it, task, tasks_json
+import watchdog
 from flow_fixtures import Flow
 from gate_fixtures import SCRIPT_GATE
 
@@ -408,7 +409,7 @@ class PolicyPhaseTest(Flow):
         self.hub.runs.clear()
         c.LAUNCHED.clear()                                                       # the watchdog is a fresh process
         self.assertEqual(len(self.runs_of(pol)), 1)
-        loop.drive()
+        watchdog.drive()
         self.assertEqual(len(self.runs_of(pol)), 2)
         self.assertNotIn("awaiting:orders", self.hub.issue(pol)["_labels"])
 
@@ -419,9 +420,9 @@ class PolicyPhaseTest(Flow):
         self.hub.runs.clear()
         c.LAUNCHED.clear()
         saved, base = c.now, c.now()
-        c.now = lambda: base + timedelta(days=loop.MAX_AGE_DAYS + 1)
+        c.now = lambda: base + timedelta(days=watchdog.MAX_AGE_DAYS + 1)
         try:
-            loop.drive()
+            watchdog.drive()
         finally:
             c.now = saved
         self.assertEqual(self.hub.report(pol)["status"], "crashed")

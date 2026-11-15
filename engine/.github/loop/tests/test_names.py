@@ -6,8 +6,9 @@ import unittest
 from unittest import mock
 
 import fakes
-from fakes import common as c, loop
+from fakes import common as c
 from fakes import iteration as it, task
+import merge
 from flow_fixtures import Flow
 import git_identity
 
@@ -47,7 +48,7 @@ class IdentityTest(unittest.TestCase):
 class AdmissionMessageTest(unittest.TestCase):
     def message(self, title):
         with mock.patch.object(c, "issue", return_value={"title": title}):
-            return loop.admission_message("worker", 12)
+            return merge.admission_message("worker", 12)
 
     def test_it_reads_role_issue_and_task_title(self):
         self.assertEqual(self.message("Add the reader"), "worker #12: Add the reader")

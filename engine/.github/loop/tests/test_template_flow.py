@@ -11,7 +11,10 @@ import unittest
 from unittest.mock import patch
 
 import fakes
-from fakes import common as c, iteration as it, loop, task, tasks_json
+from fakes import common as c, iteration as it, task, tasks_json
+import policy_apply
+import session_start
+import watchdog
 import managed_resources as resources
 import setup_roles
 from gate_fixtures import GATE_SH
@@ -56,10 +59,10 @@ class TemplateFlowTest(unittest.TestCase):
         self.hub = self.w.hub
 
     def stage(self, issue):
-        loop.resolve(issue)
+        session_start.resolve(issue)
         work = Path(self.w.tmp, 'stage-' + str(issue))
         fakes.sh(self.w.tmp, 'git', 'clone', '-q', self.w.origin, str(work))
-        loop.stage(issue, str(work), str(work.parent / ('trusted-' + str(issue))))
+        session_start.stage(issue, str(work), str(work.parent / ('trusted-' + str(issue))))
         return work
 
     def test_selected_shaper_product_suggestion_atomic_change_and_rollback(self):
@@ -78,7 +81,7 @@ class TemplateFlowTest(unittest.TestCase):
         record = json.loads(self.w.origin_file(it.record_path(0)))
         self.assertEqual(record['status'], 'closed')
         # Keep the controller at an explicit boundary while a new set is prepared.
-        with patch.object(loop, 'reconcile'):
+        with patch.object(watchdog, 'reconcile'):
             policymaker = it.start_policymaker(1, 'new session suggestion')
             staged = self.stage(policymaker)
             state = json.loads((staged / '.session/loop-state.json').read_text())
@@ -90,7 +93,7 @@ class TemplateFlowTest(unittest.TestCase):
                                   'policy/suggestion-decisions.json': json.dumps({
                                       pending[0]['id']: {'status': 'handled', 'reason': 'adapted both layers'}})})
             self.assertIsNone(self.w.origin_file('execution/roles/worker/reference.md'))
-            loop.apply_policy()
+            policy_apply.apply_policy()
         c.sync_main()
         receipt = it.applied('changes', it.change_id(policymaker))
         self.assertEqual(receipt['policy_rev_before'], self.initial)

@@ -3,7 +3,8 @@ import json
 import os
 from unittest.mock import patch
 
-from fakes import common as c, iteration as it, loop
+from fakes import common as c, iteration as it
+import session_start
 import session_reports as reports
 from session_fixtures import SessionCase
 from proposal_fixtures import PROPOSAL
@@ -12,7 +13,7 @@ from proposal_fixtures import PROPOSAL
 class ReportsTest(SessionCase):
     def producer(self, text=None):
         n = self.issue()
-        loop.resolve(n)
+        session_start.resolve(n)
         work = self.w.session(n, files={"src/report.txt": "measured"},
                               report_extra="Evidence: three full-tree reads.",
                               session_files={"suggestions.json": text if text is not None else json.dumps([PROPOSAL])})
@@ -24,7 +25,7 @@ class ReportsTest(SessionCase):
 
     def stage(self, n):
         work = self.work()
-        loop.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
+        session_start.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
         return os.path.join(work, ".session")
 
     def pending(self, pol):

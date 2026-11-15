@@ -302,5 +302,14 @@ class ModuleSizeTest(unittest.TestCase):
         self.assertEqual(bad, [], "Do not make a module bigger to fit new behavior: extract it into a module of its own.")
 
 
+class CodeMapTest(unittest.TestCase):
+    def test_every_engine_module_is_in_the_code_map(self):
+        with open(os.path.join(ENGINE, "docs", "perpetua", "code-map.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        missing = [f for f in sorted(os.listdir(os.path.join(ENGINE, ".github", "loop")))
+                   if f.endswith(".py") and not re.search(r"(?<![\w-])" + re.escape(f), text)]
+        self.assertEqual(missing, [], "modules missing from docs/perpetua/code-map.md: add a row for each")
+
+
 if __name__ == "__main__":
     unittest.main()

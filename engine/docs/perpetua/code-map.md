@@ -98,8 +98,8 @@ name a provider; the tool a session installs is named from the engine's output (
 `tool_version`). `test_static.py` checks that every step has a name.
 
 `loop.py` commands: `check-autopilot`, `check-credentials`, `session-settings`, `stage-inputs`, `take-results`,
-`apply-answer`, `watch`, `resume-after-limit`. The engine sets its own git identity on every call that writes history
-(`common.identity_env`); no command configures git.
+`watch`, `resume-after-limit`. The engine sets its own git identity on every call that writes history
+(`git_identity.py`, used by `common.git`); no command configures git.
 
 Commits on the default branch read `<who> #<n>: <what>`, where *who* is the role or the engine step that writes:
 

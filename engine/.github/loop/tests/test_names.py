@@ -9,6 +9,7 @@ import fakes
 from fakes import common as c, loop
 from fakes import iteration as it, task
 from flow_fixtures import Flow
+import git_identity
 
 
 def log(repo, ref="HEAD", fmt="%s"):
@@ -36,11 +37,11 @@ class IdentityTest(unittest.TestCase):
         self.assertEqual(got, "Ada <ada@example.test>|github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>")
 
     def test_only_calls_that_write_history_get_an_identity(self):
-        with mock.patch.object(c, "cfg", return_value={"author": {}}):
-            self.assertEqual(c.identity_env(("fetch", "-q", "origin")), {})
-            self.assertEqual(c.identity_env(("-c", "commit.gpgsign=false", "status")), {})
-            self.assertIn("GIT_COMMITTER_NAME", c.identity_env(("commit", "-q", "-m", "x")))
-            self.assertIn("GIT_COMMITTER_NAME", c.identity_env(("rebase", "origin/main")))
+        author = lambda: {}
+        self.assertEqual(git_identity.env(("fetch", "-q", "origin"), author), {})
+        self.assertEqual(git_identity.env(("-c", "commit.gpgsign=false", "status"), author), {})
+        self.assertIn("GIT_COMMITTER_NAME", git_identity.env(("commit", "-q", "-m", "x"), author))
+        self.assertIn("GIT_COMMITTER_NAME", git_identity.env(("rebase", "origin/main"), author))
 
 
 class AdmissionMessageTest(unittest.TestCase):

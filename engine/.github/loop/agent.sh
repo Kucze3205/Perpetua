@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One session. Started from $RUNNER_TEMP/trusted: the engine checkout is not on the disk while it runs.
-# Input: $WORK/.session/ (put there by `loop.py stage`). Output: $WORK/.session/report.md, published by the epilogue.
+# Input: $WORK/.session/ (put there by `loop.py stage-inputs`). Output: $WORK/.session/report.md, published by the epilogue.
 # The agent has no `gh`, no push credentials and no GitHub token; its Claude credential lives only in the claude process.
 set -u
 TRUSTED="$(cd "$(dirname "$0")" && pwd)"

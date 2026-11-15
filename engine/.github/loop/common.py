@@ -21,6 +21,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import git_identity
 import managed_resources as resources
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
@@ -688,24 +689,9 @@ def auth_args():
     return ["-c", "http.https://github.com/.extraheader=AUTHORIZATION: basic %s" % b64]
 
 
-GIT_BOT = ("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com")
-WRITES_HISTORY = {"commit", "rebase", "merge", "cherry-pick", "revert"}
-
-
-def identity_env(args):
-    """The engine commits as the Actions bot (and, when `engine.yml` names an author, authors as that person). It sets
-    this itself on every git call that writes history: nothing depends on a global git config of the machine."""
-    sub = next((a for i, a in enumerate(args) if a[:1] != "-" and (i == 0 or args[i - 1] != "-c")), "")
-    if sub not in WRITES_HISTORY:
-        return {}
-    a = cfg()["author"]
-    name, email = (a["name"], a["email"]) if a.get("name") and a.get("email") else GIT_BOT
-    return {"GIT_COMMITTER_NAME": GIT_BOT[0], "GIT_COMMITTER_EMAIL": GIT_BOT[1], "GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email}
-
-
 def git(cwd, *args, check=True, remote=False, inp=None):
     cmd = ["git"] + (auth_args() if remote else []) + list(args)
-    env = {**identity_env(args), **os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    env = {**git_identity.env(args, lambda: cfg()["author"]), **os.environ, "GIT_TERMINAL_PROMPT": "0"}
     r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, input=inp, env=env)
     if check and r.returncode:
         raise SystemExit("git %s: %s" % (" ".join(args), (r.stderr or r.stdout).strip()))

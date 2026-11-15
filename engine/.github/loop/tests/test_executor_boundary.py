@@ -50,7 +50,7 @@ class AdmissionTest(unittest.TestCase):
             self.meta = json.load(fh)
 
     def admit(self, skip=lambda rel, tracked: False):
-        commit = boundary.import_candidate(self.work, self.meta, self.repo, "refs/heads/task/1", skip)
+        commit = boundary.import_candidate(self.work, self.meta, self.repo, "refs/heads/task/1", "worker #1: session output", skip)
         return commit, run(self.repo, "rev-parse", commit + "^{tree}")
 
     def expected_tree(self):

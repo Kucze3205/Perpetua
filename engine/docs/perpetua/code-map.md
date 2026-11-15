@@ -51,6 +51,7 @@ The engine uses the accepted checkout; files left by a session (committed or not
 | Goal gate and owner confirmation | `iteration.run_goal_gate`; `loop.on_request_closed` | [The goal gate](engine.md#the-goal-gate-and-the-end) | `test_flow_goal.py` |
 | Owner requests | `owner_requests.open_request`, `process_proposals`, `settle`; `loop.on_request_closed` | [Owner requests](engine.md#owner-requests) | `test_owner_requests.py` |
 | Reports and the suggestion archive | `session_reports.py`; `policy/session-state.py`; report parsing/publication in `common.py` | [Session reports](session-reports.md) | `test_reports.py`, `test_pure.py` |
+| Session timeline (live job log) and Session summary (run Summary, written by `loop.epilogue`) | `stream_filter.Live`; `session_summary.py` | [Session reports](session-reports.md) | `test_stream.py`, `test_session_summary.py` |
 | Fresh-template integration (simulated GitHub/provider) | `setup_roles.py`, `loop.py`, `iteration.py` | [Validation](validation.md) | `test_template_flow.py` |
 | Setup role registration and baseline validation | `setup_roles.prepare`, `install`, `validate` | [New-loop setup](managed-resources.md#new-loop-setup) | `test_setup_roles.py` |
 | Managed definitions, locations and revision identity | `managed_resources.py`; `policy/layer-rules.py`, `policy/graph-rules.py` | [Managed definitions](managed-resources.md) | `test_layered_resources.py`, `test_merge.py` |

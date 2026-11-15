@@ -39,8 +39,10 @@ def profile_error(profile):
 
 
 def settings(profile, trusted):
-    """No MCP and no subagent or background tools, whatever the profile lists."""
-    return {"hooks": {"PostToolUse": [{"matcher": "*", "hooks": [
+    """No MCP and no subagent or background tools, whatever the profile lists. `showThinkingSummaries` only makes the
+    stream carry the thinking text a model gives (the Session timeline shows it); it changes no read, tool or boundary."""
+    return {"showThinkingSummaries": True,
+            "hooks": {"PostToolUse": [{"matcher": "*", "hooks": [
                 {"type": "command", "command": "python3 " + shlex.quote(os.path.join(trusted, "remaining.py"))}]}]},
             "permissions": {"deny": ["Agent", "Task", "Monitor", "PowerShell"]}}
 

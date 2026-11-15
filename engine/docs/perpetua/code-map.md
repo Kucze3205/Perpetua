@@ -61,6 +61,7 @@ command's code lives in the module named in its row. The engine uses the accepte
 | Accepted-change and verifier records | `iteration.record_change`, `record_verification` | [Change provenance](policy-changes.md) | `test_change_records.py` |
 | Historical input staging and recipient views | `session_exports.py`, `session_inputs.py` | [Session exports](session-exports.md) | `test_exports.py`, `test_input_boundary.py` |
 | Startup notices (the reads, prompt and estimate are `policy/session-startup.py`) and offline history | `session_context.py`, `session_startup.py` | [Session context](session-context.md) | `test_context.py` |
+| The policy scripts of a session's inputs in a job without the token; artifacts pinned by digest | `policy_inputs.py` (`pack`, `run`: `run-policy-scripts`, `refusal`), `policy_script.py` (a script's run and the checks of its output), `artifact_pin.py` | [Session boundary](session-boundary.md#session-lifecycle-and-outputs); ADR-0006 | `test_policy_inputs.py`, `test_context.py`, `test_static.py` |
 | Isolation, credentials and data-only admission; the session artifact | `session_security.py`, `executor_boundary.py`, `session_artifact.py`, `agent.sh` | [Session boundary](session-boundary.md) | `test_security.py`, `test_session_artifact.py`, `test_static.py` |
 | Recovery and parked sessions | `loop.watch`; `watchdog.py` (`drive`, `resume`, `park`); `stream_filter.py` | [The watchdog](engine.md#the-watchdog) | `test_watchdog.py`, `test_stream.py` |
 | Session time-left hook (PostToolUse: minutes until `SESSION_END`) | `remaining.py`, installed by `session_security.py`, copied by `session_start.stage` | [Session boundary](session-boundary.md) | `test_session.py`, `test_stream.py` |
@@ -108,7 +109,7 @@ Commits on the default branch read `<who> #<n>: <what>`, where *who* is the role
 |---|---|
 | `<role> #N: <task title>` | the admission of a session's files (the title comes from the issue, never from the session) |
 | `epilogue #N: session report` (files in the body) | the session's report, suggestion outbox and, for an unfinished session, its journal: one commit |
-| `stage #N: startup budget notice` / `epilogue #N: startup budget notice` | the budget notice written before the session / consumed after it |
+| `epilogue #N: startup budget notice` | the budget notice written for a session (from the policy scripts' results) / consumed after it |
 | `iteration K: task graph`, `iteration K: record (<status>)`, `iteration K: goal reached (gate)`, `iteration K: roll back policy to <sha>` | the iteration |
 | `owner-request #N: frozen`, `owner-request #N: engine change: <what>` | an owner request |
 | `owner-answer #N: <status>`, `owner-answer #N: accepted <kind>`, `owner-answer #N: goal reached` | the engine applying the owner's answer |

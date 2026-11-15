@@ -1,6 +1,5 @@
 """The end of a session: the epilogue takes its results, merges or parks it, and closes it.
 """
-import hashlib
 import json
 import os
 import re
@@ -10,16 +9,19 @@ import tempfile
 import time
 
 import agent_result
+import artifact_pin
 import closing
 import common as c
 import iteration as it
 import merge
 import owner_requests as requests
 import policy_apply
+import policy_inputs
 import policymaker_session
 import release_assets
 import session_artifact
 import session_reports
+import session_startup
 import session_summary
 import watchdog
 
@@ -155,15 +157,44 @@ def finalize(n, work):
     after_session(n, i, labels, role, k, work, status, upd, prose, pending)
 
 
-def epilogue(n, artifact, baseline, digest):
-    """The epilogue job, on a fresh runner: takes the session job's artifact in as data (`session_artifact`), puts the
-    executor baseline from the channel the session cannot touch (`baseline/`, pinned by `digest`) where admission reads
-    it, and finalizes. A tree that cannot be taken in is as good as no tree."""
+def refuse_policy_results(n, why):
+    """The policy scripts' job left bad results: the session did not start. Fails the iteration and rolls policy back, as for any
+    policy script output the engine refuses."""
+    k = c.iteration_of(c.label_names(c.issue(n)))
+    if k is not None:
+        it.fail_iteration(k, "invalid policy script output: %s" % why, rollback=True)
+    raise SystemExit("invalid policy script output: %s" % why)
+
+
+def note_startup_budget(n, policy_results):
+    """The startup budget the policy scripts' job measured: the incident and the comment on the session's issue, which need the token."""
+    budget = policy_inputs.budget(policy_results)
+    if budget is None:
+        return
+    try:
+        session_startup.record(n, c.roles_of(c.label_names(c.issue(n)))[0], budget)
+    except (Exception, SystemExit):
+        # Notification failures must never turn a diagnostic into a session gate.
+        c.say("session #%s: startup notice could not be persisted" % n)
+
+
+def epilogue(n, artifact, baseline, digest, policy_results):
+    """The epilogue job, on a fresh runner: first the verdict of the policy scripts' job (`POLICY_OK`, `POLICY_ERROR`, `POLICY_DIGEST`
+    and its artifact `policy_results`); then takes the session job's artifact in as data (`session_artifact`), puts the executor
+    baseline from the channel the session cannot touch (`baseline/`, pinned by `digest`) where admission reads it, and finalizes.
+    A tree that cannot be taken in is as good as no tree."""
+    env = os.environ.get
+    why = policy_inputs.refusal(env("POLICY_OK"), env("POLICY_ERROR"), policy_results, env("POLICY_DIGEST"))
+    if why:
+        refuse_policy_results(n, why)
+    note_startup_budget(n, policy_results)
     tmp = os.environ.get("RUNNER_TEMP", tempfile.gettempdir())
+    try:
+        artifact_pin.verify(baseline, digest)
+    except (OSError, ValueError):
+        raise SystemExit("the executor baseline does not match the one staged")
     with open(os.path.join(baseline, "executor-baseline.json"), "rb") as fh:
         raw = fh.read()
-    if hashlib.sha256(raw).hexdigest() != digest:
-        raise SystemExit("the executor baseline does not match the one staged")
     work = os.path.join(tmp, "work")
     session_artifact.receive_status(artifact, tmp)
     try:

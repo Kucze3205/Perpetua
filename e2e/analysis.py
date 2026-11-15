@@ -423,7 +423,7 @@ def session_inputs(sessions, probe_data):
 
 def actions_overhead(sessions, runs):
     """What Actions spends around the agent, per session run, and how wide the iteration is: these, not the agent, decide
-    how an iteration scales. Steps: prep job; in the session job `Tools`, `Prepare the machine` + `Stage the session`,
+    how an iteration scales. Steps: prep job, the policy scripts' job; in the session job `Tools`, `Prepare the machine` + `Stage the session`,
     `Session` (the agent), `Epilogue`."""
     def step(job, *names, prefix=None):
         """Seconds of the job's steps with these names (the old ones) or this prefix (the new ones: `Install Claude Code 2.1.284`)."""
@@ -434,14 +434,16 @@ def actions_overhead(sessions, runs):
     for s in sessions:
         for run_id in s["runs"]:
             jobs = {j["name"]: j for j in by_id[run_id].get("jobs_list", [])}
-            prep, job = jobs.get("Prepare the session") or jobs.get("prep"), jobs.get("session")
+            prep, job = jobs.get("Prepare the session") or jobs.get("prep"), jobs.get("Run the session") or jobs.get("session")
+            policy = jobs.get("Prepare the session inputs (policy scripts)")
             if not job:
                 continue
             row = {"issue": s["issue"], "role": s["role"], "run": run_id, "prep_s": seconds(prep.get("started_at"), prep.get("completed_at")) if prep else None,
+                   "policy_s": seconds(policy.get("started_at"), policy.get("completed_at")) if policy else None,
                    "tools_s": step(job, "Tools", prefix="Install "), "stage_s": step(job, "Prepare the machine", "Stage the session"),
                    "agent_step_s": step(job, "Session", prefix=("Run LLM session", "Run script session")), "epilogue_s": step(job, "Epilogue"),
                    "session_job_s": seconds(job.get("started_at"), job.get("completed_at")), "agent_s": s["report"].get("agent_s")}
-            row["around_agent_s"] = round((row["prep_s"] or 0) + (row["session_job_s"] or 0) - (row["agent_step_s"] or 0), 1)
+            row["around_agent_s"] = round((row["prep_s"] or 0) + (row["policy_s"] or 0) + (row["session_job_s"] or 0) - (row["agent_step_s"] or 0), 1)
             rows.append(row)
     width = {"sessions": len(sessions), "by_role": dict(Counter(s["role"] for s in sessions)),
              "report_bytes_total": sum(s["report_bytes"] for s in sessions), "report_bytes_max": max((s["report_bytes"] for s in sessions), default=0),

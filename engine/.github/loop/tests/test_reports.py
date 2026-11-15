@@ -3,6 +3,7 @@ import json
 import os
 from unittest.mock import patch
 
+import fakes
 from fakes import common as c, iteration as it
 import session_start
 import session_reports as reports
@@ -25,7 +26,7 @@ class ReportsTest(SessionCase):
 
     def stage(self, n):
         work = self.work()
-        session_start.stage(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
+        fakes.stage_session(n, work, os.path.join(self.w.tmp, "trusted-%s" % n))
         return os.path.join(work, ".session")
 
     def pending(self, pol):

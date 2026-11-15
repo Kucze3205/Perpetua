@@ -47,12 +47,12 @@ review/reconfiguration by repeating setup is not implemented.
 `cadence` in `policy/params.yml` can only be stricter than the owner's in `engine.yml`: for each bound the engine takes the
 stricter value (the longer interval, the smaller daily count), so a looser policy value has no effect.
 
-Machine preparation is `policy/prepare.sh`: the engine stages the accepted copy and the tokenless session job runs it
+Machine preparation is `policy/prepare.sh`: the engine stages the accepted copy and the session job runs it
 before the role (none: nothing is prepared).
 
 ## One iteration
 
-When a session is staged, `policy/session-state.py` builds its `loop-state.json` and history from the engine's facts
+When a session is staged, the policy scripts run in a job without the token (*Prepare the session inputs (policy scripts)*): `policy/session-state.py` builds its `loop-state.json` and history from the engine's facts
 (see `session-context.md`). `policy/session-startup.py` decides its startup reads, bootstrap prompt and budget
 warning; the estimate is local, so no step of the engine needs the Anthropic API key.
 

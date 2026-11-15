@@ -46,7 +46,7 @@ runs from the accepted tree with the full candidate and baseline required by ADR
 ## Model process and network access
 
 There is no sandbox around a session. The boundary is the machine
-([ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md)): the agent, its scripts and the
+(ADR-0006): the agent, its scripts and the
 candidate commands run in the `session` job, which has no GitHub permissions and never shares a machine with the GitHub
 token. The Claude token and the secrets the owner approved for the task are readable by the session; the response to a
 leak is revoking them.
@@ -103,21 +103,31 @@ when updating a loop.
 
 ## Session lifecycle and outputs
 
-`session.yml` (displayed as *Session*) runs three jobs. Every job, step and command has a name that says what it does;
-the job ids (`prep`, `session`, `epilogue`) stay the same.
+`session.yml` (displayed as *Session*) runs four jobs. Every job, step and command has a name that says what it does;
+the job ids (`prep`, `policy`, `session`, `epilogue`) stay the same.
 
 - `prep`, *Prepare the session* (GitHub token): checks AUTOPILOT and the LLM provider credentials
   (`check-autopilot`, `check-credentials`), loads the session settings (`session-settings`), checks out the engine and
-  the worker tree, stages the session (`stage-inputs`) and ships it as an artifact. The executor baseline goes in an
-  artifact of its own, pinned by its sha256 in a job output; the session never receives it.
-- `session` (`permissions: {}`; only the Claude token and the secrets the owner consented to): unpacks the staged
-  bundle, installs the agent tool (named from the engine's output, for agent sessions only), runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
+  the worker tree, stages the session (`stage-inputs`) and ships it as an artifact. The executor baseline (which the
+  session never receives) and the policy bundle (the engine code, `policy/` and the facts for the policy scripts) go in
+  artifacts of their own. All three are pinned by a digest in job outputs.
+- `policy`, *Prepare the session inputs (policy scripts)* (`permissions: {}`, no secret, no checkout): checks its downloads
+  against the digests, runs `policy/session-state.py` and `policy/session-startup.py` from the bundle
+  (`run-policy-scripts`, `policy_inputs.py`), applies the engine's checks to what they print and uploads the validated
+  results (files for `.session/`, the bootstrap prompt) pinned by a digest. The job outputs say `ok` or the `error`.
+  Bad results: `session` does not start, and `take-results` fails the iteration and rolls policy back.
+- `session`, *Run the session* (`permissions: {}`; only the Claude token and the secrets the owner consented to): checks
+  its downloads against the digests, unpacks the staged bundle and the policy script results, installs the agent tool (named from the engine's output, for agent sessions only), runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
   (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.
 - `epilogue`, *Take in results* (GitHub token, a fresh runner): `take-results` (`session_finalize.epilogue`) takes the artifact in as data
   (`session_artifact.py`). It refuses a tree with a path that escapes, one written through a link, a special file or an
   oversized file; links and hard links that stay are unpacked unfollowed and refused by the admission below. It checks
   the baseline against the staged digest, reads the commits from the bundle (kept under `refs/session/<issue>/`, never
-  merged; it never fetches from the session's repository) and finalizes.
+  merged; it never fetches from the session's repository) and finalizes. Before that it takes in the policy scripts'
+  verdict and notes the startup budget they measured (the incident and the comment need the token).
+
+Any job of a run can upload artifacts, so every artifact a job relies on is pinned by a digest that reached it through
+the outputs of the job that made it (`artifact_pin.py`, ADR-0006).
 
 Status files (start, end, exit code, turns, tokens) are trusted as data. A usage limit that parks the loop is not: the
 epilogue parks only when the engine's own probe (`common.probe_limit`) confirms it, and the probe sets the clock.

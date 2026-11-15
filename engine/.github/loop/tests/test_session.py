@@ -4,6 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+import fakes
 from fakes import common as c, iteration as it
 import session_start
 import owner_requests as requests
@@ -72,7 +73,7 @@ class StageTest(SessionCase):
         trusted = os.path.join(self.w.tmp, "trusted-secrets")
         with patch.object(requests, "consent_status", return_value=(True, None)), \
                 patch.object(requests, "secrets_of_consent", return_value=["A", "B"]):
-            session_start.stage(n, self.work(), trusted)
+            fakes.stage_session(n, self.work(), trusted)
         self.assertEqual(read(os.path.join(trusted, "secrets")), "A\nB\n")
         self.assertFalse(os.path.exists(os.path.join(trusted, "unapproved")))
 
@@ -81,7 +82,7 @@ class StageTest(SessionCase):
         self.hub.post_comment(n, "trusted words")
         self.hub.cmts[n].append({"id": 9, "body": "stranger words", "author_association": "NONE", "user": {"login": "stranger"}})
         work, trusted = self.work(), os.path.join(self.w.tmp, "trusted")
-        session_start.stage(n, work, trusted)
+        fakes.stage_session(n, work, trusted)
         issue_md = read(os.path.join(work, ".session", "issue.md"))
         self.assertIn("stage me", issue_md)
         self.assertIn("trusted words", issue_md)
@@ -98,12 +99,12 @@ class StageTest(SessionCase):
     def test_machine_preparation_is_the_script_of_policy(self):
         n = self.issue()
         trusted = os.path.join(self.w.tmp, "trusted-none")
-        session_start.stage(n, self.work(), trusted)
+        fakes.stage_session(n, self.work(), trusted)
         self.assertNotIn("apt-get", read(os.path.join(trusted, "prepare.sh")))
         self.w.push_main({"policy/prepare.sh": "#!/usr/bin/env bash\napt-get install -y jq\n"}, "policy installs jq")
         c.sync_main()
         trusted = os.path.join(self.w.tmp, "trusted-policy")
-        session_start.stage(n, self.work(), trusted)
+        fakes.stage_session(n, self.work(), trusted)
         self.assertIn("apt-get install -y jq", read(os.path.join(trusted, "prepare.sh")))
 
     def test_the_audit_gets_the_streams_of_the_last_iterations(self):
@@ -113,7 +114,7 @@ class StageTest(SessionCase):
                               {"id": 4, "name": "stream-0005-12", "workflow_run": {"id": 106}, "expired": True}]
         n = self.hub.create_issue("A", "## Goal\nmeasure\n", labels=["role:audit", "loop:iteration 5"])
         work = self.work()
-        session_start.stage(n, work, os.path.join(self.w.tmp, "t"))
+        fakes.stage_session(n, work, os.path.join(self.w.tmp, "t"))
         got = [a for a in self.hub.gh_calls if a[:2] == ("run", "download")]
         self.assertEqual([(a[2], a[4]) for a in got], [("104", "stream-0004-9"), ("105", "stream-0005-11")])
         self.assertTrue(all(a[6].startswith(os.path.join(work, ".session", "streams")) for a in got))
@@ -121,7 +122,7 @@ class StageTest(SessionCase):
     def test_a_script_role_gets_its_command_and_no_skill(self):
         n = self.issue("rule")
         trusted = os.path.join(self.w.tmp, "trusted")
-        session_start.stage(n, self.work(), trusted)
+        fakes.stage_session(n, self.work(), trusted)
         self.assertEqual(read(os.path.join(trusted, "command.sh")), "echo shaping\n")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills", "rule")))
 
@@ -129,13 +130,13 @@ class StageTest(SessionCase):
         it.start_iteration()
         shaper = self.hub.role_issues("orchestrator")[0]["number"]
         work = self.work()
-        session_start.stage(shaper, work, os.path.join(self.w.tmp, "t1"))
+        fakes.stage_session(shaper, work, os.path.join(self.w.tmp, "t1"))
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
         self.assertEqual((state["iteration"], state["engine_version"]), (0, c.engine_version()))
         self.assertFalse(os.path.exists(os.path.join(work, ".session", "macro-plan.md")))
         pol = it.start_policymaker(0, "a test")
         work2 = self.work()
-        session_start.stage(pol, work2, os.path.join(self.w.tmp, "t3"))
+        fakes.stage_session(pol, work2, os.path.join(self.w.tmp, "t3"))
         self.assertIn("You are the Policymaker", read(os.path.join(work2, ".session", "policymaker.md")))
         state = json.loads(read(os.path.join(work2, ".session", "loop-state.json")))
         self.assertEqual(state["trigger"], "a test")

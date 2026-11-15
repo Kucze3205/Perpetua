@@ -6,7 +6,7 @@ the previous Iteration's outcome and a history pointer. The engine still compute
 The state comment is omitted from `issue.md`.
 
 `policy/session-state.py` builds `loop-state.json` and the files under `.session/history/` for every role. The engine writes
-the facts (the stored state and the records and report snapshots the role may see) and runs the script in the tokenless job;
+the facts (the stored state and the records and report snapshots the role may see) and the script runs in the job that holds no token (`policy_inputs.py`);
 the answer is `{"loop_state": {...}|null, "files": {"history/...": "text"}}` (at most 8 MB). Invalid output fails the
 iteration and rolls `execution/` and `policy/` back. A change to the script reaches sessions staged after it is accepted.
 

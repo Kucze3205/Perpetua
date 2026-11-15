@@ -153,7 +153,7 @@ class ExportPipelineTest(SessionCase):
         c.sync_main()
         with patch.dict(os.environ, environment):
             with self.assertRaisesRegex(SystemExit, "configuration changed after prep"):
-                session_start.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
+                fakes.stage_session(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
 
     def test_stage_blocks_tool_change_after_prep(self):
         n = self.issue()
@@ -163,7 +163,7 @@ class ExportPipelineTest(SessionCase):
         # Even when a consent is otherwise valid, the frozen prep profile must match.
         with patch.dict(os.environ, environment), patch.object(c, "profiles", return_value=profiles), patch.object(requests, "consent_status", return_value=(True, None)):
             with self.assertRaisesRegex(SystemExit, "configuration changed after prep: TOOLS"):
-                session_start.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
+                fakes.stage_session(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
 
     def test_stage_rechecks_current_owner_consent(self):
         n = self.issue()
@@ -171,7 +171,7 @@ class ExportPipelineTest(SessionCase):
         profiles["worker"]["tools"] = profiles["worker"]["tools"] + ["WebFetch"]
         with patch.object(c, "profiles", return_value=profiles):
             with self.assertRaisesRegex(SystemExit, "consent is no longer valid"):
-                session_start.stage(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
+                fakes.stage_session(n, os.path.join(self.w.tmp, "work"), os.path.join(self.w.tmp, "trusted"))
 
     def test_task_graph_declaration_reaches_role_staging(self):
         declaration = [{"source": "records", "iterations": [0]}]
@@ -181,7 +181,7 @@ class ExportPipelineTest(SessionCase):
         self.assertEqual(json.loads(c.marker(self.hub.issue(n)["body"], "exports")), declaration)
         work = os.path.join(self.w.tmp, "selected-work")
         fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", "-c", "core.autocrlf=false", self.w.origin, work)
-        session_start.stage(n, work, os.path.join(self.w.tmp, "trusted"))
+        fakes.stage_session(n, work, os.path.join(self.w.tmp, "trusted"))
         with open(os.path.join(work, ".session", "exports", "manifest.json"), encoding="utf-8") as fh:
             result = json.load(fh)["results"][0]
         self.assertEqual((result["source"], result["status"]), ("records", "unavailable"))

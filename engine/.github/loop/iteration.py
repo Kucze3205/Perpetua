@@ -19,9 +19,12 @@ import common as c
 import managed_resources as resources
 import owner_requests as requests
 import task_graph as graph
+import policy_script
 import session_inputs
 import session_reports
 import session_startup
+
+PolicyScriptError = policy_script.PolicyScriptError
 
 MAP = "loop:map"
 VERDICT_BYTES = 64 * 1024        # what the engine reads of a tokenless job's output
@@ -29,8 +32,6 @@ STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
 SEEN_MARK = "<!-- policymaker-audit-seen -->"
-POLICY_OUTPUT_BYTES = 4096      # what the engine accepts from a policy script
-POLICY_SCRIPT_MINUTES = 10
 POLICY_ERRORS = 20       # what the engine accepts from a policy rule script: refusals per answer
 
 
@@ -494,11 +495,7 @@ def audit_revision():
     return c.git(".", "log", "-1", "--format=%H", "--", "audit/", check=False).stdout.strip() or None
 
 
-class PolicyScriptError(Exception):
-    """A policy script returned data the engine refuses."""
-
-
-def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
+def run_policy_script(name, facts, max_bytes=policy_script.OUTPUT_BYTES):
     """The JSON object `policy/<name>` prints for `facts`, run in the tokenless job (`python3 <script> facts.json`). Anything
     else - no output, over `max_bytes`, a failed run, not one JSON object - raises PolicyScriptError. None: no such script."""
     path = "%s/%s" % (resources.ROOT, name)
@@ -506,13 +503,11 @@ def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
         return None
     bundle = tempfile.mkdtemp(prefix="policy-script-")
     try:
-        shutil.copy(path, os.path.join(bundle, "script"))
+        policy_script.stage(bundle, path, facts)
         shutil.copytree(resources.ROOT, os.path.join(bundle, resources.ROOT), symlinks=True)     # data the script keeps in policy/
-        with open(os.path.join(bundle, "facts.json"), "w", encoding="utf-8", newline="\n") as fh:
-            json.dump(facts, fh)
         with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write('cd "$(dirname "$0")" && python3 script facts.json\n')
-        out = c.run_tokenless(bundle, POLICY_SCRIPT_MINUTES, "policy script")
+        out = c.run_tokenless(bundle, policy_script.MINUTES, "policy script")
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
     try:
@@ -522,17 +517,7 @@ def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
             text = fh.read(max_bytes + 1)
     except (OSError, TypeError):
         raise PolicyScriptError("policy/%s returned no output from the tokenless job" % name)
-    if code != "0":
-        raise PolicyScriptError("policy/%s exited with %s" % (name, code))
-    if len(text) > max_bytes:
-        raise PolicyScriptError("policy/%s printed more than %s bytes" % (name, max_bytes))
-    try:
-        value = json.loads(text)
-    except ValueError:
-        raise PolicyScriptError("policy/%s did not print JSON" % name)
-    if not isinstance(value, dict):
-        raise PolicyScriptError("policy/%s did not print a JSON object" % name)
-    return value
+    return policy_script.parse(name, code, text, max_bytes)
 
 
 def policy_errors(name, facts):

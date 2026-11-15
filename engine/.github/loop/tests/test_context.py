@@ -4,6 +4,7 @@ import os
 
 from unittest.mock import patch
 
+import fakes
 from fakes import common as c, iteration as it
 import closing
 import session_start
@@ -22,7 +23,7 @@ class ContextTest(sessions.SessionCase):
             it.store_state(n, state)
         work = self.work()
         trusted = os.path.join(self.w.tmp, "context-trusted-%s" % n)
-        session_start.stage(n, work, trusted)
+        fakes.stage_session(n, work, trusted)
         return n, work, trusted
 
     def test_policymaker_reads_one_state_snapshot_and_keeps_task_comments(self):
@@ -30,7 +31,7 @@ class ContextTest(sessions.SessionCase):
         it.store_state(n, {"trigger": "inspect costs", "iterations": []})
         self.hub.post_comment(n, "Owner context worth keeping")
         work = self.work()
-        session_start.stage(n, work, os.path.join(self.w.tmp, "one-state"))
+        fakes.stage_session(n, work, os.path.join(self.w.tmp, "one-state"))
         issue = read(os.path.join(work, ".session/issue.md"))
         self.assertNotIn(it.STATE_MARK, issue)
         self.assertIn("Owner context worth keeping", issue)

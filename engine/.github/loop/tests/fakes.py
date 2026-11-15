@@ -1,11 +1,11 @@
 """Test world: an in-memory GitHub (the thin functions of `common`) and real git repositories (a bare origin, the
 engine's checkout of the default branch, agent working copies). Nothing here talks to the network."""
-import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 from datetime import datetime, timedelta, timezone
 
@@ -21,9 +21,11 @@ LOOP_DIR = os.path.dirname(HERE)
 ENGINE = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, LOOP_DIR)
 
+import artifact_pin  # noqa: E402
 import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
+import policy_inputs  # noqa: E402
 import session_artifact  # noqa: E402
 import session_finalize  # noqa: E402
 import session_start  # noqa: E402
@@ -33,6 +35,54 @@ PATCHED = ["variable", "issue", "list_issues", "create_issue", "edit_labels", "c
            "list_artifacts", "delete_artifact", "cancel_run", "recent_closed", "gh", "pr_for_branch", "open_pr", "run_tokenless", "probe_limit",
            "edit_issue_body", "pin_issue"]
 GH_HANDLED = {("run", "download"), ("release", "create"), ("release", "upload"), ("release", "download")}
+
+
+class Staged:
+    """What the policy scripts' job left for one staged session: its outputs (`ok`, `error`, `digest`) and its artifact."""
+    def __init__(self, ok, error, digest, results):
+        self.ok, self.error, self.digest, self.results = ok, error, digest, results
+
+    def env(self):
+        return {"POLICY_OK": self.ok, "POLICY_ERROR": self.error, "POLICY_DIGEST": self.digest}
+
+
+def policy_job(bundle, work, root):
+    """The job "Prepare the session inputs (policy scripts)" on a machine of its own: the bundle's code only, on a copy of the tree
+    without its git history, standard library only, no checkout of the repository. Returns Staged."""
+    jobwork = os.path.join(root, "work")
+    shutil.copytree(work, jobwork, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    results, outputs = os.path.join(root, "results"), os.path.join(root, "outputs")
+    env = {"PATH": os.environ["PATH"], "HOME": root, "GITHUB_OUTPUT": outputs}
+    r = subprocess.run([sys.executable, "-S", os.path.join(bundle, "engine", "loop.py"), "run-policy-scripts", bundle, jobwork, results],
+                       cwd=root, env=env, capture_output=True, text=True)
+    if r.returncode:
+        raise AssertionError("the policy scripts' job failed:\n" + r.stderr)
+    with open(outputs, encoding="utf-8") as fh:
+        got = dict(line.rstrip("\n").split("=", 1) for line in fh)
+    return Staged(got["ok"], got.get("error", ""), got.get("digest", ""), results)
+
+
+def stage_session(n, work, trusted, through_epilogue=False):
+    """A session's inputs the way the workflow makes them: "Prepare the session" stages and bundles, the policy scripts' job runs
+    the scripts, the session job checks the results against the digest and unpacks them over the staging. The head of
+    "Take in results" follows (refuses bad results, notes the startup budget) unless the epilogue itself is played later.
+    Returns Staged."""
+    root = tempfile.mkdtemp(prefix="policy-job-")
+    bundle = os.path.join(root, "bundle")
+    session_start.stage(n, work, trusted, bundle)
+    staged = policy_job(bundle, work, os.path.join(root, "job"))
+    if staged.ok == "true":
+        artifact_pin.verify(staged.results, staged.digest)
+        with tarfile.open(os.path.join(staged.results, "session.tar.gz")) as tar:
+            tar.extractall(os.path.join(work, ".session"), filter="data")
+        if os.path.exists(os.path.join(staged.results, "prompt.md")):
+            shutil.copy(os.path.join(staged.results, "prompt.md"), os.path.join(trusted, "prompt.md"))
+    if not through_epilogue:
+        why = policy_inputs.refusal(staged.ok, staged.error, staged.results, staged.digest)
+        if why:
+            session_finalize.refuse_policy_results(n, why)
+        session_finalize.note_startup_budget(n, staged.results)
+    return staged
 
 
 class FakeHub:
@@ -345,7 +395,7 @@ class World:
         os.environ["RUNNER_TEMP"] = rt
         # Model the real staging/admission handshake (the baseline) even when the session's
         # output itself is supplied by the test rather than executed.
-        session_start.stage(n, work, os.path.join(rt, "trusted"))
+        staged = self.staged = stage_session(n, work, os.path.join(rt, "trusted"), through_epilogue=True)
         for p, t in (files or {}).items():
             self.write(work, p, t)
         for p in delete:
@@ -374,22 +424,21 @@ class World:
         common.LAUNCHED.clear()            # every epilogue is a fresh process
         if self.before_finalize:
             self.before_finalize()
-        self.epilogue(n, work, rt)
+        self.epilogue(n, work, rt, staged)
         return work
 
-    def epilogue(self, n, work, rt):
+    def epilogue(self, n, work, rt, staged):
         """The session job packs its results; the epilogue job, on a fresh runner, takes the artifact and the baseline
         (a channel of its own) in."""
         artifact, baseline = os.path.join(rt, "artifact"), os.path.join(rt, "baseline")
         session_artifact.pack(work, rt, artifact)
         os.makedirs(baseline)
         shutil.move(os.path.join(rt, "trusted", "executor-baseline.json"), baseline)
-        with open(os.path.join(baseline, "executor-baseline.json"), "rb") as fh:
-            digest = hashlib.sha256(fh.read()).hexdigest()
         fresh = os.path.join(rt, "epilogue")
         os.makedirs(fresh)
         os.environ["RUNNER_TEMP"] = fresh
-        session_finalize.epilogue(n, artifact, baseline, digest)
+        os.environ.update(staged.env())
+        session_finalize.epilogue(n, artifact, baseline, artifact_pin.digest(baseline), staged.results)
 
     def branch(self, n, files, base="origin/main", delete=()):
         """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""

@@ -63,9 +63,9 @@ def record(work, trusted):
         "paths": [n.decode("utf-8") for n in names if n], "work": os.path.abspath(work)}), encoding="utf-8")
 
 
-def import_candidate(work, metadata, trusted, ref, skip=lambda rel, tracked: False):
+def import_candidate(work, metadata, trusted, ref, message, skip=lambda rel, tracked: False):
     """Write objects/index in the engine repo, without consulting worker .git: one commit on the baseline from the file
-    bytes the session left, whether or not it committed. Environment debris never reaches any check: `skip(rel, tracked)`
+    bytes the session left, whether or not it committed; `message` comes from trusted data, never from the session. Environment debris never reaches any check: `skip(rel, tracked)`
     by path, before the file is inspected or read."""
     if os.path.abspath(work) != metadata["work"]:
         raise ValueError("executor output does not match its staged origin")
@@ -92,7 +92,7 @@ def import_candidate(work, metadata, trusted, ref, skip=lambda rel, tracked: Fal
         if changes:
             git(trusted, "update-index", "--add", "-z", "--index-info", data="".join(changes).encode("utf-8"), env=env)
         tree = git(trusted, "write-tree", env=env).decode().strip()
-        commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"], data=b"Session output admitted as data\n",
+        commit = git(trusted, "commit-tree", tree, "-p", metadata["baseline"], data=message.encode("utf-8") + b"\n",
                      # fixed dates: the same output is the same commit, so "the head did not move" is observable
                      env={"GIT_AUTHOR_DATE": "@0 +0000", "GIT_COMMITTER_DATE": "@0 +0000"}).decode().strip()
     git(trusted, "update-ref", ref, commit)

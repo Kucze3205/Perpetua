@@ -173,7 +173,7 @@ def create_tasks(n, tasks):
                                frozen="secrets: %s" % ", ".join(secrets) if secrets else None)
             c.edit_labels(number[t["id"]], add=["consent:%s" % req])
     frozen = read(n) + [dict(t, issue=number[t["id"]]) for t in tasks]
-    c.commit_main({tasks_path(n): json.dumps(frozen, indent=1, ensure_ascii=False) + "\n"}, "iteration %04d: task graph" % n)
+    c.commit_main({tasks_path(n): json.dumps(frozen, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: task graph" % n)
     return list(number.values())
 
 

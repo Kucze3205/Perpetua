@@ -4,7 +4,7 @@
 Always run from a checkout of the default branch, never from a task branch. The agent's work arrives as commits
 fetched into this checkout; nothing is executed inside the agent's directory.
 
-Commands: guard, probe, resolve, stage, epilogue, watch, resume, start, git-identity.
+Commands: check-autopilot, check-credentials, session-settings, stage-inputs, take-results, watch, resume-after-limit.
 """
 import hashlib
 import json
@@ -142,7 +142,9 @@ def resolve(n):
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
     start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
+    agent = options["kind"] == "agent"
     c.set_output(**options, start=start, consented="true" if granted else "false",
+                 tool="Claude Code" if agent else "", tool_version=str(c.cfg()["cli_version"]) if agent else "",
                  secrets="|%s|" % "|".join(names) if names else "")
 
 
@@ -258,8 +260,6 @@ def stage(n, work, trusted):
     else:
         with open(os.path.join(trusted, "prepare.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write("#!/usr/bin/env bash\n")
-    with open(os.path.join(trusted, "cli-version"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(str(c.cfg()["cli_version"]) + "\n")
     if resources.layered() and p.get("agent") is not False:
         staged_role = os.path.join(sess, "role")
         shutil.rmtree(staged_role, ignore_errors=True)
@@ -351,6 +351,12 @@ class Tree:
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
+def admission_message(role, n):
+    """`<role> #N: <task title>`: how the session's work reads in the commit list. Trusted data only, never the session's text."""
+    title = " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", c.issue(n).get("title") or "").split())
+    return "%s #%s: %s" % (role, n, title[:72] or "session output")
+
+
 def fetch_candidate(work, n):
     """The files the session left, as one commit on its staged baseline in `refs/heads/task/N` of the trusted checkout:
     objects only, nothing of the agent's repository (its commits, config, hooks) is ever read or executed. Returns
@@ -370,7 +376,7 @@ def fetch_candidate(work, n):
         # settings, a tool's virtualenv links): neither inspected nor admitted. Everything else reaches the checks.
         write = profile_of(role).get("write") or []
         skip = lambda rel, tracked: not tracked and not c.path_match(rel, write)
-        executor_boundary.import_candidate(work, meta, ".", ref, skip)
+        executor_boundary.import_candidate(work, meta, ".", ref, admission_message(role, n), skip)
     except (ValueError, OSError, subprocess.SubprocessError):
         print("Session output could not be admitted safely")
         return None, []
@@ -394,10 +400,10 @@ def verification_rules(body):
     return ["Bash(%s)" % re.sub(r"([\\()*])", r"\\\1", cmd) for cmd in verification_commands(body) if "\n" not in cmd]
 
 
-def run_verification(cand, body):
+def run_verification(cand, body, n):
     """`## Verification` of the task: commands from code blocks or backticked lines, run in the tokenless job."""
     for cmd in verification_commands(body):
-        r = c.run_command(cmd, cand)
+        r = c.run_command(cmd, cand, purpose="verification for #%s" % n)
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -471,7 +477,7 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
                 return dict(res, result="large", detail=", ".join(big))
             if work_paths:
                 if cfg["check"]:
-                    t = c.run_command(cfg["check"], cand)
+                    t = c.run_command(cfg["check"], cand, purpose="check for #%s" % n)
                     if t.returncode:
                         return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
                 if override:
@@ -500,24 +506,20 @@ def merge_branch(n, role, i, override=None, verified=False, checked_commit=None,
 
 
 def merge_notes(n, role):
-    """An unfinished session does not merge its work, but its journal must not stay on `task/N`."""
+    """An unfinished session does not merge its work, but its journal must not stay on `task/N`: the files are queued
+    for the epilogue's one record commit of this session (`session_reports.capture`)."""
     cfg, d = c.cfg(), c.default_branch()
     prof = profile_of(role) or {}
     br = "task/%s" % n
-    for _ in range(PUSH_TRIES):
-        c.sync_main()
-        if c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), check=False, remote=True).returncode:
-            return False
-        files = [f for f in c.git(".", "diff", "--name-only", "--diff-filter=AM", "origin/%s...origin/%s" % (d, br)).stdout.split()
-                 if c.path_match(f, cfg["notes_paths"]) and resources.may_write(prof, f)]
-        if not files:
-            return False
-        with Tree("origin/%s" % d) as cand:
-            c.git(cand, "checkout", "origin/%s" % br, "--", *files)
-            c.git(cand, "commit", "-q", "-m", "Notes from an unfinished session: %s" % ", ".join(files), check=False)
-            if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
-                return True
-    return False
+    c.sync_main()
+    if c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), check=False, remote=True).returncode:
+        return False
+    files = [f for f in c.git(".", "diff", "--name-only", "--diff-filter=AM", "origin/%s...origin/%s" % (d, br)).stdout.split()
+             if c.path_match(f, cfg["notes_paths"]) and resources.may_write(prof, f)]
+    if not files:
+        return False
+    session_reports.queue_notes(n, "origin/%s" % br, files)
+    return True
 
 
 def merge_outcome(r):
@@ -700,7 +702,7 @@ def finalize(n, work):
         upload_artifacts(n, work, k)
     if status == "done" and sha and not script:
         with Tree("task/%s" % n) as cand:
-            ok, out = run_verification(cand, i["body"])
+            ok, out = run_verification(cand, i["body"], n)
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
             upd["verification"] = "fail"
@@ -1080,9 +1082,9 @@ def on_request_closed(n):
         if text is None:
             c.post_comment(n, "Not applied: the proposed text changed after the request was opened. The loop will open a new request.")
         else:
-            c.commit_main({"goal/gate.yml" if kind == "goal-gate" else "goal/goal.md": text.rstrip("\n") + "\n"}, "owner accepted: %s (#%s)" % (kind, n))
+            c.commit_main({"goal/gate.yml" if kind == "goal-gate" else "goal/goal.md": text.rstrip("\n") + "\n"}, "owner-answer #%s: accepted %s" % (n, kind))
     elif kind == "result-confirmation" and yes:
-        c.commit_main({"GOAL_REACHED": "confirmed by the owner (#%s)\n" % n}, "goal reached: confirmed by the owner (#%s)" % n)
+        c.commit_main({"GOAL_REACHED": "confirmed by the owner (#%s)\n" % n}, "owner-answer #%s: goal reached" % n)
     elif kind == "merge-acceptance" and ref.startswith("task-"):
         settle_owner_merge(int(ref[5:]), yes)
     elif kind == "consent":
@@ -1300,16 +1302,7 @@ def kick():
 
 # ---------------------------------------------------------------- main
 
-def git_identity():
-    a = c.cfg()["author"]
-    c.git(".", "config", "--global", "user.name", "github-actions[bot]")
-    c.git(".", "config", "--global", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-    if a.get("name") and a.get("email"):
-        c.git(".", "config", "--global", "author.name", a["name"])
-        c.git(".", "config", "--global", "author.email", a["email"])
-
-
-STATUS_MOMENTS = ("epilogue", "request-closed", "watch")        # the end of a session, an owner answer, a watchdog check
+STATUS_MOMENTS = ("take-results", "watch")        # the end of a session, a watchdog check
 
 
 def main(argv):
@@ -1320,26 +1313,22 @@ def main(argv):
 
 
 def command(cmd, args):
-    if cmd == "guard":
+    if cmd == "check-autopilot":
         return 0 if c.guard_ok() else 10
-    if cmd == "probe":
+    if cmd == "check-credentials":
         code = c.probe()
-        print("probe: HTTP %s" % code)
+        print("credential check: HTTP %s" % code)
         return 1 if code in (401, 403) else 0
-    if cmd == "resolve":
+    if cmd == "session-settings":
         resolve(int(args[0]))
-    elif cmd == "stage":
+    elif cmd == "stage-inputs":
         stage(int(args[0]), args[1], args[2])
-    elif cmd == "epilogue":
+    elif cmd == "take-results":
         epilogue(int(args[0]), *args[1:4])
     elif cmd == "watch":
         return watch()
-    elif cmd == "resume":
+    elif cmd == "resume-after-limit":
         resume(int(args[0]))
-    elif cmd == "start":
-        it.start_iteration()
-    elif cmd == "git-identity":
-        git_identity()
     else:
         raise SystemExit("unknown command: " + cmd)
     return 0

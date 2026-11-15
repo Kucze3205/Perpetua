@@ -13,15 +13,30 @@ import task_graph as graph
 from flow_fixtures import Flow
 
 
-class FirstIterationTest(Flow):
-    def test_script_entry_begins_work_without_a_due_policymaker(self):
-        with mock.patch.object(sys, "argv", [loop.__file__, "start"]):
+class CommandsTest(Flow):
+    def run_entry(self, *argv):
+        with mock.patch.object(sys, "argv", [loop.__file__, *argv]):
             with self.assertRaises(SystemExit) as result:
                 runpy.run_path(loop.__file__, run_name="__main__")
-        self.assertEqual(result.exception.code, 0)
+        return result.exception.code
+
+    def test_the_script_entry_answers_to_the_new_command_names(self):
+        self.assertEqual(self.run_entry("check-autopilot"), 0)
+        self.hub.vars["AUTOPILOT"] = "off"
+        self.assertEqual(self.run_entry("check-autopilot"), 10)
+
+    def test_removed_commands_are_unknown(self):
+        for old in ("start", "git-identity", "guard", "probe", "resolve", "stage", "epilogue", "request-closed", "resume"):
+            self.assertEqual(self.run_entry(old), "unknown command: " + old, old)
+
+
+class FirstIterationTest(Flow):
+    def test_an_iteration_begins_work_without_a_due_policymaker(self):
+        it.start_iteration()
         cur = self.open_iteration()
         self.assertEqual(c.report_fields(cur["number"])["phase"], "shape")
         self.assertEqual(len(self.hub.role_issues("orchestrator")), 1)
+
 
     def test_an_iteration_from_the_shaper_to_its_record_and_the_next_iteration(self):
         k = it.start_iteration()

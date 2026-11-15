@@ -84,7 +84,7 @@ class GoalGateTest(Flow):
         self.finish_one()
         self.gate(True, False)
         self.hub.tokenless_fault = "no-artifact"
-        it.check_goal()
+        it.check_goal(0)
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
 
     def test_the_gate_command_runs_in_the_tokenless_job(self):

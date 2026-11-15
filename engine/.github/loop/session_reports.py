@@ -14,6 +14,7 @@ ROOT = ".github/loop/data/session-reports"
 OUTBOXES = "iterations/suggestions"
 OUTBOX_BYTES = 256 * 1024
 FINAL = ("done", "partial", "crashed", "rejected")      # a parked (`paused`) session freezes nothing
+NOTES = {}      # session -> (ref, files): the journal of an unfinished session, committed together with its report
 
 
 def encoded(value):
@@ -43,22 +44,30 @@ def source_records(n=None):
     return out
 
 
+def queue_notes(n, ref, files):
+    """The journal files of an unfinished session wait for `capture`, so the session's records are one commit."""
+    NOTES[n] = (ref, files)
+
+
 def capture(n, work=None):
-    """Freeze a trusted report and archive the raw suggestion outbox. Replaying identical output is a no-op."""
-    report = report_snapshot(n)
-    if not report or c.fields(report["body"]).get("status") not in FINAL:
-        return
+    """Freeze a trusted report, archive the raw suggestion outbox and bring in the journal of an unfinished session: one
+    commit `epilogue #N: session report`, its files listed in the body. Replaying identical output is a no-op."""
     files = {}
-    record = {"schema_version": 1, "report": report}
-    path = "%s/%s/%s.json" % (ROOT, n, digest(encoded(record)))
-    if not os.path.exists(path):
-        files[path] = encoded(record)
-    outbox = "%s/%s.json" % (OUTBOXES, n)
-    text = c.safe_read(work, ".session/suggestions.json") if work else None
-    if text is not None and not os.path.exists(outbox):
-        files[outbox] = text[:OUTBOX_BYTES]
-    if files:
-        c.commit_main(files, "session #%s: freeze report and suggestion outbox" % n)
+    report = report_snapshot(n)
+    if report and c.fields(report["body"]).get("status") in FINAL:
+        record = {"schema_version": 1, "report": report}
+        path = "%s/%s/%s.json" % (ROOT, n, digest(encoded(record)))
+        if not os.path.exists(path):
+            files[path] = encoded(record)
+        outbox = "%s/%s.json" % (OUTBOXES, n)
+        text = c.safe_read(work, ".session/suggestions.json") if work else None
+        if text is not None and not os.path.exists(outbox):
+            files[outbox] = text[:OUTBOX_BYTES]
+    notes = NOTES.pop(n, None)
+    if files or notes:
+        listed = list(files) + (notes[1] if notes else [])
+        body = "\n".join("- " + p for p in listed)
+        c.commit_main(files, "epilogue #%s: session report\n\n%s" % (n, body), restore=notes)
 
 
 def outboxes():

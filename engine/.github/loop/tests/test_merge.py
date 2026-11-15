@@ -4,6 +4,7 @@ import unittest
 
 import fakes
 from fakes import common as c, iteration as it, loop
+import session_reports
 
 from gate_fixtures import GATE_SH, SCRIPT_GATE
 
@@ -177,6 +178,8 @@ class NotesTest(MergeCase):
     def test_an_unfinished_session_still_leaves_its_journal(self):
         self.w.branch(self.n, {"journal/0001.md": "state", "src/a.txt": "half"})
         self.assertTrue(loop.merge_notes(self.n, "orchestrator"))
+        self.assertIsNone(self.w.origin_file("journal/0001.md"))          # queued: it joins the session's report commit
+        session_reports.capture(self.n)
         self.assertEqual(self.w.origin_file("journal/0001.md"), "state")
         self.assertIsNone(self.w.origin_file("src/a.txt"))
 

@@ -512,7 +512,7 @@ def run_policy_script(name, facts, max_bytes=POLICY_OUTPUT_BYTES):
             json.dump(facts, fh)
         with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write('cd "$(dirname "$0")" && python3 script facts.json\n')
-        out = c.run_tokenless(bundle, POLICY_SCRIPT_MINUTES)
+        out = c.run_tokenless(bundle, POLICY_SCRIPT_MINUTES, "policy script")
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
     try:
@@ -817,12 +817,12 @@ def close_iteration(n, status, failure=None):
         return
     if not os.path.exists(record_path(n)):
         record = build_record(n, it, status, failure)
-        c.commit_main({record_path(n): json.dumps(record, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: record (%s)" % (tag(n), status))
+        c.commit_main({record_path(n): json.dumps(record, indent=1, ensure_ascii=False) + "\n"}, "iteration %s: record (%s)" % (n, status))
     c.update_report(it["number"], {"phase": "closed", "status": status})
     c.close_issue(it["number"], "completed" if status == "closed" else "not planned")
     prune_streams(n)
     note_no_progress(n)
-    check_goal()
+    check_goal(n)
     start_iteration()
 
 
@@ -853,7 +853,7 @@ def note_no_progress(n):
 
 # ---------------------------------------------------------------- the goal gate
 
-def check_goal():
+def check_goal(n):
     """After an iteration: if an owner-accepted goal gate exists and its command says the goal is reached, either
     ask the owner to confirm the result or end. Without an accepted gate the loop never ends by itself."""
     if os.path.exists("GOAL_REACHED"):
@@ -861,7 +861,7 @@ def check_goal():
     gate = c.load_yaml("goal/gate.yml")
     if not gate or not gate.get("command"):
         return
-    r = c.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120))
+    r = c.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120), purpose="goal gate")
     verdict = parse_verdict(r.stdout)
     if r.returncode or not verdict or not verdict.get("reached"):
         return
@@ -874,7 +874,7 @@ def check_goal():
                      "Without your confirmation the loop keeps working.",
                      "Completed ends the loop (`GOAL_REACHED`). Not planned: the loop continues; say why in a comment.", ref=ref)
     else:
-        c.commit_main({"GOAL_REACHED": "reached at %s\n" % ref}, "goal reached (gate: %s)" % gate["command"])
+        c.commit_main({"GOAL_REACHED": "reached at %s\n" % ref}, "iteration %s: goal reached (gate)" % n)
 
 
 def confirmation_declined(ref):
@@ -947,7 +947,7 @@ def run_gate(cand, base, ctx):
     minutes = int(g.get("timeout_minutes") or 120)
     bundle = stage_bundle(cand, base, ctx, g["command"])
     try:
-        return read_verdict(c.run_tokenless(bundle, minutes))
+        return read_verdict(c.run_tokenless(bundle, minutes, "change gate for #%s" % ctx.get("task")))
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
 
@@ -969,7 +969,10 @@ def revert_policy(why):
         return False
     if resources.revision() == resources.revision(target):
         return False
-    c.commit_main({}, "roll back policy/ to %s: %s" % (target[:8], why), restore=(target, resources.restore_paths()))
+    cur = open_iteration()
+    n = iteration_number(cur) if cur else None
+    who = "iteration %s" % n if n is not None else "watchdog"
+    c.commit_main({}, "%s: roll back policy to %s\n\n%s" % (who, target[:8], why), restore=(target, resources.restore_paths()))
     requests.open_request("notice", "policy/ rolled back", "The engine returned `execution/` and `policy/` to %s. Reason: %s." % (target[:8], why),
                  "The iteration went wrong in a way policy/ or execution/ may have caused: %s." % why,
                  "Nothing is blocked. The Policymaker sees this notice in its next session.", ref="rollback-%s" % c.head()[:8])

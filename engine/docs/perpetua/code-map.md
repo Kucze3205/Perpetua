@@ -41,8 +41,8 @@ The engine uses the accepted checkout; files left by a session (committed or not
 
 | Behavior | Implementation entry points | Contract | Tests in `tests/` |
 |---|---|---|---|
-| Session resolution and staging | `loop.resolve`, `loop.stage` | [Session boundary](session-boundary.md); [session lifecycle](session-boundary.md#session-lifecycle-and-outputs) | `test_session.py`, `test_agent_chain.py` |
-| Session finalization, retries and outputs | `loop.finalize`, `loop.resume` | [Session lifecycle and outputs](session-boundary.md#session-lifecycle-and-outputs) | `test_session_finalize.py` |
+| Session resolution and staging | `loop.resolve` (`session-settings`), `loop.stage` (`stage-inputs`) | [Session boundary](session-boundary.md); [session lifecycle](session-boundary.md#session-lifecycle-and-outputs) | `test_session.py`, `test_agent_chain.py` |
+| Session finalization, retries and outputs | `loop.finalize`, `loop.resume` (`resume-after-limit`) | [Session lifecycle and outputs](session-boundary.md#session-lifecycle-and-outputs) | `test_session_finalize.py` |
 | Iteration lifecycle and session launch | `iteration.start_iteration`, `instantiate`, `advance`, `close_iteration` | [One iteration](engine.md#one-iteration) | `test_flow.py`, `test_iteration_import.py` |
 | Task validation, dependencies, inputs and frozen graph | `task_graph.validate_tasks`, `create_tasks`, `read`, `width`; `iteration.validate_tasks` adds `policy/graph-rules.py` | [Task graph format](../../.github/loop/task-graph.md) | `test_task_graph.py`, `test_flow.py` |
 | Candidate checks, change gate, evaluator verification | `loop.merge_branch`, `settle_verification`; `iteration.run_gate`, `common.run_tokenless` | [Output admission](session-boundary.md#output-admission); [change gate](engine.md#the-change-gate) | `test_merge.py`, `test_flow_gate.py`, `test_change_records.py` |
@@ -89,6 +89,31 @@ policy-phase and owner-request rules, then finding graph tests in `test_pure.py`
 Consent rules now lead directly to `owner_requests.py`; export rules still lead
 to `session_exports.py`. Neither requires reading unrelated session-finalization
 or recovery code.
+
+## Names and commit messages the owner sees
+
+Only displayed names are contract: workflow files and job ids stay (`session.yml`, `prep`, `session`, `epilogue`), so a
+loop set up earlier keeps its files. Workflow, job and step names say what the thing does in plain English and never
+name a provider; the tool a session installs is named from the engine's output (`session-settings`: `tool`,
+`tool_version`). `test_static.py` checks that every step has a name.
+
+`loop.py` commands: `check-autopilot`, `check-credentials`, `session-settings`, `stage-inputs`, `take-results`,
+`watch`, `resume-after-limit`. The engine sets its own git identity on every call that writes history
+(`git_identity.py`, used by `common.git`); no command configures git.
+
+Commits on the default branch read `<who> #<n>: <what>`, where *who* is the role or the engine step that writes:
+
+| Message | Written by |
+|---|---|
+| `<role> #N: <task title>` | the admission of a session's files (the title comes from the issue, never from the session) |
+| `epilogue #N: session report` (files in the body) | the session's report, suggestion outbox and, for an unfinished session, its journal: one commit |
+| `stage #N: startup budget notice` / `epilogue #N: startup budget notice` | the budget notice written before the session / consumed after it |
+| `iteration K: task graph`, `iteration K: record (<status>)`, `iteration K: goal reached (gate)`, `iteration K: roll back policy to <sha>` | the iteration |
+| `owner-request #N: frozen`, `owner-request #N: engine change: <what>` | an owner request |
+| `owner-answer #N: <status>`, `owner-answer #N: accepted <kind>`, `owner-answer #N: goal reached` | the engine applying the owner's answer |
+
+The tokenless bundle travels on `refs/tokenless/<key>`, outside the branches, and is deleted after the run: it is in no
+branch list and no history. The run is named `Tokenless: <purpose> [<key>]`; the key is how the engine finds its run.
 
 ## Run the relevant tests
 

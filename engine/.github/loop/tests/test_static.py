@@ -278,5 +278,38 @@ class ProtectionTest(unittest.TestCase):
                 self.assertFalse(c.path_match(g.replace("**", "x"), c.DEFAULTS["protected"]), (role, g))
 
 
+# A module that outgrows MODULE_LINES is hard for a session to read whole; new behavior goes into a module of its own.
+# These two are already bigger: their size is frozen, may only shrink, and the entry is deleted once the file fits.
+MODULE_LINES = 800
+FROZEN_LINES = {"loop.py": 1349, "iteration.py": 1002}
+
+
+class ModuleSizeTest(unittest.TestCase):
+    def test_no_engine_module_outgrows_its_limit(self):
+        loop_dir = os.path.join(ENGINE, ".github", "loop")
+        bad = []
+        for name in sorted(f for f in os.listdir(loop_dir) if f.endswith(".py")):
+            with open(os.path.join(loop_dir, name), encoding="utf-8") as fh:
+                lines = len(fh.readlines())
+            frozen = FROZEN_LINES.get(name)
+            if frozen is None and lines > MODULE_LINES:
+                bad.append("%s has %d lines, the limit is %d" % (name, lines, MODULE_LINES))
+            elif frozen is not None and lines > frozen:
+                bad.append("%s has %d lines, its frozen limit is %d" % (name, lines, frozen))
+            elif frozen is not None and lines < frozen:
+                bad.append("%s shrank to %d lines: lower its FROZEN_LINES entry to %d%s" % (
+                    name, lines, lines, "" if lines > MODULE_LINES else " (delete it, it is under %d now)" % MODULE_LINES))
+        self.assertEqual(bad, [], "Do not make a module bigger to fit new behavior: extract it into a module of its own.")
+
+
+class CodeMapTest(unittest.TestCase):
+    def test_every_engine_module_is_in_the_code_map(self):
+        with open(os.path.join(ENGINE, "docs", "perpetua", "code-map.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        missing = [f for f in sorted(os.listdir(os.path.join(ENGINE, ".github", "loop")))
+                   if f.endswith(".py") and not re.search(r"(?<![\w-])" + re.escape(f), text)]
+        self.assertEqual(missing, [], "modules missing from docs/perpetua/code-map.md: add a row for each")
+
+
 if __name__ == "__main__":
     unittest.main()

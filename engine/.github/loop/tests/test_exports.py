@@ -37,6 +37,11 @@ class ExportsTest(unittest.TestCase):
         self.assertEqual(self.hub.gh_calls[0][:5], ("run", "download", "101", "--name", "stream-0002-10"))
         self.assertTrue(os.path.isfile(os.path.join(self.tmp.name, "exports", "manifest.json")))
 
+    def test_a_gh_call_the_fake_does_not_know_fails_with_its_arguments(self):
+        with self.assertRaisesRegex(AssertionError, "gh api repos/o/r/actions/runs/7 -X GET"):
+            c.api("repos/o/r/actions/runs/7")
+        self.assertEqual(self.hub.gh_calls, [])
+
     def test_expired_deleted_and_unknown_are_distinct(self):
         self.hub.artifacts = [self.artifact(1, 10, expired=True)]
         results = self.stage([{"source": "streams", "sessions": [10, 11]}, {"source": "sh; evil", "sessions": [10]}])

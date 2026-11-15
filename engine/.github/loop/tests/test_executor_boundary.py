@@ -25,7 +25,6 @@ def write(root, rel, data, mode=0o644):
     os.chmod(path, mode)
 
 
-@unittest.skipIf(os.name == "nt", "executable bits are a POSIX mode")
 class AdmissionTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="admission-test-")

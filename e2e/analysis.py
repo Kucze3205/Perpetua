@@ -459,7 +459,7 @@ def loop_runs(runs, record):
     for r in mine:
         for j in r.get("jobs_list", []):
             took = seconds(j.get("started_at"), j.get("completed_at"))
-            if took is None:
+            if took is None or j.get("conclusion") == "skipped":     # a skipped job's times are placeholders
                 continue
             row = by_name.setdefault(j["name"], {"count": 0, "total_s": 0, "max_s": 0, "queue_s": 0})
             row["count"] += 1

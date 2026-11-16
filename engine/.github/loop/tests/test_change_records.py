@@ -75,9 +75,9 @@ class ChangeRecordTest(unittest.TestCase):
         self.assertEqual(it.records()[0]["iteration"], 6)  # legacy record without additive fields
         # The record of the iteration they were applied in carries them.
         with ExitStack() as stack:
-            for name in ("prune_streams", "note_no_progress", "check_goal", "start_iteration"):
+            for name in ("prune_streams", "note_no_progress"):
                 stack.enter_context(patch.object(it, name))
-            stack.enter_context(patch.object(it, "policymaker_due", return_value=None))
+            stack.enter_context(patch.object(it.start, "after_close"))
             it.close_iteration(7, "closed")
         self.assertEqual(json.loads(self.w.origin_file(it.record_path(7)))["policy"]["changes"], [ra, rb])
         self.assertEqual(self.w.origin_file("iterations/0006.json"), old)

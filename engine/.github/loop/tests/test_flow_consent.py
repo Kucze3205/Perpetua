@@ -10,6 +10,7 @@ import session_finalize
 import session_start
 import owner_requests as requests
 from flow_fixtures import Flow
+import iteration_start as start
 
 
 POOL_YML = """jobs:
@@ -31,7 +32,7 @@ class ConsentTest(Flow):
         self.w.push_main({"src/.keep": ""}, "x")
 
     def start(self):
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("n", role="net", consent={"what": "Search the web once", "why": "need a fact"}), task("w"))
         return self.task_issue("n")
 
@@ -80,7 +81,7 @@ class ConsentSecretsTest(Flow):
         super().setUp()
         self.w.push_main({"src/.keep": "", ".github/workflows/session.yml": POOL_YML % "STRIPE_KEY: x\n          SMTP_PASS: y"}, "x")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a", consent={"secrets": ["STRIPE_KEY"]}), task("b", consent={"secrets": ["SMTP_PASS"]}), task("c"))
 
     def request_of(self, tid):

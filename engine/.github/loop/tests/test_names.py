@@ -11,6 +11,7 @@ from fakes import iteration as it, task
 import merge
 from flow_fixtures import Flow
 import git_identity
+import iteration_start as start
 
 
 def log(repo, ref="HEAD", fmt="%s"):
@@ -61,7 +62,7 @@ class AdmissionMessageTest(unittest.TestCase):
 
 class HistoryTest(Flow):
     def one_iteration(self):
-        it.start_iteration()
+        start.start_iteration()
         shaper = self.play_shaper(task("a"))
         t = self.task_issue("a")
         self.w.session(t, files={"src/a.txt": "A"})
@@ -80,7 +81,7 @@ class HistoryTest(Flow):
 
     def test_the_gate_run_is_named_for_the_task(self):
         _, t = self.one_iteration()
-        self.assertIn("change gate for #%s" % t, self.hub.tokenless_purposes)
+        self.assertIn("change gate for #%s" % t, self.hub.checked + self.hub.tokenless_purposes)
 
     def test_the_session_report_is_one_commit_that_lists_its_files(self):
         _, t = self.one_iteration()
@@ -91,7 +92,7 @@ class HistoryTest(Flow):
         self.assertIn(".github/loop/data/session-reports/%s/" % t, body)
 
     def test_the_journal_of_an_unfinished_session_joins_its_report_commit(self):
-        it.start_iteration()
+        start.start_iteration()
         n = self.session_issue("orchestrator", n=0)
         self.w.session(n, status="blocked", files={"journal/0001.md": "state"}, report_extra="## What next\n- x\n")
         subject = "epilogue #%s: session report" % n

@@ -1,6 +1,7 @@
 """Session summary: one block in the run's Summary, written by the epilogue from data that already exists: the session
 report (its fields and prose), the raw stream (`stream.ndjson`) and the startup package (`.session/startup.json`).
-From the top: a header, two tables for the whole session, the Session timeline (`Turn | At | Context | What`, what the
+From the top: a header, two tables for the whole session, the checks of its results (report fields `verification`,
+`check`, `verdict`, `detail`), the Session timeline (`Turn | At | Context | What`, what the
 model says between the tool rows, no tool results), the project tree of files the session read and changed, the result."""
 import hashlib
 import json
@@ -100,6 +101,20 @@ def tables(f):
             "| %s | %s | %s | %s | **%.0f%%** |" % (fmt(tin), fmt(out), fmt(cr), fmt(cw), hit)]
 
 
+def checks(f):
+    """What the checks of the results said: `## Verification`, the `check` command, the change gate. None ran: nothing."""
+    gate = f.get("verdict")
+    rows = [("Verification", f.get("verification"), "" if f.get("verification") != "fail" else "a command failed (see the result)"),
+            ("Check command", f.get("check"), "" if f.get("check") != "fail" else "it failed after the rebase (see the result)"),
+            ("Change gate", gate, (f.get("detail") or "") if gate else "")]
+    rows = [r for r in rows if r[1]]
+    if not rows:
+        return []
+    icon = {"pass": "✅", "accepted": "✅", "fail": "❌", "rejected": "❌", "inconclusive": "🟡"}
+    return ["### Checks", "", "| Check | Result | Reason |", "|---|---|---|"] + [
+        "| %s | %s %s | %s |" % (name, icon.get(value, "•"), value, cell(why, 300)) for name, value, why in rows] + [""]
+
+
 def timeline(st, cap=None):
     rows, seen = ["### Session timeline", "", "| Turn | At | Context | What |", "|--:|--:|--:|---|"], set()
     for s in st:
@@ -170,6 +185,7 @@ def render(n, role, report, events, startup):
     head = ["## %s %s #%s: %s" % (STATUS.get(status, "•"), role, n, status), ""]
     if f.get("model"):
         head += tables(f) + [""]
+    head += checks(f)
     st = steps(events)
     marks = touched(st, startup)
     tail = (["", "### Files", "", "📌 read at start · 📖 read later · ✏️ changed", ""] + tree(marks, f.get("commit")) if marks else []) \

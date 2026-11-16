@@ -13,6 +13,13 @@ import owner_requests as requests
 def hold_policymaker_output(n, work):
     """Keep a finished Policymaker session's orders on its issue until the iteration continues; a run without orders keeps
     an empty entry, so the orders of an earlier run are never read again. Returns the report prose."""
+    state, prose = orders_state(n, work)
+    it.store_state(n, state, it.ORDERS_MARK)
+    return prose
+
+
+def orders_state(n, work):
+    """(the orders state a finished Policymaker session leaves, the report prose) from its `.session/orders.json`."""
     text = c.safe_read(work, ".session/orders.json")
     try:
         doc = json.loads(text) if text else {}
@@ -25,8 +32,8 @@ def hold_policymaker_output(n, work):
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
     wake = isinstance(doc, dict) and doc.get("wake") is True
     later = {"merge": "later"} if isinstance(doc, dict) and doc.get("merge") == "later" else {}
-    it.store_state(n, dict({"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, **later), it.ORDERS_MARK)
-    return prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
+    state = dict({"pass": it.policy_pass_of(n), "tasks": tasks if isinstance(tasks, list) else [], "wake": wake}, **later)
+    return state, prose + "Waiting for the iteration to continue: then `policy/` merges%s." % (" and the orders start" if text else "")
 
 
 def apply_policy(keeps_open=lambda number: False, defers=lambda number: False):

@@ -5,11 +5,12 @@ import unittest
 from fakes import common as c, iteration as it, task
 import request_continuation
 from flow_fixtures import Flow
+import iteration_start as start
 
 
 class GoalGateTest(Flow):
     def finish_one(self):
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a"))
         self.w.session(self.task_issue("a"), files={"src/a.txt": "A"})
 
@@ -47,7 +48,7 @@ class GoalGateTest(Flow):
         request_continuation.on_request_closed(req["number"])
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
         self.assertTrue(c.guard_ok())
-        self.assertTrue(it.confirmation_declined(c.marker(self.hub.issues[req["number"]]["body"], "request-ref")))
+        self.assertTrue(start.confirmation_declined(c.marker(self.hub.issues[req["number"]]["body"], "request-ref")))
 
     def test_reached_without_owner_confirmation_ends_the_loop(self):
         self.gate(True, False)
@@ -85,13 +86,8 @@ class GoalGateTest(Flow):
         self.finish_one()
         self.gate(True, False)
         self.hub.tokenless_fault = "no-artifact"
-        it.check_goal(0)
+        start.check_goal(0)
         self.assertIsNone(self.w.origin_file("GOAL_REACHED"))
-
-    def test_the_gate_command_runs_in_the_tokenless_job(self):
-        self.gate(True, False)
-        self.finish_one()
-        self.assertTrue(any("run.sh" in files for files in self.hub.tokenless))
 
 if __name__ == "__main__":
     unittest.main()

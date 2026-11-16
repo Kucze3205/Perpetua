@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The iteration layer: shaper -> task graph -> parallel sessions -> record; the Policymaker on triggers; owner
-requests; the goal gate; the rollback of `execution/` and `policy/`.
+"""The iteration layer: shaper -> task graph -> parallel sessions -> record; the Policymaker's passes and orders; owner
+requests; the rollback of `execution/` and `policy/`. The start of an iteration and the goal gate are `iteration_start`.
 
 An iteration is an issue labelled `loop:map` + `loop:iteration N`; its sessions (the shaper, the tasks, the Policymaker's
 orders) are issues labelled `loop:iteration N` + `role:<name>`. The iteration issue carries the phase in a report
@@ -17,6 +17,7 @@ import tempfile
 
 import check_results
 import common as c
+import iteration_start as start
 import managed_resources as resources
 import owner_requests as requests
 import task_graph as graph
@@ -266,7 +267,7 @@ def stored_state(n, directory, role=None):
     return state
 
 
-# ---------------------------------------------------------------- starting an iteration
+# ---------------------------------------------------------------- the execution phase (the start: iteration_start)
 
 def next_number():
     nums = [iteration_number(x) for x in c.list_issues(state="all", labels=(MAP,), limit=5)]
@@ -283,62 +284,6 @@ def closed_without_record():
     if not nums or max(nums) in [iteration_number(x) for x in issues if x["state"] == "open"]:
         return None
     return None if os.path.exists(record_path(max(nums))) else max(nums)
-
-
-def cadence_ok():
-    cad = c.cadence()
-    recs = [r for r in records() if r]
-    if cad.get("min_interval_minutes") and recs:
-        if (c.now() - c.parse_time(recs[-1]["ended"])).total_seconds() < cad["min_interval_minutes"] * 60:
-            return False
-    if cad.get("daily_iterations"):
-        day = [r for r in recs if (c.now() - c.parse_time(r["started"])).total_seconds() < 86400]
-        if len(day) >= cad["daily_iterations"]:
-            return False
-    return True
-
-
-def start_iteration():
-    """Begin the next iteration if none is open. The policy layer goes first: a due Policymaker session opens the
-    iteration and the iteration waits for it, and for the policy-layer work it orders, before the execution phase.
-    Serial by construction: one open iteration at most."""
-    if not c.guard_ok() or c.outage_open():
-        return None
-    c.sync_main()
-    if open_iteration():
-        return None
-    if (lost := closed_without_record()) is not None:
-        revert_policy("iteration %s was closed without a record" % tag(lost))
-    if not cadence_ok():
-        c.say("cadence: next iteration not due yet")
-        return None
-    if failed_streak() >= 3:
-        c.open_outage("three iterations in a row failed", "The last three iterations ended `failed` (infrastructure or an invalid task graph).",
-                      "Read the iteration records in `iterations/`, fix the cause, close this issue.")
-        return None
-    n = next_number()
-    label = c.ITER + str(n)
-    for l in (label, MAP):
-        c.ensure_label(l, "0E8A16" if l == MAP else "C5DEF5", "iteration of the loop")
-    it = c.create_issue("Iteration %s" % tag(n), "Iteration %s of the loop. State is in the comments and in `iterations/`.\n" % tag(n),
-                        labels=(MAP, label))
-    if any(x["number"] < it for x in c.list_issues(labels=(MAP,))):      # two runs started one at once: the lower number stays
-        c.close_issue(it, "not planned")
-        return None
-    c.update_report(it, {"phase": "starting", "started": c.iso(), "policy_rev_start": policy_rev()})
-    try:
-        why = policymaker_due(n)
-    except PolicyScriptError as e:
-        fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
-        return n
-    if why and c.guard_ok():
-        c.update_report(it, {"phase": "policy", "policy_issue": start_policymaker(n, why), "policy_trigger": why})
-        return n
-    try:
-        begin_work(n, it)
-    except PolicyScriptError as e:
-        fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
-    return n
 
 
 def begin_work(n, it):
@@ -490,7 +435,7 @@ def begin_shape(n, it):
     c.launch(s)
 
 
-# ---------------------------------------------------------------- the Policymaker on triggers
+# ---------------------------------------------------------------- policy scripts and the Policymaker's orders
 
 def audit_revision():
     return c.git(".", "log", "-1", "--format=%H", "--", "audit/", check=False).stdout.strip() or None
@@ -534,48 +479,6 @@ def policy_errors(name, facts):
 def layer_errors(cwd, activation):
     """Why the managed definitions in `cwd` are refused by `policy/layer-rules.py` (empty: accepted). Raises PolicyScriptError."""
     return policy_errors("layer-rules.py", resources.layer_facts(cwd, activation))
-
-
-def policymaker_due(n):
-    """Why the Policymaker opens iteration n (None: it does not, the last organization stands). The engine decides three
-    things whatever policy says: one session at a time, until a session ended `done` every iteration starts with one
-    (it sets up how the execution layer works), and an iteration after a failed one starts with one (the policy did not
-    work). Otherwise `policy/policymaker-trigger.py` decides from the engine's facts.
-    Raises PolicyScriptError when the script's output is invalid."""
-    if c.list_issues(labels=("role:policymaker",)):
-        return None
-    if not any(c.report_fields(x["number"]).get("status") == "done"
-               for x in c.list_issues(state="closed", labels=("role:policymaker",))):
-        return "the first iteration of the loop"
-    last = (records() or [None])[-1]
-    if last and last["status"] == "failed":
-        return ("iteration %s failed: %s" % (tag(last["iteration"]), last.get("failure") or "no reason recorded"))[:200]
-    sessions = c.list_issues(state="all", labels=("role:policymaker",))
-    last = max(sessions, key=lambda x: x["number"], default=None)
-    state = (read_state(last["number"], SEEN_MARK, last=True) or read_state(last["number"]) or {}) if last else {}
-    audit = audit_revision()
-    seen = {issue for session in sessions for issue in (read_state(session["number"]) or {}).get("outboxes", [])}
-    out = run_policy_script("policymaker-trigger.py", {
-        "iteration": n, "no_progress": no_progress(), "triggers": c.params()["policymaker_triggers"],
-        "audit_changed": bool(audit and audit != state.get("audit_rev")),
-        "new_outboxes": [x for x in session_reports.outboxes() if x["issue"] not in seen],
-        "startup_pending": bool(session_startup.pending())})
-    reason = (out or {}).get("reason")
-    if reason is not None and not (isinstance(reason, str) and 0 < len(reason) <= 200):
-        raise PolicyScriptError("policy/policymaker-trigger.py: `reason` must be null or a string of 1 to 200 characters")
-    return reason
-
-
-def start_policymaker(n, why):
-    """A Policymaker session that opens iteration n: the iteration's policy phase. The iteration waits for it and for the
-    policy-layer sessions it orders; all its passes are this one issue."""
-    p = c.create_issue("Policymaker at the start of iteration %s" % tag(n),
-                       "Runs because: %s. Change `policy/` and `execution/` where needed; order work in `.session/orders.json`.\n\n"
-                       "Input: `.session/loop-state.json`. Rules: `.session/policymaker.md`. Iteration %s waits for you; "
-                       "orders of policy-layer roles start when you finish, and you run again when they end.\n" % (why, tag(n)), labels=("role:policymaker", c.ITER + str(n)))
-    store_state(p, dict(build_state(n), trigger=why))
-    c.launch(p)
-    return p
 
 
 def read_orders(p, raw=None):
@@ -673,8 +576,8 @@ def advance():
                 policy_pass(n, it["number"])
             except PolicyScriptError as e:
                 fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
-    elif phase == "starting":
-        pass
+    elif phase == "starting":          # being decided, or lost: decided again (iteration_start.lost)
+        start.begin()
     return n
 
 
@@ -794,7 +697,7 @@ def build_record(n, it, status, failure=None):
 
 def close_iteration(n, status, failure=None):
     """Write the iteration record (only the engine does), close the iteration, then look at what follows:
-    stream pruning, no-progress, the goal gate, the next iteration."""
+    stream pruning, no-progress, then the goal gate and the next iteration (`iteration_start`)."""
     c.sync_main()
     it = find_iteration_issue(n)
     if not it:
@@ -809,8 +712,7 @@ def close_iteration(n, status, failure=None):
     c.close_issue(it["number"], "completed" if status == "closed" else "not planned")
     prune_streams(n)
     note_no_progress(n)
-    check_goal(n)
-    start_iteration()
+    start.after_close(n, it["number"])
 
 
 def cache_read_share(tokens):
@@ -838,36 +740,7 @@ def note_no_progress(n):
                      "Nothing is blocked. Look at the iteration records and tell the Policymaker or change the goal.", ref="no-progress", iteration=n)
 
 
-# ---------------------------------------------------------------- the goal gate
-
-def check_goal(n):
-    """After an iteration: if an owner-accepted goal gate exists and its command says the goal is reached, either
-    ask the owner to confirm the result or end. Without an accepted gate the loop never ends by itself."""
-    if os.path.exists("GOAL_REACHED"):
-        return
-    gate = c.load_yaml("goal/gate.yml")
-    if not gate or not gate.get("command"):
-        return
-    r = check_results.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120), purpose="goal gate")
-    verdict = parse_verdict(r.stdout)
-    if r.returncode or not verdict or not verdict.get("reached"):
-        return
-    ref = c.head()
-    if gate.get("owner_confirms"):
-        if requests.request_open("result-confirmation") or confirmation_declined(ref):
-            return
-        requests.open_request("result-confirmation", "Confirm the result",
-                     "The goal gate says the goal is reached.\n\n%s" % (verdict.get("artifact") or verdict.get("detail") or ""),
-                     "Without your confirmation the loop keeps working.",
-                     "Completed ends the loop (`GOAL_REACHED`). Not planned: the loop continues; say why in a comment.", ref=ref)
-    else:
-        c.commit_main({"GOAL_REACHED": "reached at %s\n" % ref}, "iteration %s: goal reached (gate)" % n)
-
-
-def confirmation_declined(ref):
-    return any(c.marker(x["body"], "request-ref") == ref and x.get("state_reason") == "not_planned"
-               for x in c.list_issues(state="closed", labels=(requests.REQ + ":result-confirmation",), limit=100))
-
+# ---------------------------------------------------------------- the verdicts of the gates
 
 def parse_verdict(stdout):
     """The last line of an evaluator's or gate's output that is a JSON object."""

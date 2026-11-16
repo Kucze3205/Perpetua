@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """The engine's commands, zero agent. Each command's code lives in its own module (see the code map): the start of a
 session in `session_start`, the policy scripts that shape its inputs in `policy_inputs`, the epilogue in `session_finalize`,
-the checks of its results in `candidate_checks` (planned) and `check_results` (run), the watchdog in `watchdog`.
+the checks of its results in `candidate_checks` (planned) and `check_results` (run), the start of an iteration in
+`iteration_start`, the watchdog in `watchdog`.
 
 Always run from a checkout of the default branch, never from a task branch (`run-policy-scripts` and `run-checks` run from
-the copy of the engine in the bundle that "Prepare the session" or "Prepare the checks" made from it). The agent's work
+the copy of the engine in the bundle that "Prepare the session", "Prepare the checks" or `iteration_start.prepare` made from
+it). The agent's work
 arrives as commits fetched into this checkout; nothing is executed inside the agent's directory.
 
 Commands: check-autopilot, check-credentials, session-settings, stage-inputs, run-policy-scripts, prepare-checks, run-checks,
-take-results, watch, resume-after-limit.
+take-results, start-iteration, watch, resume-after-limit.
 """
 import sys
 
 import candidate_checks
 import check_results
 import common as c
+import iteration_start
 import loop_status
 import policy_inputs
 import request_continuation
@@ -36,11 +39,16 @@ def watch():
     return watchdog.drive()
 
 
-STATUS_MOMENTS = ("take-results", "watch")        # the end of a session, a watchdog check
+STATUS_MOMENTS = ("take-results", "start-iteration", "watch")        # the end of a session, a start, a watchdog check
+START_MOMENTS = ("take-results", "watch")       # the jobs that start an iteration follow these (iteration_start.prepare)
 
 
 def main(argv):
-    code = command(argv[1], argv[2:])
+    try:
+        code = command(argv[1], argv[2:])
+    finally:
+        if argv[1] in START_MOMENTS:
+            iteration_start.prepare()
     if argv[1] in STATUS_MOMENTS:
         loop_status.refresh()
     return code
@@ -65,6 +73,8 @@ def command(cmd, args):
         check_results.run(args[0])
     elif cmd == "take-results":
         session_finalize.epilogue(int(args[0]), *args[1:5])
+    elif cmd == "start-iteration":
+        iteration_start.act()
     elif cmd == "watch":
         return watch()
     elif cmd == "resume-after-limit":

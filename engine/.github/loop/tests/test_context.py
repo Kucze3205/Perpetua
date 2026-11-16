@@ -11,6 +11,7 @@ import session_start
 import session_reports as reports
 import session_startup as startup
 import session_fixtures as sessions
+import iteration_start as start
 
 read = sessions.read
 BIG = "x" * 400004      # about 100001 tokens: over the warning threshold of 100000
@@ -106,19 +107,19 @@ class ContextTest(sessions.SessionCase):
         worker, work, trusted = self.stage("worker")
         self.assertEqual(json.loads(read(os.path.join(work, ".session/startup.json")))["status"], "over_budget")
         self.assertIn("continue your task", read(os.path.join(trusted, "prompt.md")))
-        self.assertEqual(it.policymaker_due(1), "startup budget needs attention")
+        self.assertEqual(start.policymaker_due(1)[0], "startup budget needs attention")
         pol, policy_work, _ = self.stage(state={"iterations": []})
         policy_budget = json.loads(read(os.path.join(policy_work, ".session/startup.json")))
         self.assertEqual(policy_budget["policy_notices"][0]["issue"], worker)
         closing.close_out(pol, c.issue(pol), "done", {}, "Handled startup notice")
         self.over(BIG * 2)
         self.stage("worker")
-        self.assertIsNone(it.policymaker_due(2))
+        self.assertIsNone(start.policymaker_due(2)[0])
         self.over("small")
         self.stage("worker")  # successful measurement closes the incident
         self.over()
         self.stage("worker")
-        self.assertEqual(it.policymaker_due(3), "startup budget needs attention")
+        self.assertEqual(start.policymaker_due(3)[0], "startup budget needs attention")
 
     def test_unmeasurable_startup_warns_without_blocking_and_policy_warns_itself(self):
         c.commit_main({"policy/roles/policymaker/SKILL.md": "---\nname: policymaker\nstartup: [policy/missing.md]\n---\nOrganize.\n"},
@@ -130,7 +131,7 @@ class ContextTest(sessions.SessionCase):
         self.assertEqual(budget["policy_notices"][0]["issue"], n)
         self.assertTrue(os.path.isfile(os.path.join(trusted, "agent.sh")))
         closing.close_out(n, c.issue(n), "done", {}, "Handled own startup notice")
-        self.assertIsNone(it.policymaker_due(1))
+        self.assertIsNone(start.policymaker_due(1)[0])
 
     def test_staging_does_not_consume_a_notice_if_policymaker_fails(self):
         self.over()
@@ -138,7 +139,7 @@ class ContextTest(sessions.SessionCase):
         pol, work, trusted = self.stage(state={"iterations": []})
         self.assertIn("read .session/startup.json", read(os.path.join(trusted, "prompt.md")))
         closing.close_out(pol, c.issue(pol), "crashed", {}, "Session failed before handling the notice")
-        self.assertEqual(it.policymaker_due(2), "startup budget needs attention")
+        self.assertEqual(start.policymaker_due(2)[0], "startup budget needs attention")
 
     def test_policy_can_narrow_shaper_history_using_existing_export_selectors(self):
         record = {"iteration": 0, "status": "closed", "tasks": [], "outcome": {}}
@@ -259,7 +260,7 @@ class SessionStartupScriptTest(sessions.SessionCase):
         budget = json.loads(read(os.path.join(work, ".session/startup.json")))
         self.assertEqual((budget["status"], budget["tokens"], budget["detail"]), ("over_budget", 7, "mine"))
         self.assertEqual([x["path"] for x in budget["documents"]], [".session/issue.md"])
-        self.assertEqual(it.policymaker_due(1), "startup budget needs attention")
+        self.assertEqual(start.policymaker_due(1)[0], "startup budget needs attention")
 
     def test_invalid_script_output_stops_the_staging(self):
         for body in ("print('nope')", "print('{\"reads\": [\"policy/params.yml\"], \"prompt\": \"\", \"budget\": {\"status\": \"ok\"}}')",

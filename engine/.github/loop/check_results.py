@@ -7,8 +7,9 @@ read only from that job's outputs (`accept`). So main that moved, a check nobody
 do not validate all end where they ended before: in a Tokenless run.
 
 `planning` is the other side ("Prepare the checks", `candidate_checks`): a bundle is recorded for that job instead of run,
-and counts as passed, so the engine's own code goes on to the next check exactly as it will in "Take in results".
-`run` is the job itself (`run-checks`): standard library only, no token, no checkout.
+and counts as passed, so the engine's own code goes on to the next check exactly as it will in "Take in results"; `ship`
+packs what was recorded. `run` is the job itself (`run-checks`): standard library only, no token, no checkout. The start
+of an iteration uses the same three ("Decide whether the Policymaker runs", `iteration_start`).
 """
 import contextlib
 import hashlib
@@ -18,8 +19,10 @@ import re
 import shlex
 import shutil
 import subprocess
+import tarfile
 import tempfile
 
+import artifact_pin
 import common as c
 
 HEAD = 64 * 1024 + 1        # what a caller reads of the start of stdout: the gate's verdict, a policy script's JSON (and one more)
@@ -27,6 +30,7 @@ TAIL = 1500                 # what the engine keeps of the end of a command's ou
 OUTPUT_CHARS = 512 * 1024   # of the job output that carries the results (GitHub takes 1 MB per job)
 PASSED = '{"verdict": "accepted"}\n'        # what a recorded bundle "printed": a passing command, gate and policy script alike
 RESULTS = {}                # digest -> {"exit", "stdout", "tail"}: what "Check the results" said, accepted as data
+MINUTES = 340               # the time limit of a job that runs bundles: their limits added up, and at most this (a job gets 360)
 JOB_ENV = ("GITHUB_OUTPUT", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_STATE", "GITHUB_STEP_SUMMARY")
 _plan = []                  # while planning: [the plan] (bundles recorded for the job)
 
@@ -71,7 +75,7 @@ def run_bundle(bundle, minutes, purpose, keep=0):
         return write_out({"stdout": PASSED, "tail": "", "exit": "0"})
     hit = RESULTS.get(digest(bundle)) if RESULTS else None
     if hit:
-        c.say("%s: the result of \"Check the results\"" % purpose)
+        c.say("%s: the result of a job of this run" % purpose)
         return write_out(dict(hit, stdout=hit["stdout"][:keep]))
     return c.run_tokenless(bundle, minutes, purpose)
 
@@ -87,15 +91,33 @@ def planning(root):
         _plan[:] = []
 
 
-def run_command(cmd, tree, timeout_minutes=60, purpose="command"):
+def ship(plan, out):
+    """What `planning` recorded and the engine's code that runs it (`run`), as one artifact in `out`: `checks.tar.gz`, pinned
+    by digest (`artifact_pin`). Job outputs: `count` (bundles), `minutes` (the time limit of the job that runs them),
+    `digest`. Nothing recorded: no artifact."""
+    if not plan["checks"]:
+        c.set_output(count="0", minutes="1")
+        return
+    root = os.path.dirname(plan["root"])
+    with open(os.path.join(plan["root"], "plan.json"), "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(plan["checks"], fh)
+    shutil.copytree(".github/loop", os.path.join(root, "engine"), ignore=shutil.ignore_patterns("tests", "data", "__pycache__"))
+    os.makedirs(out)
+    with tarfile.open(os.path.join(out, "checks.tar.gz"), "w:gz") as tar:
+        tar.add(root, arcname="checks")
+    c.set_output(count=str(len(plan["checks"])), minutes=str(min(MINUTES, 10 + sum(x["minutes"] for x in plan["checks"]))),
+                 digest=artifact_pin.digest(out))
+
+
+def run_command(cmd, tree, timeout_minutes=60, purpose="command", keep=0):
     """A shell command from the repo (check, verification, goal gate) run on a copy of `tree` on a machine without the token.
-    Returns a CompletedProcess; a job that left no output counts as a failed command."""
+    Returns a CompletedProcess; a job that left no output counts as a failed command. `keep`: as `run_bundle`."""
     bundle = tempfile.mkdtemp(prefix="bundle-")
     try:
         shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
         with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write('cd "$(dirname "$0")/tree"\nbash -c %s\n' % shlex.quote(cmd))
-        out = run_bundle(bundle, timeout_minutes, purpose)
+        out = run_bundle(bundle, timeout_minutes, purpose, keep=keep)
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
 

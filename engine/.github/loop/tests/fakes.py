@@ -1,5 +1,6 @@
 """Test world: an in-memory GitHub (the thin functions of `common`) and real git repositories (a bare origin, the
 engine's checkout of the default branch, agent working copies). Nothing here talks to the network."""
+import contextlib
 import json
 import os
 import shutil
@@ -8,6 +9,7 @@ import sys
 import tarfile
 import tempfile
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 # Every test module imports this one, so this is the one place that stops the suite on Windows: git and bash through
 # MSYS cost ~46 ms a process (an hour for the suite), and the sandbox, symlink and POSIX-shell cases cannot run there.
@@ -26,6 +28,7 @@ import candidate_checks  # noqa: E402
 import check_results  # noqa: E402
 import common  # noqa: E402
 import iteration  # noqa: E402
+import iteration_start  # noqa: E402
 import loop  # noqa: E402
 import policy_inputs  # noqa: E402
 import session_artifact  # noqa: E402
@@ -131,6 +134,7 @@ class FakeHub:
         self.tokenless_purposes = []        # how each of them was named for the owner
         self.tokenless_fault = None         # "no-artifact" | "failed": what the next tokenless job does wrong instead
         self.checked = []                   # the purposes of the bundles "Check the results" ran (and left a result of), in order
+        self.decided = []                   # the same for "Decide whether the Policymaker runs"
         self.limit = (True, None)           # the engine's own probe of a usage limit: (limited, reset)
 
     def ts(self):
@@ -329,6 +333,8 @@ class World:
         self.after_checks = None            # a callable: something happens on origin after "Check the results"
         self.checks = None                  # (outputs of "Prepare the checks", of "Check the results") of the last epilogue
         self.check_jobs = True              # False: a run without the two check jobs (every check goes to a Tokenless run)
+        self.start_jobs = "run"             # "lost": the jobs of "Iteration start" never run; None: a run without them (it starts at once)
+        self.started = None                 # (outputs of the job before, of "Decide whether the Policymaker runs") of the last start
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
@@ -474,10 +480,74 @@ class World:
         os.makedirs(fresh)
         os.environ["RUNNER_TEMP"] = fresh
         os.environ.update(staged.env(), CHECKS_RESULTS=results)
+        with self.iteration_start(fresh):
+            try:
+                session_finalize.epilogue(n, artifact, baseline, artifact_pin.digest(baseline), staged.results)
+            finally:
+                check_results.RESULTS.clear()           # the next epilogue is another process
+
+    def watch(self):
+        """A watchdog run: "Check the loop", then the jobs of "Iteration start" when it found a start due."""
+        rt = tempfile.mkdtemp(prefix="watch-", dir=self.tmp)
+        saved = os.environ.get("RUNNER_TEMP")
+        os.environ["RUNNER_TEMP"] = rt
         try:
-            session_finalize.epilogue(n, artifact, baseline, artifact_pin.digest(baseline), staged.results)
+            with self.iteration_start(rt), mock.patch.object(common, "probe", return_value=200):      # a live credential
+                return loop.watch()
         finally:
-            check_results.RESULTS.clear()           # the next epilogue is another process
+            os.environ.pop("RUNNER_TEMP")
+            if saved is not None:
+                os.environ["RUNNER_TEMP"] = saved
+
+    @contextlib.contextmanager
+    def iteration_start(self, rt):
+        """The command of a job the jobs of "Iteration start" follow (`START_PLAN`), then those jobs: "Decide whether the
+        Policymaker runs" from the pinned facts (its own engine code, `python3 -S`, no token), and "Start the iteration" with
+        only that job's output. A job that raised still leaves its outputs, and the jobs after it run (`always()`)."""
+        if not self.start_jobs:
+            yield
+            return
+        facts, outputs = os.path.join(rt, "start-facts"), os.path.join(rt, "start-outputs")
+        saved = os.environ.get("GITHUB_OUTPUT")
+        os.environ["START_PLAN"] = facts
+        try:
+            yield
+        finally:
+            os.environ["GITHUB_OUTPUT"] = outputs
+            try:
+                iteration_start.prepare()
+            finally:
+                os.environ.pop("START_PLAN")
+                os.environ.pop("GITHUB_OUTPUT")
+                if saved is not None:
+                    os.environ["GITHUB_OUTPUT"] = saved
+            self.start(rt, outputs_of(outputs), facts)
+
+    def start(self, rt, planned, facts):
+        """The jobs of "Iteration start" on the outputs `planned` of the job before and its artifact `facts`. A tokenless fault
+        that is armed fails the decision job, so the fallback meets the fault."""
+        self.started = (planned, {})
+        if planned.get("start") != "true":
+            return
+        results = ""
+        if planned.get("count", "0") != "0" and not self.hub.tokenless_fault:
+            try:
+                got, plan = check_job(facts, planned["digest"], os.path.join(rt, "decide-job"))
+            except ValueError:                      # the download is not the artifact the job before pinned: the job fails
+                got, plan = {}, []
+            self.started = (planned, got)
+            ran = json.loads(got.get("results") or "{}")
+            self.hub.decided.extend(x["purpose"] for x in plan if x["digest"] in ran)
+            results = got.get("results", "")
+        if self.start_jobs == "lost":
+            return
+        os.environ["DECIDE_RESULTS"] = results
+        common.LAUNCHED.clear()                     # "Start the iteration" is a process of its own
+        try:
+            iteration_start.act()
+        finally:
+            check_results.RESULTS.clear()
+            os.environ.pop("DECIDE_RESULTS")
 
     def check(self, n, artifact, baseline, rt):
         """"Prepare the checks" (with the token, on a runner of its own) and "Check the results". Returns the job output

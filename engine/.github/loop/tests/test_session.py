@@ -9,6 +9,7 @@ from fakes import common as c, iteration as it
 import session_start
 import owner_requests as requests
 from session_fixtures import SessionCase, read
+import iteration_start as start
 
 
 class ResolveTest(SessionCase):
@@ -127,14 +128,14 @@ class StageTest(SessionCase):
         self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "skills", "rule")))
 
     def test_the_policymaker_gets_its_prompt_and_its_own_state_and_the_shaper_the_iterations(self):
-        it.start_iteration()
+        start.start_iteration()
         shaper = self.hub.role_issues("orchestrator")[0]["number"]
         work = self.work()
         fakes.stage_session(shaper, work, os.path.join(self.w.tmp, "t1"))
         state = json.loads(read(os.path.join(work, ".session", "loop-state.json")))
         self.assertEqual((state["iteration"], state["engine_version"]), (0, c.engine_version()))
         self.assertFalse(os.path.exists(os.path.join(work, ".session", "macro-plan.md")))
-        pol = it.start_policymaker(0, "a test")
+        pol = start.start_policymaker(0, "a test")
         work2 = self.work()
         fakes.stage_session(pol, work2, os.path.join(self.w.tmp, "t3"))
         self.assertIn("You are the Policymaker", read(os.path.join(work2, ".session", "policymaker.md")))

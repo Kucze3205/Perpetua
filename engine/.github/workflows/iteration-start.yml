@@ -1,0 +1,86 @@
+# The start of an iteration, as two jobs of the run that found it due: a session's run after "Take in results", or the
+# watchdog's after "Check the loop" (ADR-0006). The job before bundled the decision on the engine's facts
+# (`policy/policymaker-trigger.py` and the goal gate's command, `iteration_start.py`) and pinned the bundle by a digest in
+# its outputs. "Decide whether the Policymaker runs" (`permissions: {}`, no secret, no checkout) runs them and says what
+# they printed only in its job outputs. "Start the iteration" (GitHub token) takes those outputs in as data and opens the
+# Policymaker or begins the execution phase; what the outputs do not cover (no outputs, other facts) it runs in a
+# Tokenless run instead.
+name: Iteration start
+
+on:
+  workflow_call:
+    inputs:
+      count:
+        description: Bundles to run ('0' - nothing for the decision job)
+        type: string
+        required: true
+      minutes:
+        description: Time limit of the decision job
+        type: string
+        required: true
+      digest:
+        description: Digest of the artifact start-facts
+        type: string
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  decide:
+    name: Decide whether the Policymaker runs
+    if: inputs.count != '0'
+    runs-on: ubuntu-latest
+    # No GitHub permission, no secret and no checkout (the repository may be private): it runs only the bundles the job
+    # before made. The policy script and the gate command may print anything; "Start the iteration" bounds it again.
+    permissions: {}
+    timeout-minutes: ${{ fromJSON(inputs.minutes) }}
+    outputs:
+      results: ${{ steps.run.outputs.results }}
+    steps:
+      - name: Download the facts
+        uses: actions/download-artifact@v4
+        with:
+          name: start-facts
+          path: ${{ runner.temp }}/start-facts
+      - name: Check the download against its digest
+        env:
+          FACTS: ${{ inputs.digest }}
+        run: |
+          pinned() {
+            [ "$(cd "$1" && shopt -s dotglob && LC_ALL=C sha256sum -- * | sha256sum | cut -d' ' -f1)" = "$2" ] || { echo "::error::$1 is not the artifact the earlier job pinned"; exit 1; }
+          }
+          pinned "$RUNNER_TEMP/start-facts" "$FACTS"
+      - name: Unpack the facts
+        run: tar -xzf "$RUNNER_TEMP/start-facts/checks.tar.gz" -C "$RUNNER_TEMP"
+      - name: Run the trigger and the goal gate
+        id: run
+        run: python3 "$RUNNER_TEMP/checks/engine/loop.py" run-checks "$RUNNER_TEMP/checks/bundles"
+
+  start:
+    name: Start the iteration
+    needs: decide
+    # also when the decision job was skipped or failed: the engine then runs what it needs in Tokenless runs
+    if: always() && vars.AUTOPILOT == 'on'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Get the engine
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Start the iteration
+        env:
+          # the decision comes only from the outputs of the job that ran it, never from an artifact
+          DECIDE_RESULTS: ${{ needs.decide.outputs.results }}
+        run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py start-iteration

@@ -17,8 +17,7 @@ class CheckJobsCase(SessionCase):
     YML = SCRIPT_GATE + "check: '! grep -rq NOCHECK src'\n"
 
     def tokenless(self):
-        """The Tokenless runs of checks (the Policymaker's trigger at the start of an iteration is not one: #375)."""
-        return [p for p in self.hub.tokenless_purposes if p != "policy script policymaker-trigger.py"]
+        return self.hub.tokenless_purposes
 
     def outcome(self, n):
         f = self.hub.report(n)

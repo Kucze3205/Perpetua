@@ -7,13 +7,14 @@ import session_start
 import watchdog
 from gate_fixtures import GATE_SH
 from flow_fixtures import Flow
+import iteration_start as start
 
 
 class OwnerGateTest(Flow):
     YML = ""
 
     def start_with_one_task(self):
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a"))
         return self.task_issue("a")
 
@@ -92,7 +93,7 @@ class EvaluatorChangeTest(Flow):
         self.assertEqual(c.roles_of(c.label_names(self.hub.issue(e))), ["evaluator"])
 
     def test_the_shaper_cannot_order_it(self):
-        it.start_iteration()
+        start.start_iteration()
         s = self.session_issue("orchestrator")
         self.w.session(s, session_files={"tasks.json": tasks_json(task("e", role="evaluator"))})
         self.assertIn("ordered only by the Policymaker", self.hub.prose(s))

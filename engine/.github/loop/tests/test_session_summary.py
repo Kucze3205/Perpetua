@@ -50,7 +50,7 @@ class SessionSummaryTest(unittest.TestCase):
 
     def test_header_tables_timeline_files_result_in_that_order(self):
         text = self.render()
-        heads = ["## ✅ worker #7: done", "| claude-x | low | 3 | 1m 15s | 900 |", "| 10 | 50 | 300 | 90 | **75%** |",
+        heads = ["## ✅ worker #7: done", "| claude-x | low | 3 | 1m 15s | 900 |", "| 400 | 50 | **75%** |",
                  "### Session timeline", "### Files", "### Result"]
         self.assertEqual([text.index(h) for h in heads], sorted(text.index(h) for h in heads))
         self.assertTrue(text.rstrip().endswith("Did the thing."))

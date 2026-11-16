@@ -133,19 +133,20 @@ def working_on(tasks, sessions, v):
 
 
 def role_row(s):
+    """Input is everything the model read: new tokens plus cache reads and writes; the report's `tokens_in` alone is only
+    the uncached part, often a few tokens."""
     t = s["tokens"]
     total = t["in"] + t["cache_read"] + t["cache_write"]
-    share = " (%d%%)" % round(100 * t["cache_read"] / total) if total else ""
+    hit = "%d%%" % round(100 * t["cache_read"] / total) if total else "–"
     model = (s.get("model") or "script").replace("claude-", "")
-    return "| %s #%s | %s | %s | %s | %s | %s%s | %s |" % (s["role"], s["issue"], model, s.get("effort") or "–",
-                                                        k(t["in"]), k(t["out"]), k(t["cache_read"]), share, k(t["cache_write"]))
+    return "| %s #%s | %s | %s | %s | %s | %s |" % (s["role"], s["issue"], model, s.get("effort") or "–", k(total), k(t["out"]), hit)
 
 
 def roles(sessions):
     if not sessions:
         return "### Active roles\n_no sessions yet_"
-    return "\n".join(["### Active roles", "| Role | Model | Effort | In | Out | Cache read | Cache write |",
-                      "|---|---|---|---|---|---|---|"] + [role_row(s) for s in sessions])
+    return "\n".join(["### Active roles", "| Role | Model | Effort | Input | Output | Cache hit |",
+                      "|---|---|---|---:|---:|---:|"] + [role_row(s) for s in sessions])
 
 
 def task_graph(tasks, sessions, v):

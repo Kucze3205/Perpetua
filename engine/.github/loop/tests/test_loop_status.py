@@ -52,6 +52,13 @@ class LoopStatusTest(Flow):
         self.assertIn("## 🔴 Iteration 1 · failed", body)
         self.assertIn("**Failed:** a test", body)
 
+    def test_a_role_shows_everything_the_model_read_as_its_input(self):
+        tokens = {"in": 10, "out": 1363, "cache_read": 56507, "cache_write": 9329}      # worker #367, iteration 18
+        row = status.role_row({"role": "worker", "issue": 367, "model": "claude-haiku-5-5", "effort": "low", "tokens": tokens})
+        self.assertEqual(row, "| worker #367 | haiku-5-5 | low | 65.8k | 1.4k | 86% |")
+        self.assertIn("| Role | Model | Effort | Input | Output | Cache hit |", status.roles([{"role": "worker", "issue": 1,
+                      "tokens": dict(tokens, **{"in": 0, "out": 0, "cache_read": 0, "cache_write": 0})}]))
+
     def test_an_unchanged_loop_does_not_edit_the_issue(self):
         it.start_iteration()
         status.refresh()

@@ -96,8 +96,8 @@ def tables(f):
     return ["| Model | Effort | Turns | Time | Peak context |", "|---|---|---:|---:|---:|",
             "| %s | %s | %s | %s | %s |" % (f.get("model", ""), f.get("effort", ""), f.get("turns", ""), duration(f.get("agent_s")),
                                            fmt(f.get("peak_context"))),
-            "", "| Tokens in | Tokens out | Cache read | Cache write | Cache hit |", "|---:|---:|---:|---:|---:|",
-            "| %s | %s | %s | %s | **%.0f%%** |" % (fmt(tin), fmt(out), fmt(cr), fmt(cw), hit)]
+            "", "| Input | Output | Cache hit |", "|---:|---:|---:|",          # input: new tokens plus cache reads and writes
+            "| %s | %s | **%.0f%%** |" % (fmt(tin + cr + cw), fmt(out), hit)]
 
 
 def timeline(st, cap=None):

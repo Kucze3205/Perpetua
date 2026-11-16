@@ -39,8 +39,9 @@ candidate and accepted baseline.
 Execution roles see the same checkout as policy roles. Policy internals are not hidden
 from them (ADR-0006).
 
-Candidate-owned product checks and task verification run in the tokenless job on a copy of the candidate tree
-without `.git`, like the change gate; a job that returns nothing fails the command. The accepted change gate still
+Candidate-owned product checks and task verification run on a machine without the token (*Check the results*, or the
+tokenless job) on a copy of the candidate tree without `.git`, like the change gate; a job that returns nothing fails the
+command. The accepted change gate still
 runs from the accepted tree with the full candidate and baseline required by ADR-0003.
 
 ## Model process and network access
@@ -103,8 +104,8 @@ when updating a loop.
 
 ## Session lifecycle and outputs
 
-`session.yml` (displayed as *Session*) runs four jobs. Every job, step and command has a name that says what it does;
-the job ids (`prep`, `policy`, `session`, `epilogue`) stay the same.
+`session.yml` (displayed as *Session*) runs six jobs. Every job, step and command has a name that says what it does;
+the job ids (`prep`, `policy`, `session`, `checks_prep`, `checks`, `epilogue`) stay the same.
 
 - `prep`, *Prepare the session* (GitHub token): checks AUTOPILOT and the LLM provider credentials
   (`check-autopilot`, `check-credentials`), loads the session settings (`session-settings`), checks out the engine and
@@ -119,12 +120,28 @@ the job ids (`prep`, `policy`, `session`, `epilogue`) stay the same.
 - `session`, *Run the session* (`permissions: {}`; only the Claude token and the secrets the owner consented to): checks
   its downloads against the digests, unpacks the staged bundle and the policy script results, installs the agent tool (named from the engine's output, for agent sessions only), runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
   (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.
+- `checks_prep`, *Prepare the checks* (GitHub token; only when the session job succeeded): `prepare-checks`
+  (`candidate_checks.py`) takes the results in as *Take in results* does, imports the candidate (the same commit, the
+  import has fixed dates), and walks the code *Take in results* is about to walk with every bundle recorded instead of
+  run: `## Verification`, the merge up to its push (rebase on the current main, `layer-rules.py`, `check`, the change gate
+  from the accepted tree), the shaper's graph and the Policymaker's orders (`graph-rules.py`). The bundles and the engine
+  code that runs them are one artifact pinned by a digest in job outputs. Nothing to check (a script or Policymaker session
+  without checks, a session that did not end `done`): no artifact, and the next job is skipped.
+- `checks`, *Check the results* (`permissions: {}`, no secret, no checkout): checks the download against the digest and
+  runs the bundles (`run-checks`, `check_results.run`) as the tokenless job runs one, stopping at the first that fails.
+  What they printed (exit code, the start of stdout a reader needs, the end of the output) goes only to the job output
+  `results`; the candidate's code runs here and can say what it likes there, as in a Tokenless run.
 - `epilogue`, *Take in results* (GitHub token, a fresh runner): `take-results` (`session_finalize.epilogue`) takes the artifact in as data
   (`session_artifact.py`). It refuses a tree with a path that escapes, one written through a link, a special file or an
   oversized file; links and hard links that stay are unpacked unfollowed and refused by the admission below. It checks
   the baseline against the staged digest, reads the commits from the bundle (kept under `refs/session/<issue>/`, never
   merged; it never fetches from the session's repository) and finalizes. Before that it takes in the policy scripts'
-  verdict and notes the startup budget they measured (the incident and the comment need the token).
+  verdict and notes the startup budget they measured (the incident and the comment need the token). Wherever it would
+  send a bundle to a Tokenless run, the result of *Check the results* for the same bundle (same digest: same trees,
+  baseline and command) stands in (`check_results.accept`, `run_bundle`); anything else (main moved, a bundle nobody
+  planned, outputs that do not validate) runs in a Tokenless run, as before. The rebase is reproducible (committer date of
+  the baseline), so the same candidate on the same main is the same commit. The run's Summary shows the checks
+  (`verification`, `check`, the gate's verdict and reason); Loop status shows them in the task's node.
 
 Any job of a run can upload artifacts, so every artifact a job relies on is pinned by a digest that reached it through
 the outputs of the job that made it (`artifact_pin.py`, ADR-0006).

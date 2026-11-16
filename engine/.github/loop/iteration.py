@@ -15,6 +15,7 @@ import shlex
 import shutil
 import tempfile
 
+import check_results
 import common as c
 import managed_resources as resources
 import owner_requests as requests
@@ -27,7 +28,7 @@ import session_startup
 PolicyScriptError = policy_script.PolicyScriptError
 
 MAP = "loop:map"
-VERDICT_BYTES = 64 * 1024        # what the engine reads of a tokenless job's output
+VERDICT_BYTES = 64 * 1024        # what the engine reads of the gate's output
 STATE_MARK = "<!-- input-state -->"
 ORDERS_MARK = "<!-- policymaker-orders -->"
 PASS_MARK = "<!-- policymaker-pass -->"
@@ -496,8 +497,8 @@ def audit_revision():
 
 
 def run_policy_script(name, facts, max_bytes=policy_script.OUTPUT_BYTES):
-    """The JSON object `policy/<name>` prints for `facts`, run in the tokenless job (`python3 <script> facts.json`). Anything
-    else - no output, over `max_bytes`, a failed run, not one JSON object - raises PolicyScriptError. None: no such script."""
+    """The JSON object `policy/<name>` prints for `facts`, run on a machine without the token (`python3 <script> facts.json`).
+    Anything else - no output, over `max_bytes`, a failed run, not one JSON object - raises PolicyScriptError. None: no script."""
     path = "%s/%s" % (resources.ROOT, name)
     if not os.path.isfile(path):
         return None
@@ -507,7 +508,7 @@ def run_policy_script(name, facts, max_bytes=policy_script.OUTPUT_BYTES):
         shutil.copytree(resources.ROOT, os.path.join(bundle, resources.ROOT), symlinks=True)     # data the script keeps in policy/
         with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write('cd "$(dirname "$0")" && python3 script facts.json\n')
-        out = c.run_tokenless(bundle, policy_script.MINUTES, "policy script")
+        out = check_results.run_bundle(bundle, policy_script.MINUTES, "policy script %s" % name, keep=max_bytes + 1)
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
     try:
@@ -516,7 +517,7 @@ def run_policy_script(name, facts, max_bytes=policy_script.OUTPUT_BYTES):
         with open(os.path.join(out, "stdout.txt"), encoding="utf-8", errors="replace") as fh:
             text = fh.read(max_bytes + 1)
     except (OSError, TypeError):
-        raise PolicyScriptError("policy/%s returned no output from the tokenless job" % name)
+        raise PolicyScriptError("policy/%s returned no output" % name)
     return policy_script.parse(name, code, text, max_bytes)
 
 
@@ -577,10 +578,10 @@ def start_policymaker(n, why):
     return p
 
 
-def read_orders(p):
-    """The orders the latest pass of a Policymaker session left, ids made unique across sessions and passes:
-    `order-<issue>-<id>`, and from the second pass `order-<issue>-<pass>-<id>`."""
-    raw = read_state(p, ORDERS_MARK, last=True)
+def read_orders(p, raw=None):
+    """The orders the latest pass of a Policymaker session left (`raw`: that state), ids made unique across sessions and
+    passes: `order-<issue>-<id>`, and from the second pass `order-<issue>-<pass>-<id>`."""
+    raw = read_state(p, ORDERS_MARK, last=True) if raw is None else raw
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
     k = raw.get("pass", 1) if isinstance(raw, dict) else 1
     pre = "order-%s-%s" % (p, "%s-" % k if k > 1 else "")
@@ -705,7 +706,8 @@ def session_summary(x, streams=()):
     return {"issue": x["number"], "role": (c.roles_of(names) or [""])[0], "model": f.get("model"), "effort": f.get("effort"),
             "startup": session_startup.summary(x["number"]),
             **session_reports.references(x["number"]),
-            "status": f.get("status"), "verdict": f.get("verdict"), "improved": f.get("improved") == "true",
+            "status": f.get("status"), "verification": f.get("verification"), "check": f.get("check"), "verdict": f.get("verdict"),
+            "improved": f.get("improved") == "true",
             "merged": f.get("merged") == "true", "branch": f.get("branch"), "commit": f.get("commit"),
             "tokens": {"in": num("tokens_in"), "out": num("tokens_out"), "cache_read": num("cache_read"), "cache_write": num("cache_write")},
             "models": json.loads(f["models"]) if f.get("models", "").startswith("{") else {},
@@ -846,7 +848,7 @@ def check_goal(n):
     gate = c.load_yaml("goal/gate.yml")
     if not gate or not gate.get("command"):
         return
-    r = c.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120), purpose="goal gate")
+    r = check_results.run_command(gate["command"], ".", int(c.cfg()["gate"].get("timeout_minutes") or 120), purpose="goal gate")
     verdict = parse_verdict(r.stdout)
     if r.returncode or not verdict or not verdict.get("reached"):
         return
@@ -882,7 +884,7 @@ def parse_verdict(stdout):
 # ---------------------------------------------------------------- change gate
 
 def stage_bundle(cand, base, ctx, command):
-    """The data the tokenless job receives for the gate: the accepted tree (`baseline/`), the candidate tree
+    """The bundle of the gate, for a machine without the token: the accepted tree (`baseline/`), the candidate tree
     (`candidate/`), the changed paths and `run.sh`, which runs the command from the accepted tree."""
     bundle = tempfile.mkdtemp(prefix="bundle-")
     for name, src in (("baseline", base), ("candidate", cand)):
@@ -898,15 +900,13 @@ def stage_bundle(cand, base, ctx, command):
 
 
 def read_verdict(out):
-    """The change gate's verdict from the tokenless job's output directory. Anything but a well-formed verdict is
+    """The change gate's verdict from the output directory of its bundle. Anything but a well-formed verdict is
     `inconclusive`, and an `accepted` needs a clean exit: a missing, failed or malformed output never passes."""
     def read(name):
-        if out is None:
-            return None
         try:
             with open(os.path.join(out, name), encoding="utf-8", errors="replace") as fh:
                 return fh.read(VERDICT_BYTES)
-        except OSError:
+        except (OSError, TypeError):        # TypeError: no output directory at all
             return None
     stdout, code = read("stdout.txt"), read("exit-code")
     if stdout is None or code is None:
@@ -922,7 +922,7 @@ def read_verdict(out):
 
 def run_gate(cand, base, ctx):
     """The change gate's verdict for a candidate tree. `owner`: the owner decides (the caller opens the request).
-    `script`: the command runs in the tokenless job from the accepted tree (never from the candidate) and prints a
+    `script`: the command runs without the token, from the accepted tree (never from the candidate), and prints a
     JSON object last: {"verdict": "accepted|rejected|inconclusive", "improved": bool, "detail": "..."}."""
     g = c.cfg()["gate"]
     if g["kind"] == "owner":
@@ -932,7 +932,7 @@ def run_gate(cand, base, ctx):
     minutes = int(g.get("timeout_minutes") or 120)
     bundle = stage_bundle(cand, base, ctx, g["command"])
     try:
-        return read_verdict(c.run_tokenless(bundle, minutes, "change gate for #%s" % ctx.get("task")))
+        return read_verdict(check_results.run_bundle(bundle, minutes, "change gate for #%s" % ctx.get("task"), keep=VERDICT_BYTES))
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
 

@@ -1,12 +1,16 @@
 # One session of the loop. Single input: the issue number. Role, model and limits come from the issue's labels
 # and policy/profiles.yml. Started only by the engine (`launch` in common.py), never by hand.
 #
-# Four jobs (ADR-0006): "Prepare the session" (GitHub token) puts everything the agent needs in a bundle; "Prepare the
+# Six jobs (ADR-0006): "Prepare the session" (GitHub token) puts everything the agent needs in a bundle; "Prepare the
 # session inputs (policy scripts)" (`permissions: {}`, no secret, no checkout) runs the loop's policy scripts on it and
 # checks what they print; `session` (`permissions: {}`, only the Claude token and the secrets the owner consented to) runs
-# the agent on the result and packs what it left; "Take in results" (GitHub token, a fresh runner) takes that in as data
-# (links, redirected paths and oversized files are refused), reads the files the session left and does everything else
-# itself. The executor baseline reaches the last job through its own artifact, which the session never sees.
+# the agent on the result and packs what it left; "Prepare the checks" (GitHub token) imports the candidate, rebases it
+# on main and bundles the checks of its results; "Check the results" (`permissions: {}`, no secret, no checkout) runs them
+# (`## Verification`, layer and graph rules, `check`, the change gate from the accepted tree) and says what they printed
+# only in its job outputs; "Take in results" (GitHub token, a fresh runner) takes the session's files in as data (links,
+# redirected paths and oversized files are refused), uses those outputs where its checks are the same (otherwise they go
+# to a Tokenless run, as when main moved) and does everything else itself. The executor baseline reaches the token jobs
+# through its own artifact, which the session never sees.
 # Every artifact a job relies on is pinned by a digest that came through the outputs of the job that made it: any job of a
 # run can upload artifacts (ADR-0006). A job without the engine checks it in the shell, as `pinned` below does
 # (`artifact_pin.py` explains the digest).
@@ -300,9 +304,88 @@ jobs:
           path: ${{ runner.temp }}/results
           if-no-files-found: ignore
 
+  checks_prep:
+    name: Prepare the checks
+    needs: [prep, session]
+    # a session that did not run or failed leaves nothing worth checking: "Take in results" runs what it still needs
+    if: always() && needs.prep.outputs.go == 'true' && needs.prep.result == 'success' && needs.session.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      count: ${{ steps.plan.outputs.count }}
+      minutes: ${{ steps.plan.outputs.minutes }}
+      digest: ${{ steps.plan.outputs.digest }}
+    steps:
+      - name: Get the engine
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: loop
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download the results
+        uses: actions/download-artifact@v4
+        with:
+          name: results
+          path: ${{ runner.temp }}/results
+      - name: Download the executor baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: baseline
+          path: ${{ runner.temp }}/baseline
+      - name: Bundle the checks of the results
+        id: plan
+        working-directory: loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+        run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py prepare-checks "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}" "$RUNNER_TEMP/checks-bundle"
+      - name: Upload the checks
+        if: steps.plan.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks
+          path: ${{ runner.temp }}/checks-bundle
+
+  checks:
+    name: Check the results
+    needs: [prep, checks_prep]
+    if: always() && needs.checks_prep.result == 'success' && needs.checks_prep.outputs.count != '0'
+    runs-on: ubuntu-latest
+    # No GitHub permission, no secret and no checkout (the repository may be private): it runs only the bundles "Prepare
+    # the checks" made, as a Tokenless run would. The candidate's code runs here and could say what it likes in this job's
+    # outputs, as it could in a Tokenless run: "Take in results" bounds them again.
+    permissions: {}
+    timeout-minutes: ${{ fromJSON(needs.checks_prep.outputs.minutes) }}
+    outputs:
+      results: ${{ steps.run.outputs.results }}
+    steps:
+      - name: Download the checks
+        uses: actions/download-artifact@v4
+        with:
+          name: checks
+          path: ${{ runner.temp }}/checks-bundle
+      - name: Check the download against its digest
+        env:
+          CHECKS: ${{ needs.checks_prep.outputs.digest }}
+        run: |
+          pinned() {
+            [ "$(cd "$1" && shopt -s dotglob && LC_ALL=C sha256sum -- * | sha256sum | cut -d' ' -f1)" = "$2" ] || { echo "::error::$1 is not the artifact the earlier job pinned"; exit 1; }
+          }
+          pinned "$RUNNER_TEMP/checks-bundle" "$CHECKS"
+      - name: Unpack the checks
+        run: tar -xzf "$RUNNER_TEMP/checks-bundle/checks.tar.gz" -C "$RUNNER_TEMP"
+      - name: Run the checks
+        id: run
+        run: python3 "$RUNNER_TEMP/checks/engine/loop.py" run-checks "$RUNNER_TEMP/checks/bundles"
+
   epilogue:
     name: Take in results
-    needs: [prep, policy, session]
+    needs: [prep, policy, session, checks_prep, checks]
     if: always() && needs.prep.outputs.go == 'true' && needs.prep.result == 'success'
     runs-on: ubuntu-latest
     env:
@@ -352,6 +435,8 @@ jobs:
           POLICY_OK: ${{ needs.policy.outputs.ok }}
           POLICY_ERROR: ${{ needs.policy.outputs.error }}
           POLICY_DIGEST: ${{ needs.policy.outputs.digest }}
+          # the results of the checks come only from the outputs of the job that ran them, never from an artifact
+          CHECKS_RESULTS: ${{ needs.checks.outputs.results }}
         run: |
           pip install -q pyyaml
           python3 .github/loop/loop.py take-results "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}" "$RUNNER_TEMP/policy-results"

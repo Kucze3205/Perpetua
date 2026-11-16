@@ -22,6 +22,8 @@ ENGINE = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, LOOP_DIR)
 
 import artifact_pin  # noqa: E402
+import candidate_checks  # noqa: E402
+import check_results  # noqa: E402
 import common  # noqa: E402
 import iteration  # noqa: E402
 import loop  # noqa: E402
@@ -60,6 +62,33 @@ def policy_job(bundle, work, root):
     with open(outputs, encoding="utf-8") as fh:
         got = dict(line.rstrip("\n").split("=", 1) for line in fh)
     return Staged(got["ok"], got.get("error", ""), got.get("digest", ""), results)
+
+
+def outputs_of(path):
+    """The job outputs a step wrote to `GITHUB_OUTPUT`."""
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return dict(line.rstrip("\n").split("=", 1) for line in fh if "=" in line)
+
+
+def check_job(bundle, digest, root):
+    """The job "Check the results" on a machine of its own: the download checked against the digest, unpacked, and the bundles
+    run by the bundle's own engine code with `python3 -S` (standard library only, no checkout, no token). Returns its outputs."""
+    artifact_pin.verify(bundle, digest)
+    os.makedirs(root)
+    with tarfile.open(os.path.join(bundle, "checks.tar.gz")) as tar:
+        tar.extractall(root, filter="tar")
+    outputs = os.path.join(root, "outputs")
+    env = {"PATH": os.environ["PATH"], "HOME": root, "GITHUB_OUTPUT": outputs}
+    checks = os.path.join(root, "checks")
+    r = subprocess.run([sys.executable, "-S", os.path.join(checks, "engine", "loop.py"), "run-checks", os.path.join(checks, "bundles")],
+                       cwd=root, env=env, capture_output=True, text=True)
+    if r.returncode:
+        raise AssertionError("the job that runs the checks failed:\n" + r.stderr)
+    with open(os.path.join(checks, "bundles", "plan.json"), encoding="utf-8") as fh:
+        planned = json.load(fh)
+    return outputs_of(outputs), planned
 
 
 def stage_session(n, work, trusted, through_epilogue=False):
@@ -101,6 +130,7 @@ class FakeHub:
         self.tokenless = []                 # (bundle files) of every command sent to the tokenless job
         self.tokenless_purposes = []        # how each of them was named for the owner
         self.tokenless_fault = None         # "no-artifact" | "failed": what the next tokenless job does wrong instead
+        self.checked = []                   # the purposes of the bundles "Check the results" ran (and left a result of), in order
         self.limit = (True, None)           # the engine's own probe of a usage limit: (limited, reset)
 
     def ts(self):
@@ -296,6 +326,9 @@ class World:
         os.environ.pop("GH_TOKEN", None)
         self.n_work = 0
         self.before_finalize = None         # a callable: something happens on origin while the agent works
+        self.after_checks = None            # a callable: something happens on origin after "Check the results"
+        self.checks = None                  # (outputs of "Prepare the checks", of "Check the results") of the last epilogue
+        self.check_jobs = True              # False: a run without the two check jobs (every check goes to a Tokenless run)
         self.origin = os.path.join(self.tmp, "origin.git")
         self.loop = os.path.join(self.tmp, "loop")
         sh(self.tmp, "git", "init", "-q", "--bare", "-b", "main", self.origin)
@@ -428,17 +461,49 @@ class World:
         return work
 
     def epilogue(self, n, work, rt, staged):
-        """The session job packs its results; the epilogue job, on a fresh runner, takes the artifact and the baseline
-        (a channel of its own) in."""
+        """The session job packs its results; "Prepare the checks" and "Check the results" check them; the epilogue job, on a
+        fresh runner, takes the artifact, the baseline (a channel of its own) and the outputs of "Check the results" in."""
         artifact, baseline = os.path.join(rt, "artifact"), os.path.join(rt, "baseline")
         session_artifact.pack(work, rt, artifact)
         os.makedirs(baseline)
         shutil.move(os.path.join(rt, "trusted", "executor-baseline.json"), baseline)
+        results = self.check(n, artifact, baseline, rt)
+        if self.after_checks:
+            self.after_checks()
         fresh = os.path.join(rt, "epilogue")
         os.makedirs(fresh)
         os.environ["RUNNER_TEMP"] = fresh
-        os.environ.update(staged.env())
-        session_finalize.epilogue(n, artifact, baseline, artifact_pin.digest(baseline), staged.results)
+        os.environ.update(staged.env(), CHECKS_RESULTS=results)
+        try:
+            session_finalize.epilogue(n, artifact, baseline, artifact_pin.digest(baseline), staged.results)
+        finally:
+            check_results.RESULTS.clear()           # the next epilogue is another process
+
+    def check(self, n, artifact, baseline, rt):
+        """"Prepare the checks" (with the token, on a runner of its own) and "Check the results". Returns the job output
+        `results` "Take in results" gets: none when no bundle was planned, or when a tokenless fault is armed (the job failed,
+        so the fallback meets the fault)."""
+        if not self.check_jobs:
+            return ""
+        prep, outputs = os.path.join(rt, "checks-prep"), os.path.join(rt, "checks-prep-outputs")
+        os.makedirs(prep)
+        saved = os.environ.get("GITHUB_OUTPUT")
+        os.environ.update(RUNNER_TEMP=prep, GITHUB_OUTPUT=outputs)
+        try:
+            candidate_checks.prepare(n, artifact, baseline, artifact_pin.digest(baseline), os.path.join(rt, "checks-bundle"))
+        finally:
+            os.environ.pop("GITHUB_OUTPUT")
+            if saved is not None:
+                os.environ["GITHUB_OUTPUT"] = saved
+        planned = outputs_of(outputs)
+        self.checks = (planned, {})
+        if planned.get("count", "0") == "0" or self.hub.tokenless_fault:
+            return ""
+        got, plan = check_job(os.path.join(rt, "checks-bundle"), planned["digest"], os.path.join(rt, "checks-job"))
+        self.checks = (planned, got)
+        ran = json.loads(got.get("results") or "{}")
+        self.hub.checked.extend(x["purpose"] for x in plan if x["digest"] in ran)
+        return got.get("results", "")
 
     def branch(self, n, files, base="origin/main", delete=()):
         """What the epilogue finds on origin after fetching an agent's work: `task/N` with one commit."""

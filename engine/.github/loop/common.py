@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -32,7 +31,7 @@ ITER = "loop:iteration "                 # label `loop:iteration N`: the loop's 
 ROLE = "role:"
 AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 # Report fields written only by the engine. An agent's value for them is dropped when its report is published.
-OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "fixes", "cause", "verification", "verdict", "improved",
+OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "fixes", "cause", "verification", "check", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
          "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit", "pass", "ordered")
@@ -689,9 +688,9 @@ def auth_args():
     return ["-c", "http.https://github.com/.extraheader=AUTHORIZATION: basic %s" % b64]
 
 
-def git(cwd, *args, check=True, remote=False, inp=None):
+def git(cwd, *args, check=True, remote=False, inp=None, env=None):
     cmd = ["git"] + (auth_args() if remote else []) + list(args)
-    env = {**git_identity.env(args, lambda: cfg()["author"]), **os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    env = {**git_identity.env(args, lambda: cfg()["author"]), **os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"}
     r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, input=inp, env=env)
     if check and r.returncode:
         raise SystemExit("git %s: %s" % (" ".join(args), (r.stderr or r.stdout).strip()))
@@ -763,29 +762,3 @@ def clean_env(extra=()):
         if k in os.environ:
             env[k] = os.environ[k]
     return env
-
-
-def run_command(cmd, tree, timeout_minutes=60, purpose="command"):
-    """A shell command from the repo (check, verification, goal gate) run on a copy of `tree` in the tokenless job, never
-    on a machine with the token. Returns a CompletedProcess; a job that left no output counts as a failed command."""
-    bundle = tempfile.mkdtemp(prefix="bundle-")
-    try:
-        shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
-        with open(os.path.join(bundle, "run.sh"), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write('cd "$(dirname "$0")/tree"\nbash -c %s\n' % shlex.quote(cmd))
-        out = run_tokenless(bundle, timeout_minutes, purpose)
-    finally:
-        shutil.rmtree(bundle, ignore_errors=True)
-
-    def read(name):
-        try:
-            with open(os.path.join(out, name), encoding="utf-8", errors="replace") as fh:
-                return fh.read()
-        except (OSError, TypeError):
-            return None
-    stdout, stderr, code = read("stdout.txt"), read("stderr.txt"), read("exit-code")
-    if out:
-        shutil.rmtree(out, ignore_errors=True)
-    if stdout is None or code is None or not code.strip().isdigit():
-        return subprocess.CompletedProcess(cmd, 1, "", "the tokenless job returned no result for the command")
-    return subprocess.CompletedProcess(cmd, int(code.strip()), stdout, stderr or "")

@@ -24,4 +24,6 @@ token unsandboxed; it failed on runners (`bwrap: Can't mount proc`) and cost abo
   memory, and the token stays valid after the job ends. So everything a later job relies on (an artifact, a verdict) is
   pinned by a digest that reaches it through the outputs of the job that made it, which only that job's runner sets
   (`artifact_pin.py`). A job that ran foreign code can still say what it likes in its own outputs: a later job with the
-  token uses them only as data the engine bounds again.
+  token uses them only as data the engine bounds again. The candidate's checks run in one such job of the session's run
+  ("Check the results"), between two jobs with the token: one bundles them, the other uses their results only for the
+  same trees and otherwise runs them again in a Tokenless run.

@@ -80,7 +80,7 @@ class HistoryTest(Flow):
 
     def test_the_gate_run_is_named_for_the_task(self):
         _, t = self.one_iteration()
-        self.assertIn("change gate for #%s" % t, self.hub.tokenless_purposes)
+        self.assertIn("change gate for #%s" % t, self.hub.checked + self.hub.tokenless_purposes)
 
     def test_the_session_report_is_one_commit_that_lists_its_files(self):
         _, t = self.one_iteration()

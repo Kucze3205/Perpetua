@@ -164,7 +164,7 @@ class WorkflowTest(unittest.TestCase):
             src = fh.read()
         self.assertEqual(set(re.findall(r'cmd == "([a-z-]+)"', src)),
                          {"check-autopilot", "check-credentials", "session-settings", "stage-inputs", "run-policy-scripts",
-                          "take-results", "watch", "resume-after-limit"})
+                          "prepare-checks", "run-checks", "take-results", "watch", "resume-after-limit"})
 
     def test_the_owner_sees_names_not_commands(self):
         """Every workflow, job and step has a name of its own: an unnamed step shows as `Run <its first command>`
@@ -183,9 +183,10 @@ class WorkflowTest(unittest.TestCase):
     def test_the_session_prepares_in_one_job_and_installs_the_agent_only_for_agents(self):
         with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
             doc = yaml.safe_load(fh)
-        self.assertEqual(list(doc["jobs"]), ["prep", "policy", "session", "epilogue"])
+        self.assertEqual(list(doc["jobs"]), ["prep", "policy", "session", "checks_prep", "checks", "epilogue"])
         self.assertEqual([j["name"] for j in doc["jobs"].values()],
-                         ["Prepare the session", "Prepare the session inputs (policy scripts)", "Run the session", "Take in results"])
+                         ["Prepare the session", "Prepare the session inputs (policy scripts)", "Run the session", "Prepare the checks",
+                          "Check the results", "Take in results"])
         install = next(s for s in doc["jobs"]["session"]["steps"] if s["name"].startswith("Install "))
         self.assertEqual(install["if"], "needs.prep.outputs.kind == 'agent'")
         self.assertNotIn("Claude Code", install["name"])               # the tool comes from the engine's output, not from the file
@@ -241,7 +242,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text)), {"CLAUDE_CODE_OAUTH_TOKEN"})
         # the token jobs sit on both sides of it and are other machines
         self.assertEqual(job["needs"], ["prep", "policy"])
-        self.assertEqual(jobs["epilogue"]["needs"], ["prep", "policy", "session"])
+        self.assertEqual(jobs["epilogue"]["needs"], ["prep", "policy", "session", "checks_prep", "checks"])
         self.assertIn("github.token", str(jobs["epilogue"]))
 
     def test_the_policy_scripts_run_in_a_job_without_the_token_that_the_session_waits_for(self):
@@ -260,6 +261,24 @@ class WorkflowTest(unittest.TestCase):
             check = next(step for step in jobs[job_id]["steps"] if step["name"].startswith("Check the downloads"))
             self.assertEqual(sorted(re.findall(r"\$\{\{ (needs\.\w+\.outputs\.\w+) \}\}", str(check["env"]))), sorted(digests))
             self.assertEqual(sum(step["name"].startswith("Download") for step in jobs[job_id]["steps"][:len(digests) + 1]), len(digests))
+
+    def test_the_checks_run_in_a_job_without_the_token_whose_outputs_alone_carry_the_results(self):
+        with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
+            jobs = yaml.safe_load(fh)["jobs"]
+        job = jobs["checks"]
+        self.assertEqual((job["needs"], job["permissions"]), (["prep", "checks_prep"], {}))
+        text = str(job)
+        for forbidden in ("github.token", "GH_TOKEN", "GITHUB_TOKEN", "secrets.", "actions/checkout", "pip install"):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("needs.checks_prep.outputs.count != '0'", job["if"])
+        check = next(step for step in job["steps"] if step["name"].startswith("Check the download"))
+        self.assertEqual(re.findall(r"\$\{\{ (needs\.\w+\.outputs\.\w+) \}\}", str(check["env"])), ["needs.checks_prep.outputs.digest"])
+        self.assertEqual(sum("run-checks" in step.get("run", "") for step in job["steps"]), 1)
+        # "Prepare the checks" holds the token and runs only the engine; "Take in results" reads the results from the job outputs
+        self.assertIn("prepare-checks", str(jobs["checks_prep"]))
+        take = next(step for step in jobs["epilogue"]["steps"] if "take-results" in step.get("run", ""))
+        self.assertEqual(take["env"]["CHECKS_RESULTS"], "${{ needs.checks.outputs.results }}")
+        self.assertNotIn("checks", [s["with"]["name"] for s in jobs["epilogue"]["steps"] if "download-artifact" in s.get("uses", "")])
 
     @unittest.skipUnless(BASH, "no bash")
     def test_the_shell_check_of_a_download_refuses_a_swapped_artifact(self):

@@ -92,6 +92,14 @@ def task_state(t, sessions, v):
     return "bad", s["status"]
 
 
+def checks(s):
+    """The checks of a task's results, from its session report (as the Session summary shows them); empty when none ran."""
+    marks = {"pass": "✅", "accepted": "✅", "fail": "❌", "rejected": "❌", "inconclusive": "🟡"}
+    parts = ["%s %s" % (marks.get(s.get(key), "•"), name) for key, name in (("verification", "verification"), ("check", "check"))
+             if s.get(key)] + (["%s gate %s" % (marks.get(s["verdict"], "•"), s["verdict"])] if s.get("verdict") else [])
+    return " · ".join(parts)
+
+
 def flat_goal(text):
     words = " ".join(l for l in text.splitlines() if not l.lstrip().startswith("#")).split() or text.split()
     line = " ".join(words)
@@ -154,7 +162,9 @@ def task_graph(tasks, sessions, v):
     out = ["### Task graph", "```mermaid", "%%{init: {'themeVariables': {'fontSize': '13px'}}}%%", "flowchart LR"]
     for t in tasks:
         cls, words = task_state(t, sessions, v)
-        out.append('  %s("%s %s<br/>%s · %s"):::%s' % (node(t["id"]), STATES[cls][0], mermaid_text(t["title"]), t["role"], words, cls))
+        done = checks(sessions.get(t.get("issue")) or {})
+        out.append('  %s("%s %s<br/>%s · %s%s"):::%s' % (node(t["id"]), STATES[cls][0], mermaid_text(t["title"]), t["role"], words,
+                                                         "<br/>" + done if done else "", cls))
     for t in tasks:
         out += ["  %s --> %s" % (node(b), node(t["id"])) for b in t.get("blocked_by") or []]
     out += ["  classDef %s %s,stroke-width:1px,color:#57606a" % kv for kv in CLASSES.items()]

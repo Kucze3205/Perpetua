@@ -115,7 +115,9 @@ starts with the Policymaker.
 
 Work enters the default branch after a verdict "not worse than what is accepted". After a task ends `done` the
 epilogue, in a throwaway worktree: checks the paths (protected, role `write`, file size), rebases on the default branch,
-runs `## Verification` and `check` (each in the tokenless job, on a copy of the candidate tree), then asks the gate. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
+runs `## Verification` and `check` (each without the token, on a copy of the candidate tree), then asks the gate. These
+checks run in the session's own run, in *Check the results* (see [Session boundary](session-boundary.md#session-lifecycle-and-outputs));
+one whose trees changed since (main moved) runs again in a Tokenless run. Managed definitions and paths in `direct_paths` (`execution/`, `policy/`, `audit/`, `journal/`) are not
 work and skip the check and the gate. A rejected push is retried from the new tip, up to three times.
 A failed `## Verification` or `check` is an error the agent can fix: the epilogue runs the same issue again, its
 report carrying the error, up to two times (`fixes`). A gate verdict is not retried: `rejected` and `inconclusive` go to the Policymaker.
@@ -124,8 +126,9 @@ report carrying the error, up to two times (`fixes`). A gate verdict is not retr
 
 - `owner`: the engine opens a `merge-acceptance` request and the task waits (`awaiting:owner`). Completed merges, not
   planned discards (the branch is kept and tagged `iter/NNNN/<issue>`). This is the default until the setup decides.
-- `script`: `gate.command` runs in the **tokenless job** (`tokenless.yml`: `permissions: {}`, no GitHub secret, one
-  command on a staged bundle, outputs back as an artifact; [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md))
+- `script`: `gate.command` runs on a machine without the token (*Check the results*, or the **tokenless job** when main
+  moved: `permissions: {}`, no GitHub secret, one command on a staged bundle;
+  [ADR-0006](../../../docs/adr/0006-machine-boundary-instead-of-session-sandbox.md))
   from the **accepted tree**, never from the candidate, with `CANDIDATE_DIR`, `BASELINE_DIR`, `CANDIDATE_SHA`,
   `BASELINE_SHA`, `CHANGED_FILES_FILE`, `TASK`, `ITERATION`, and no secrets (`gate.env_passthrough` does not reach it).
   The epilogue runs no gate command itself; it reads the verdict back. It prints a JSON object as its last line:

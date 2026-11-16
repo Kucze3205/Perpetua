@@ -10,6 +10,7 @@ import task_graph as graph
 import session_reports as reports
 from proposal_fixtures import PROPOSAL
 from session_fixtures import LayeredSessionCase, read
+import iteration_start as start
 
 
 class InputBoundaryTest(LayeredSessionCase):
@@ -140,7 +141,7 @@ class InputBoundaryTest(LayeredSessionCase):
         raw = json.dumps([PROPOSAL])
         self.w.session(worker, files={'src/result.txt': 'useful'}, session_files={'suggestions.json': raw})
         self.assertEqual(self.w.origin_file('iterations/suggestions/%s.json' % worker), raw)
-        pol = it.start_policymaker(1, 'new session suggestions')
+        pol = start.start_policymaker(1, 'new session suggestions')
         policy_work = self.work()
         fakes.stage_session(pol, policy_work, os.path.join(self.w.tmp, 'pol-trusted'))
         staged = json.loads(read(os.path.join(policy_work, '.session/loop-state.json')))

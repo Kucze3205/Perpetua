@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import traceback
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -46,6 +46,8 @@ def saved_runs(out, numbers=None):
         if "issue" not in r:  # Legacy run.json predates the saved log association.
             found = re.search(r"ISSUE: (\d+)", read(path.parent / "log.txt"))
             r["issue"] = int(found.group(1)) if found and is_session_run(r) else None
+        if r["issue"] is None:           # the title names the session; `collect` once saved None for every renamed run
+            r["issue"] = session_issue(r)
         runs.append(r)
     return runs
 
@@ -88,9 +90,16 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=1, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
 
 
+def session_issue(r):
+    """The session's issue from the run's title (`session #367 · worker`). The API's `name` of a run with a `run-name` is
+    that title, not the workflow's name, so only the title tells a session run."""
+    found = re.match(r"session #(\d+)", r.get("display_title") or "")
+    return int(found.group(1)) if found else None
+
+
 def is_session_run(r):
-    """A run of the session workflow (named `session` before the engine named it `Session`)."""
-    return r["name"].lower() == "session"
+    """A run of the session workflow (named `session` before the engine named it `Session`, and `session #N · role` since)."""
+    return r["name"].lower() == "session" or session_issue(r) is not None
 
 
 def read(path):
@@ -217,7 +226,7 @@ def measure(out, issues, runs, iteration, begun=""):
     timing = actions_timing(runs)
     probe_data, probe_texts = probe_view(out)
     report = {"sessions": [{k: v for k, v in s.items() if k != "analysis"} | {"analysis_file": "sessions/%s/analysis.json" % s["dir"]} for s in sessions],
-              "iteration_record": record, "actions": timing, "actions_overhead": actions_overhead(sessions, runs), "growth": growth(repo_dir, issues, sessions, record, probe_data, iteration),
+              "iteration_record": record, "actions": timing, "loop_runs": loop_runs(runs, record), "actions_overhead": actions_overhead(sessions, runs), "growth": growth(repo_dir, issues, sessions, record, probe_data, iteration),
               "session_inputs": session_inputs(sessions, probe_data), "visibility": visibility(out, sessions, probe_texts),
               "mechanics": policymaker_mechanics(repo_dir, sessions, record),
               "environment_facts": environment_facts(sessions, probe_data),
@@ -421,6 +430,58 @@ def session_inputs(sessions, probe_data):
     return rows
 
 
+JOB_FIELDS = (("prep_s", ("Prepare the session", "prep")), ("policy_s", ("Prepare the session inputs (policy scripts)",)),
+              ("session_job_s", ("Run the session", "session")), ("prepare_checks_s", ("Prepare the checks",)),
+              ("check_results_s", ("Check the results",)), ("take_in_s", ("Take in results", "epilogue")),
+              ("decide_s", ("Decide whether the Policymaker runs",)), ("start_iteration_s", ("Start the iteration",)))
+
+
+def run_kind(r):
+    """session (`session #N · role`), tokenless (`Tokenless: <purpose> [key]`; before: `tokenless #key`), watchdog, or other
+    (CI, the probe: not the loop's)."""
+    title = (r.get("display_title") or "").lower()
+    if is_session_run(r):
+        return "session"
+    if title.startswith("tokenless"):
+        return "tokenless"
+    return "watchdog" if r["name"].lower().startswith("watchdog") else "other"
+
+
+def loop_runs(runs, record):
+    """The loop's runs of the selected iteration (its record's start - 60 s .. end + 30 s; the watchdog that starts it is
+    dispatched just before): how many by kind, the Tokenless runs (after the check and policy-script jobs each one is a
+    fallback, or an engine change), time per job name, and the iteration's wall time."""
+    first, last = (parse_time((record or {}).get(k)) for k in ("started", "ended"))
+    mine = [r for r in runs if run_kind(r) != "other" and (not first or not last or
+            first - timedelta(seconds=60) <= parse_time(r["created_at"]) <= last + timedelta(seconds=30))]
+    mine.sort(key=lambda r: (r["created_at"], r["id"]))
+    by_name, minutes = {}, 0
+    for r in mine:
+        for j in r.get("jobs_list", []):
+            took = seconds(j.get("started_at"), j.get("completed_at"))
+            if took is None or j.get("conclusion") == "skipped":     # a skipped job's times are placeholders
+                continue
+            row = by_name.setdefault(j["name"], {"count": 0, "total_s": 0, "max_s": 0, "queue_s": 0})
+            row["count"] += 1
+            row["total_s"] = round(row["total_s"] + took, 1)
+            row["max_s"] = max(row["max_s"], took)
+            row["queue_s"] = round(row["queue_s"] + (seconds(j.get("created_at"), j.get("started_at")) or 0), 1)
+            minutes += math.ceil(took / 60)
+    purposes = Counter(re.sub(r" #\d+", "", re.sub(r"^tokenless: | \[[0-9a-f]+\]$", "", r["display_title"], flags=re.I))
+                       for r in mine if run_kind(r) == "tokenless")
+    starts = [j["started_at"] for r in mine[:1] for j in r.get("jobs_list", []) if j.get("started_at")]
+    first_session = next((r for r in mine if run_kind(r) == "session"), None)
+    session_jobs = [j["started_at"] for j in (first_session or {}).get("jobs_list", []) if j.get("started_at")]
+    return {"runs": len(mine), "by_kind": dict(Counter(run_kind(r) for r in mine)),
+            "tokenless": {"count": sum(purposes.values()), "by_purpose": dict(purposes)},
+            "jobs_by_name": by_name, "billable_minutes_estimate_rounded_up_per_job": minutes,
+            "timing_s": {"iteration_wall_s": ((record or {}).get("outcome") or {}).get("wall_s"),
+                         "first_run_dispatched_to_its_first_job_s": seconds(mine[0]["created_at"], min(starts)) if mine and starts else None,
+                         "first_run_dispatched_to_first_session_job_s": seconds(mine[0]["created_at"], min(session_jobs)) if mine and session_jobs else None,
+                         "first_run_dispatched_to_last_run_end_s": seconds(mine[0]["created_at"], max(r["updated_at"] for r in mine)) if mine else None},
+            "list": [{"run": r["id"], "kind": run_kind(r), "title": r["display_title"], "created_at": r["created_at"], "updated_at": r["updated_at"]} for r in mine]}
+
+
 def actions_overhead(sessions, runs):
     """What Actions spends around the agent, per session run, and how wide the iteration is: these, not the agent, decide
     how an iteration scales. Steps: prep job, the policy scripts' job; in the session job `Tools`, `Prepare the machine` + `Stage the session`,
@@ -433,17 +494,22 @@ def actions_overhead(sessions, runs):
     by_id = {r["id"]: r for r in runs}
     for s in sessions:
         for run_id in s["runs"]:
-            jobs = {j["name"]: j for j in by_id[run_id].get("jobs_list", [])}
-            prep, job = jobs.get("Prepare the session") or jobs.get("prep"), jobs.get("Run the session") or jobs.get("session")
-            policy = jobs.get("Prepare the session inputs (policy scripts)")
+            r = by_id[run_id]
+            jobs = {j["name"]: j for j in r.get("jobs_list", [])}
+            job = jobs.get("Run the session") or jobs.get("session")
             if not job:
                 continue
-            row = {"issue": s["issue"], "role": s["role"], "run": run_id, "prep_s": seconds(prep.get("started_at"), prep.get("completed_at")) if prep else None,
-                   "policy_s": seconds(policy.get("started_at"), policy.get("completed_at")) if policy else None,
-                   "tools_s": step(job, "Tools", prefix="Install "), "stage_s": step(job, "Prepare the machine", "Stage the session"),
-                   "agent_step_s": step(job, "Session", prefix=("Run LLM session", "Run script session")), "epilogue_s": step(job, "Epilogue"),
-                   "session_job_s": seconds(job.get("started_at"), job.get("completed_at")), "agent_s": s["report"].get("agent_s")}
-            row["around_agent_s"] = round((row["prep_s"] or 0) + (row["policy_s"] or 0) + (row["session_job_s"] or 0) - (row["agent_step_s"] or 0), 1)
+            row = {"issue": s["issue"], "role": s["role"], "run": run_id}
+            for field, names in JOB_FIELDS:
+                found = next((jobs[n] for n in names if n in jobs), None)
+                row[field] = seconds(found.get("started_at"), found.get("completed_at")) if found else None
+            row.update({"tools_s": step(job, "Tools", prefix="Install "), "stage_s": step(job, "Prepare the machine", "Stage the session"),
+                        "agent_step_s": step(job, "Session", prefix=("Run LLM session", "Run script session")), "epilogue_s": step(job, "Epilogue"),
+                        "agent_s": s["report"].get("agent_s"),
+                        "jobs_s": round(sum(seconds(j.get("started_at"), j.get("completed_at")) or 0 for j in jobs.values()), 1),
+                        "run_s": seconds(r.get("run_started_at") or r.get("created_at"), r.get("updated_at")),
+                        "to_first_job_s": seconds(r.get("created_at"), min((j["started_at"] for j in jobs.values() if j.get("started_at")), default=None))})
+            row["around_agent_s"] = round(row["jobs_s"] - (row["agent_step_s"] or 0), 1)     # every job of the run, not only prep + session
             rows.append(row)
     width = {"sessions": len(sessions), "by_role": dict(Counter(s["role"] for s in sessions)),
              "report_bytes_total": sum(s["report_bytes"] for s in sessions), "report_bytes_max": max((s["report_bytes"] for s in sessions), default=0),
@@ -536,7 +602,8 @@ context the CLI really reported on its first model call.
 
 - `report.json`: `run` (repo, commits, times, platform); `sessions` (report fields as the engine published them);
   `iteration_record`; `actions` (queue, start, job and step times, cron delay, concurrency, billable-minute estimate);
-  `actions_overhead` (prep, Tools, Stage, Epilogue around the agent per session run; width of the iteration: sessions, report sizes);
+  `loop_runs` (runs of the iteration by kind, Tokenless runs = fallbacks, time per job name, iteration wall time);
+  `actions_overhead` (every job of a session run, Tools, Stage around the agent; width of the iteration: sessions, report sizes);
   `growth` (`accumulating` x{SCALE}, `per_iteration_not_scaled`, and what one iteration adds to the next sessions' inputs);
   `session_inputs` (estimated vs measured context, two projection models); `visibility` (did the planted step, the
   iteration's results and the exports reach the next iteration's sessions); `mechanics` (could the Policymaker change

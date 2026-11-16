@@ -1,7 +1,8 @@
 # The watchdog: a clock outside the chain. A plain script, no agent: a watchdog session could fall to the very
 # disease it cures. It kicks before it calls; it announces an outage with a red run (a cron run e-mails the author
 # of the workflow file, the only free push channel). It also starts the first iteration after arming and sweeps
-# owner requests the owner has closed.
+# owner requests the owner has closed. An iteration it finds due to start (the first, one the cadence held back, one whose
+# start was lost) starts in the jobs of "Iteration start" (`iteration-start.yml`), as at the end of a session.
 name: Watchdog
 run-name: "Watchdog check"
 
@@ -24,6 +25,11 @@ jobs:
     name: Check the loop
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      start: ${{ steps.watch.outputs.start }}
+      count: ${{ steps.watch.outputs.count }}
+      minutes: ${{ steps.watch.outputs.minutes }}
+      digest: ${{ steps.watch.outputs.digest }}
     env:
       GH_TOKEN: ${{ github.token }}
       VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
@@ -38,6 +44,25 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - name: Check the loop
+        id: watch
+        env:
+          START_PLAN: ${{ runner.temp }}/start-facts
         run: |
           pip install -q pyyaml
           python3 .github/loop/loop.py watch
+      - name: Upload the facts for the iteration start
+        if: always() && steps.watch.outputs.start == 'true' && steps.watch.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: start-facts
+          path: ${{ runner.temp }}/start-facts
+
+  start:
+    name: Iteration start
+    needs: watch
+    if: always() && needs.watch.outputs.start == 'true'
+    uses: ./.github/workflows/iteration-start.yml
+    with:
+      count: ${{ needs.watch.outputs.count }}
+      minutes: ${{ needs.watch.outputs.minutes }}
+      digest: ${{ needs.watch.outputs.digest }}

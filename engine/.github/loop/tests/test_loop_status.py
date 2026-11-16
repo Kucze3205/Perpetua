@@ -5,6 +5,7 @@ from unittest import mock
 from fakes import common as c, iteration as it, task
 from flow_fixtures import Flow
 import loop_status as status
+import iteration_start as start
 
 
 class LoopStatusTest(Flow):
@@ -18,7 +19,7 @@ class LoopStatusTest(Flow):
         self.assertIsNone(self.status_issue())
 
     def test_a_running_iteration_shows_running_and_waiting_tasks(self):
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a", title="Write the parser"), task("end", title='Say "bye"', blocked_by=["a"]), k=0)
         n = status.refresh()
         x = self.status_issue()
@@ -36,7 +37,7 @@ class LoopStatusTest(Flow):
         self.assertFalse(c.in_loop(c.label_names(x)))          # the loop never sees it
 
     def test_a_closed_iteration_shows_its_record_and_the_same_issue_is_overwritten(self):
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a"), k=0)
         first = status.refresh()
         self.w.session(self.task_issue("a"), files={"src/a.txt": "a"})
@@ -60,20 +61,20 @@ class LoopStatusTest(Flow):
                       "tokens": dict(tokens, **{"in": 0, "out": 0, "cache_read": 0, "cache_write": 0})}]))
 
     def test_an_unchanged_loop_does_not_edit_the_issue(self):
-        it.start_iteration()
+        start.start_iteration()
         status.refresh()
         with mock.patch.object(c, "edit_issue_body") as edit:
             status.refresh()
         edit.assert_not_called()
 
     def test_a_failure_is_said_not_raised(self):
-        it.start_iteration()
+        start.start_iteration()
         with mock.patch.object(c, "create_issue", side_effect=SystemExit("gh issue create: no")):
             self.assertIsNone(status.refresh())
         self.assertIsNone(self.status_issue())
 
     def test_a_pin_the_token_may_not_do_is_left_to_the_owner(self):
-        it.start_iteration()
+        start.start_iteration()
         with mock.patch.object(c, "pin_issue", return_value=False), mock.patch.object(c, "say") as say:
             n = status.refresh()
         self.assertIsNotNone(n)

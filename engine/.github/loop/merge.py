@@ -1,6 +1,7 @@
 """The candidate and its way into the default branch: the agent's commits fetched into a trusted tree, the
 task's verification, the merge, its notes, and the evaluator verifier.
 """
+import contextlib
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import subprocess
 import tempfile
 import time
 
+import check_results
 import closing
 import common as c
 import executor_boundary
@@ -88,9 +90,9 @@ def verification_rules(body):
 
 
 def run_verification(cand, body, n):
-    """`## Verification` of the task: commands from code blocks or backticked lines, run in the tokenless job."""
+    """`## Verification` of the task: commands from code blocks or backticked lines, each on a machine without the token."""
     for cmd in verification_commands(body):
-        r = c.run_command(cmd, cand, purpose="verification for #%s" % n)
+        r = check_results.run_command(cmd, cand, purpose="verification for #%s" % n)
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -99,85 +101,100 @@ def run_verification(cand, body, n):
 
 def merge_branch(n, role, i, override=None, verified=False, checked_commit=None, checked_evaluator_rev=None, verifier=None, boundary=False):
     """Rebase `task/N` on the default branch, run the checks, get the change gate's verdict, push.
-    Returns {"result", "detail", "verdict", "gate_s", "changed"}. Git orders competitors: a rejected push is retried."""
-    cfg, d = c.cfg(), c.default_branch()
-    prof = policymaker_session.profile_of(role) or {}
-    br = "task/%s" % n
-    res = {"result": "conflict", "detail": "", "verdict": None, "gate_s": 0, "changed": []}
+    Returns {"result", "detail", "verdict", "gate_s", "changed", "check"}. Git orders competitors: a rejected push is retried
+    on a fresh rebase, whose checks run again (a result of "Check the results" stands in only for the same trees)."""
     k = it.policy_pass_of(n) if role == "policymaker" else 1
+    res = {"result": "conflict"}
     for _ in range(PUSH_TRIES):
-        c.sync_main()
-        existing = it.applied("changes", it.change_id(n, k))
-        if existing:        # a merged session's branch is gone
-            return dict(res, result="merged", change=existing)
-        c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
-        branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
-        if checked_commit and branch_sha != checked_commit:
-            return dict(res, result="verification-stale", detail="The task branch changed after the verified snapshot.")
-        baseline = c.head()
-        session_base = c.git(".", "merge-base", baseline, branch_sha).stdout.strip()
-        changed = c.git(".", "diff", "--name-only", "-z", "origin/%s...origin/%s" % (d, br)).stdout.split("\0")[:-1]
-        res["changed"] = changed
-        if not changed:
-            return dict(res, result="nothing")
-        bad = [f for f in changed if resources.is_protected(f)]
-        if bad:
-            return dict(res, result="protected", detail=", ".join(bad))
-        out = [f for f in changed if not resources.may_write(prof, f)]
-        if out:
-            return dict(res, result="scope", detail=", ".join(out))
-        work_paths = [f for f in changed if not resources.is_direct(f)]
-        if any(resources.is_evaluator(f) for f in changed) and not verified:
-            return dict(res, result="awaiting-verifier")
-        with Tree("origin/%s" % br) as cand:
-            if c.git(cand, "rebase", "origin/%s" % d, check=False).returncode:
-                c.git(cand, "rebase", "--abort", check=False)
-                return dict(res, result="conflict")
-            if resources.layered():
-                try:
-                    resources.role_profiles(cand)
-                    if boundary or any(resources.is_managed(f) for f in changed):
-                        refused = it.layer_errors(cand, boundary)
-                        if refused:
-                            return dict(res, result="invalid-resources", detail="; ".join(refused[:6]))
-                except (ValueError, it.PolicyScriptError) as error:
-                    return dict(res, result="invalid-resources", detail=str(error))
-            if checked_evaluator_rev and resources.evaluator_revision("HEAD", cand) != checked_evaluator_rev:
-                return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
-            # The accepted range contains this session's rebased commits only.
-            changed = c.git(cand, "diff", "--name-only", "-z", baseline, "HEAD").stdout.split("\0")[:-1]
-            res["changed"] = changed
-            big = [f for f in changed if os.path.isfile(os.path.join(cand, f)) and os.path.getsize(os.path.join(cand, f)) > cfg["large_file_bytes"]]
-            if big:
-                return dict(res, result="large", detail=", ".join(big))
-            if work_paths:
-                if cfg["check"]:
-                    t = c.run_command(cfg["check"], cand, purpose="check for #%s" % n)
-                    if t.returncode:
-                        return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
-                if override:
-                    res["verdict"] = override
-                else:
-                    t0 = time.time()
-                    v = it.run_gate(cand, os.path.abspath("."), {"candidate_sha": c.head(cand), "baseline_sha": c.head("."),
-                                                                  "changed": changed, "task": n,
-                                                                  "iteration": c.iteration_of(c.label_names(i)) or 0})
-                    res["gate_s"] = int(time.time() - t0)
-                    res["verdict"] = v
-                if res["verdict"]["verdict"] == "pending-owner":
-                    return dict(res, result="awaiting-owner")
-                if res["verdict"]["verdict"] == "rejected":
-                    return dict(res, result="gate-rejected", detail=res["verdict"].get("detail", ""))
-                if res["verdict"]["verdict"] != "accepted":
-                    return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
-            if resources.layered() and role == "policymaker" and not boundary:
-                return dict(res, result="awaiting-iteration")
-            change = it.record_change(cand, n, role, session_base, baseline, c.head(cand), changed, verifier, k)
-            if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % d, check=False, remote=True).returncode == 0:
+        with attempt(n, role, i, k, override, verified, checked_commit, checked_evaluator_rev, boundary) as (res, cand):
+            if cand is None:
+                return res
+            change = it.record_change(cand, n, role, res["session_base"], res["baseline"], c.head(cand), res["changed"], verifier, k)
+            if c.git(cand, "push", "origin", "HEAD:refs/heads/%s" % c.default_branch(), check=False, remote=True).returncode == 0:
                 if change:
                     it.record_applied("changes", change)
                 return dict(res, result="merged", change=change)
     return dict(res, result="conflict")
+
+
+@contextlib.contextmanager
+def attempt(n, role, i, k=1, override=None, verified=False, checked_commit=None, checked_evaluator_rev=None, boundary=False):
+    """One try of a merge up to its push, on the current default branch: yields (res, cand). `cand` is the rebased tree that
+    passed every check, or None when `res` is the final result. The rebase is reproducible (committer date of the baseline):
+    the same candidate on the same main is the same commit, so the checks "Prepare the checks" planned are this try's."""
+    prof = policymaker_session.profile_of(role) or {}
+    br = "task/%s" % n
+    res = {"result": "conflict", "detail": "", "verdict": None, "gate_s": 0, "changed": []}
+    c.sync_main()
+    existing = it.applied("changes", it.change_id(n, k))
+    if existing:        # a merged session's branch is gone
+        yield dict(res, result="merged", change=existing), None
+        return
+    c.git(".", "fetch", "-q", "origin", "+refs/heads/%s:refs/remotes/origin/%s" % (br, br), remote=True)
+    branch_sha = c.git(".", "rev-parse", "origin/%s" % br).stdout.strip()
+    baseline = res["baseline"] = c.head()
+    res["session_base"] = c.git(".", "merge-base", baseline, branch_sha).stdout.strip()
+    res["changed"] = changed = c.git(".", "diff", "--name-only", "-z", "origin/%s...origin/%s" % (c.default_branch(), br)).stdout.split("\0")[:-1]
+    bad = [f for f in changed if resources.is_protected(f)]
+    out = [f for f in changed if not resources.may_write(prof, f)]
+    early = (dict(result="verification-stale", detail="The task branch changed after the verified snapshot.") if checked_commit and branch_sha != checked_commit
+             else dict(result="nothing") if not changed else dict(result="protected", detail=", ".join(bad)) if bad
+             else dict(result="scope", detail=", ".join(out)) if out
+             else dict(result="awaiting-verifier") if any(resources.is_evaluator(f) for f in changed) and not verified else None)
+    if early:
+        yield dict(res, **early), None
+        return
+    with Tree("origin/%s" % br) as cand:
+        date = "@%s +0000" % c.git(".", "log", "-1", "--format=%ct", baseline).stdout.strip()
+        final = checks(n, role, i, cand, res, override, checked_evaluator_rev, boundary, date)
+        yield (final, None) if final else (res, cand)
+
+
+def checks(n, role, i, cand, res, override, checked_evaluator_rev, boundary, date):
+    """The rebase of `cand` and the checks of the merge; the final result when one refuses it, None when all pass."""
+    cfg, baseline, work_paths = c.cfg(), res["baseline"], [f for f in res["changed"] if not resources.is_direct(f)]
+    if c.git(cand, "rebase", "origin/%s" % c.default_branch(), check=False, env={"GIT_COMMITTER_DATE": date}).returncode:
+        c.git(cand, "rebase", "--abort", check=False)
+        return dict(res, result="conflict")
+    if resources.layered():
+        try:
+            resources.role_profiles(cand)
+            if boundary or any(resources.is_managed(f) for f in res["changed"]):
+                refused = it.layer_errors(cand, boundary)
+                if refused:
+                    return dict(res, result="invalid-resources", detail="; ".join(refused[:6]))
+        except (ValueError, it.PolicyScriptError) as error:
+            return dict(res, result="invalid-resources", detail=str(error))
+    if checked_evaluator_rev and resources.evaluator_revision("HEAD", cand) != checked_evaluator_rev:
+        return dict(res, result="verification-stale", detail="The rebased evaluator differs from the verified snapshot.")
+    # The accepted range contains this session's rebased commits only.
+    res["changed"] = changed = c.git(cand, "diff", "--name-only", "-z", baseline, "HEAD").stdout.split("\0")[:-1]
+    big = [f for f in changed if os.path.isfile(os.path.join(cand, f)) and os.path.getsize(os.path.join(cand, f)) > cfg["large_file_bytes"]]
+    if big:
+        return dict(res, result="large", detail=", ".join(big))
+    if work_paths:
+        if cfg["check"]:
+            t = check_results.run_command(cfg["check"], cand, purpose="check for #%s" % n)
+            res["check"] = "fail" if t.returncode else "pass"
+            if t.returncode:
+                return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])
+        if override:
+            res["verdict"] = override
+        else:
+            t0 = time.time()
+            with Tree(baseline) as accepted:            # the accepted tree: main as committed, nothing the engine left beside it
+                res["verdict"] = it.run_gate(cand, accepted, {"candidate_sha": c.head(cand), "baseline_sha": baseline, "changed": changed,
+                                                               "task": n, "iteration": c.iteration_of(c.label_names(i)) or 0})
+            res["gate_s"] = int(time.time() - t0)
+        if res["verdict"]["verdict"] == "pending-owner":
+            return dict(res, result="awaiting-owner")
+        if res["verdict"]["verdict"] == "rejected":
+            return dict(res, result="gate-rejected", detail=res["verdict"].get("detail", ""))
+        if res["verdict"]["verdict"] != "accepted":
+            return dict(res, result="gate-inconclusive", detail=res["verdict"].get("detail", ""))
+    if resources.layered() and role == "policymaker" and not boundary:
+        return dict(res, result="awaiting-iteration")
+    return None
 
 
 def merge_notes(n, role):
@@ -200,7 +217,7 @@ def merge_notes(n, role):
 def merge_outcome(r):
     """(status, report fields, prose) of a merge attempt. `conflict` and the waiting results are handled by the caller."""
     v = r.get("verdict") or {}
-    upd = {}
+    upd = {"check": r["check"]} if r.get("check") else {}
     if v and v.get("verdict") != "pending-owner":
         upd.update(verdict=v.get("verdict"), improved=str(bool(v.get("improved"))).lower(), detail=(v.get("detail") or "")[:300] or None)
     res, detail = r["result"], r.get("detail", "")

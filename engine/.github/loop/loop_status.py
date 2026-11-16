@@ -33,13 +33,14 @@ def gather():
     if cur:
         n = it.iteration_number(cur)
         rec = it.build_record(n, cur, "open")
-        phase = c.report_fields(cur["number"]).get("phase", "")
+        f = c.report_fields(cur["number"])
+        phase, not_needed = f.get("phase", ""), f.get("policy_not_needed")
         open_issues = {x["number"] for x in it.iteration_issues(n) if x["state"] == "open"}
     else:
         recs = it.records()
         if not recs:
             return None
-        rec, phase, open_issues = recs[-1], "", set()
+        rec, phase, not_needed, open_issues = recs[-1], "", None, set()
     runs, running = {}, set(c.LAUNCHED)
     own = os.environ.get("GITHUB_RUN_ID", "")
     for r in c.run_list("session.yml"):               # newest first: the first run of an issue is its latest
@@ -58,7 +59,7 @@ def gather():
             open_issues.add(pm)
     goal = ((rec.get("input_state") or {}).get("goal") or {}).get("text") or it.read_text("goal/goal.md") or ""
     return {"record": rec, "phase": phase, "open": open_issues, "running": running & open_issues, "runs": runs,
-            "policymaker": policymaker, "goal": goal, "goal_reached": c.goal_reached(), "now": c.iso(),
+            "policymaker": policymaker, "not_needed": not_needed, "goal": goal, "goal_reached": c.goal_reached(), "now": c.iso(),
             "url": "%s/%s" % (os.environ.get("GITHUB_SERVER_URL", "https://github.com"), c.REPO)}
 
 
@@ -90,6 +91,14 @@ def task_state(t, sessions, v):
     if s["status"] == "done":
         return ("ok", "merged") if s.get("merged") else ("warn", "done, not merged")
     return "bad", s["status"]
+
+
+def checks(s):
+    """The checks of a task's results, from its session report (as the Session summary shows them); empty when none ran."""
+    marks = {"pass": "✅", "accepted": "✅", "fail": "❌", "rejected": "❌", "inconclusive": "🟡"}
+    parts = ["%s %s" % (marks.get(s.get(key), "•"), name) for key, name in (("verification", "verification"), ("check", "check"))
+             if s.get(key)] + (["%s gate %s" % (marks.get(s["verdict"], "•"), s["verdict"])] if s.get("verdict") else [])
+    return " · ".join(parts)
 
 
 def flat_goal(text):
@@ -142,11 +151,13 @@ def role_row(s):
     return "| %s #%s | %s | %s | %s | %s | %s |" % (s["role"], s["issue"], model, s.get("effort") or "–", k(total), k(t["out"]), hit)
 
 
-def roles(sessions):
+def roles(sessions, not_needed=None):
+    """The iteration's sessions; `not_needed`: why the Policymaker did not open the iteration (`iteration_start.decide`)."""
+    skip = ["", "Policymaker: not needed — %s" % not_needed] if not_needed else []
     if not sessions:
-        return "### Active roles\n_no sessions yet_"
+        return "\n".join(["### Active roles", "_no sessions yet_"] + skip)
     return "\n".join(["### Active roles", "| Role | Model | Effort | Input | Output | Cache hit |",
-                      "|---|---|---|---:|---:|---:|"] + [role_row(s) for s in sessions])
+                      "|---|---|---|---:|---:|---:|"] + [role_row(s) for s in sessions] + skip)
 
 
 def task_graph(tasks, sessions, v):
@@ -155,7 +166,9 @@ def task_graph(tasks, sessions, v):
     out = ["### Task graph", "```mermaid", "%%{init: {'themeVariables': {'fontSize': '13px'}}}%%", "flowchart LR"]
     for t in tasks:
         cls, words = task_state(t, sessions, v)
-        out.append('  %s("%s %s<br/>%s · %s"):::%s' % (node(t["id"]), STATES[cls][0], mermaid_text(t["title"]), t["role"], words, cls))
+        done = checks(sessions.get(t.get("issue")) or {})
+        out.append('  %s("%s %s<br/>%s · %s%s"):::%s' % (node(t["id"]), STATES[cls][0], mermaid_text(t["title"]), t["role"], words,
+                                                         "<br/>" + done if done else "", cls))
     for t in tasks:
         out += ["  %s --> %s" % (node(b), node(t["id"])) for b in t.get("blocked_by") or []]
     out += ["  classDef %s %s,stroke-width:1px,color:#57606a" % kv for kv in CLASSES.items()]
@@ -187,7 +200,7 @@ def render(v):
     sessions = list(rec["outcome"]["sessions"]) + ([v["policymaker"]] if v.get("policymaker") else [])
     by_issue = {s["issue"]: s for s in sessions}
     tasks = rec.get("tasks") or []
-    parts = [header(rec, v), working_on(tasks, by_issue, v), roles(sessions), task_graph(tasks, by_issue, v),
+    parts = [header(rec, v), working_on(tasks, by_issue, v), roles(sessions, v.get("not_needed")), task_graph(tasks, by_issue, v),
              policy(rec, v), summaries(sessions, v), "%s%s UTC</sub>" % (FOOTER, when(v["now"]))]
     body = "\n\n".join(parts) + "\n"
     if len(body) > MAX_BODY:            # the graph is the bulk; the rest stays readable

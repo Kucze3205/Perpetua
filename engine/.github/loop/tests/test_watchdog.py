@@ -7,6 +7,7 @@ import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 import watchdog
 from gate_fixtures import GATE_SH, SCRIPT_GATE
+import iteration_start as start
 
 
 class WatchCase(unittest.TestCase):
@@ -45,7 +46,7 @@ class WatchCase(unittest.TestCase):
                 return x["number"]
 
     def run_iteration_zero(self, *files):
-        it.start_iteration()
+        start.start_iteration()
         self.w.session(self.shaper(0), session_files={"tasks.json": tasks_json(task("a"))}, files={"journal/0000.md": "s"})
         self.w.session(self.task_issue("a"), files=files[0] if files else {"src/a.txt": "A"})
 
@@ -76,7 +77,7 @@ class ArmingTest(WatchCase):
 
 class JamTest(WatchCase):
     def test_a_ready_session_nobody_started_is_kicked_and_counted(self):
-        it.start_iteration()
+        start.start_iteration()
         s = self.shaper(0)
         self.hub.runs.clear()
         c.LAUNCHED.clear()
@@ -86,7 +87,7 @@ class JamTest(WatchCase):
         self.assertEqual(self.hub.report(s)["kicks"], "1")
 
     def test_three_fruitless_kicks_are_an_outage(self):
-        it.start_iteration()
+        start.start_iteration()
         s = self.shaper(0)
         for _ in range(4):
             self.hub.runs.clear()
@@ -96,7 +97,7 @@ class JamTest(WatchCase):
         self.assertEqual(len(self.hub.by_label("outage")), 1)
 
     def test_a_run_in_progress_is_a_commitment(self):
-        it.start_iteration()
+        start.start_iteration()
         c.LAUNCHED.clear()
         self.assertTrue(watchdog.commitments())            # the shaper's run is queued
         self.hub.runs.clear()
@@ -147,12 +148,12 @@ class StallTest(WatchCase):
         self.assertIn("rolled back", note["title"])
 
     def test_not_stalled_before_the_quiet_time(self):
-        it.start_iteration()
+        start.start_iteration()
         self.later(10)
         self.assertFalse(it.stalled())
 
     def test_waiting_for_the_owner_does_not_count_unless_the_setup_says_so(self):
-        it.start_iteration()
+        start.start_iteration()
         n = self.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 0", "awaiting:owner"])
         self.later(45)
         self.assertFalse(it.stalled())
@@ -163,7 +164,7 @@ class StallTest(WatchCase):
         w2 = fakes.worker_world(SCRIPT_GATE + "params:\n  quiet_minutes: 30\n  owner_wait_counts: true\n")
         saved = c.now
         try:
-            it.start_iteration()
+            start.start_iteration()
             w2.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 0", "awaiting:owner"])
             base = saved()
             c.now = lambda: base + timedelta(minutes=45)
@@ -173,7 +174,7 @@ class StallTest(WatchCase):
             w2.close()
 
     def test_nothing_to_roll_back_still_starts_over(self):
-        it.start_iteration()
+        start.start_iteration()
         self.later(45)
         self.hub.runs.clear()
         watchdog.drive()
@@ -185,7 +186,7 @@ class CeilingTest(WatchCase):
     PARAMS = "shaper: orchestrator\nceilings:\n  iteration_minutes: 5\n"
 
     def test_the_policymakers_iteration_ceiling_ends_a_long_iteration_without_a_rollback(self):
-        it.start_iteration()
+        start.start_iteration()
         self.later(10)
         self.hub.runs.clear()
         watchdog.drive()
@@ -195,7 +196,7 @@ class CeilingTest(WatchCase):
         self.assertEqual(self.hub.by_label("owner-request:notice"), [])
 
     def test_running_sessions_of_a_failed_iteration_are_cancelled(self):
-        it.start_iteration()
+        start.start_iteration()
         self.hub.runs[0]["status"] = "in_progress"
         self.later(10)
         watchdog.drive()
@@ -226,9 +227,9 @@ class CadenceTest(WatchCase):
         self.run_iteration_zero()
         self.assertIsNone(it.open_iteration())
         self.later(30)
-        self.assertIsNone(it.start_iteration())
+        self.assertIsNone(start.start_iteration())
         self.later(70)
-        self.assertEqual(it.start_iteration(), 1)
+        self.assertEqual(start.start_iteration(), 1)
 
 
 class DailyCapTest(WatchCase):
@@ -246,9 +247,9 @@ class PolicyCadenceTest(WatchCase):
     def test_a_looser_cadence_of_policy_has_no_effect(self):
         self.run_iteration_zero()
         self.later(30)
-        self.assertIsNone(it.start_iteration())
+        self.assertIsNone(start.start_iteration())
         self.later(70)
-        self.assertEqual(it.start_iteration(), 1)
+        self.assertEqual(start.start_iteration(), 1)
 
 
 class StricterPolicyCadenceTest(WatchCase):
@@ -258,9 +259,9 @@ class StricterPolicyCadenceTest(WatchCase):
     def test_a_stricter_cadence_of_policy_slows_the_iterations(self):
         self.run_iteration_zero()
         self.later(30)
-        self.assertIsNone(it.start_iteration())
+        self.assertIsNone(start.start_iteration())
         self.later(70)
-        self.assertIsNone(it.start_iteration())      # the daily count of policy: one
+        self.assertIsNone(start.start_iteration())      # the daily count of policy: one
 
 
 class StreamRetentionTest(WatchCase):

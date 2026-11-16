@@ -11,6 +11,7 @@ import fakes
 from fakes import common as c, iteration as it, loop, task, tasks_json
 import task_graph as graph
 from flow_fixtures import Flow
+import iteration_start as start
 
 
 class CommandsTest(Flow):
@@ -32,14 +33,14 @@ class CommandsTest(Flow):
 
 class FirstIterationTest(Flow):
     def test_an_iteration_begins_work_without_a_due_policymaker(self):
-        it.start_iteration()
+        start.start_iteration()
         cur = self.open_iteration()
         self.assertEqual(c.report_fields(cur["number"])["phase"], "shape")
         self.assertEqual(len(self.hub.role_issues("orchestrator")), 1)
 
 
     def test_an_iteration_from_the_shaper_to_its_record_and_the_next_iteration(self):
-        k = it.start_iteration()
+        k = start.start_iteration()
         self.assertEqual(k, 0)
         cur = self.open_iteration()
         self.assertEqual(c.report_fields(cur["number"])["phase"], "shape")
@@ -99,7 +100,7 @@ class FirstIterationTest(Flow):
         self.assertEqual(state["no_progress"], 0)
 
     def test_tasks_are_frozen_and_phase_is_run_before_any_task_launch(self):
-        it.start_iteration()
+        start.start_iteration()
         current = self.open_iteration()["number"]
         seen = []
         launch = c.launch
@@ -123,26 +124,26 @@ class FirstIterationTest(Flow):
                           "tasks": [{"id": "x", "issue": 1}], "outcome": {"verdict": {"value": "accepted", "improved": True}}}, indent=1) + "\n"
         self.w.push_main({it.record_path(0): old}, "an old record")
         c.sync_main()
-        self.assertEqual(it.start_iteration(), 1)
+        self.assertEqual(start.start_iteration(), 1)
         self.finish(1)
         self.assertEqual(self.w.origin_file(it.record_path(0)), old)
         self.assertEqual(self.record(1)["policy"]["passes"], 0)
         self.assertEqual([x["n"] for x in it.index_lines()], [0, 1])
 
     def test_only_one_iteration_is_open_at_a_time(self):
-        it.start_iteration()
-        self.assertIsNone(it.start_iteration())
+        start.start_iteration()
+        self.assertIsNone(start.start_iteration())
         self.assertEqual(len(self.hub.by_label("loop:map")), 1)
 
     def test_the_switch_stops_everything(self):
         self.hub.vars["AUTOPILOT"] = "off"
-        self.assertIsNone(it.start_iteration())
+        self.assertIsNone(start.start_iteration())
         self.assertEqual(set(self.hub.issues), {0})                 # only the fixture's earlier Policymaker session
 
 
 class RaceTest(Flow):
     def test_of_two_closers_only_the_first_writes_the_record(self):
-        it.start_iteration()
+        start.start_iteration()
         cur = self.open_iteration()["number"]
         os.environ["GITHUB_RUN_ID"] = "111"
         self.assertTrue(it.claim_closing(cur))
@@ -152,7 +153,7 @@ class RaceTest(Flow):
         self.assertTrue(it.claim_closing(cur))                 # the same run may come back
 
     def test_a_closer_that_died_blocks_only_for_a_while(self):
-        it.start_iteration()
+        start.start_iteration()
         cur = self.open_iteration()["number"]
         os.environ["GITHUB_RUN_ID"] = "111"
         it.claim_closing(cur)
@@ -166,12 +167,12 @@ class RaceTest(Flow):
             c.now = saved
 
     def test_a_second_iteration_started_at_the_same_moment_gives_way(self):
-        it.start_iteration()
+        start.start_iteration()
         first = self.open_iteration()["number"]
         real = it.open_iteration
         it.open_iteration = lambda: None                       # the second run did not see the first yet
         try:
-            self.assertIsNone(it.start_iteration())
+            self.assertIsNone(start.start_iteration())
         finally:
             it.open_iteration = real
         self.assertEqual([x["number"] for x in self.hub.by_label("loop:map")], [first])
@@ -183,7 +184,7 @@ class ShaperFailureTest(Flow):
         fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")     # an armed loop has one: a failed shaper rolls back to it
 
     def test_an_invalid_task_graph_fails_the_iteration_and_the_loop_goes_on(self):
-        it.start_iteration()
+        start.start_iteration()
         s = self.session_issue("orchestrator")
         self.w.session(s, session_files={"tasks.json": tasks_json(task("a", role="nobody"))})
         self.assertEqual(self.hub.report(s)["status"], "partial")
@@ -195,7 +196,7 @@ class ShaperFailureTest(Flow):
     def test_partial_ends_the_iteration_and_the_graph_is_not_read(self):
         # Decision (b) of docs/perpetua/session-boundary.md: `partial` is final for the shaper, no retry,
         # no graph loading. The cause (a prompt demanding a shell) is removed at the source instead.
-        it.start_iteration()
+        start.start_iteration()
         s = self.session_issue("orchestrator")
         self.w.session(s, status="partial", files={"journal/0000.md": "## State\nx\n"},
                        session_files={"tasks.json": tasks_json(task("a"))})
@@ -203,14 +204,14 @@ class ShaperFailureTest(Flow):
         self.assertIsNone(self.task_issue("a"))
 
     def test_no_tasks_file_is_a_failure_too(self):
-        it.start_iteration()
+        start.start_iteration()
         self.w.session(self.session_issue("orchestrator"))
         self.assertEqual(self.record(0)["status"], "failed")
 
     def test_an_invalid_task_graph_rolls_policy_back_and_calls_the_policymaker(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "criterion: broken\n"}, "a policy that does not work")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.w.session(self.session_issue("orchestrator"), session_files={"tasks.json": tasks_json(task("a", role="nobody"))})
         self.assertEqual(self.record(0)["status"], "failed")
         self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))            # back to the last good state
@@ -220,7 +221,7 @@ class ShaperFailureTest(Flow):
         self.assertEqual(trigger, "iteration 0000 failed: the shaper produced no valid task graph")
 
     def test_three_failed_iterations_in_a_row_stop_the_loop_with_an_outage(self):
-        it.start_iteration()
+        start.start_iteration()
         for k in range(3):
             pol = self.session_issue("policymaker")                # each failure calls the Policymaker into the next
             if pol:
@@ -244,7 +245,7 @@ class ScriptShaperTest(Flow):
     def test_a_script_shaper_runs_iterations_without_the_policymaker(self):
         for k in range(2):
             if k == 0:
-                it.start_iteration()
+                start.start_iteration()
             s = self.session_issue("planner", n=k)
             self.assertIn("loop:shaper", c.label_names(self.hub.issue(s)))
             work = self.w.session(s, session_files={"tasks.json": tasks_json(task("w%s" % k))})
@@ -257,7 +258,7 @@ class ScriptShaperTest(Flow):
 
 class TaskCapTest(Flow):
     def test_a_graph_over_the_cap_is_refused_and_creates_no_issues(self):
-        it.start_iteration()
+        start.start_iteration()
         before = len(self.hub.list_issues("all"))
         s = self.session_issue("orchestrator")
         self.w.session(s, session_files={"tasks.json": tasks_json(*[task("t%s" % k) for k in range(graph.MAX_TASKS + 1)])})
@@ -284,7 +285,7 @@ class GraphRulesTest(Flow):
 
     def test_a_policy_rule_refuses_a_graph_the_engine_accepts(self):
         self.set_script(self.NO_FORBIDDEN)
-        it.start_iteration()
+        start.start_iteration()
         s = self.session_issue("orchestrator")
         self.w.session(s, session_files={"tasks.json": tasks_json(task("a", title="a forbidden task"))})
         self.assertIn("policy/graph-rules.py: task a is forbidden", self.hub.prose(s))
@@ -293,13 +294,13 @@ class GraphRulesTest(Flow):
 
     def test_a_graph_the_rule_does_not_mind_runs(self):
         self.set_script(self.NO_FORBIDDEN)
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a"))
         self.assertIsNotNone(self.task_issue("a"))
 
     def test_no_policy_rule_accepts_a_graph_the_engine_refuses(self):
         self.set_script("print('{\"errors\": []}')\n")
-        it.start_iteration()
+        start.start_iteration()
         s = self.session_issue("orchestrator")
         self.w.session(s, session_files={"tasks.json": tasks_json(*[task("t%s" % k) for k in range(graph.MAX_TASKS + 1)])})
         self.assertIn("the cap is %s" % graph.MAX_TASKS, self.hub.prose(s))
@@ -308,7 +309,7 @@ class GraphRulesTest(Flow):
     def test_an_answer_the_engine_refuses_fails_the_iteration_and_rolls_policy_back(self):
         fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")
         self.set_script("print('{\"errors\": \"no\"}')\n")
-        it.start_iteration()
+        start.start_iteration()
         self.w.session(self.session_issue("orchestrator"), session_files={"tasks.json": tasks_json(task("a"))})
         self.assertEqual(self.record(0)["status"], "failed")
         c.sync_main()

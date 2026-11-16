@@ -8,6 +8,7 @@ import fakes
 from fakes import common as c, iteration as it, loop
 from flow_fixtures import Flow
 import session_fixtures as sessions
+import iteration_start as start
 
 MEMORY = {"policy/working-memory.md": "# Working memory\nthe interpretation\n"}
 
@@ -16,7 +17,7 @@ class PolicymakerAdmissionTest(Flow):
     FIRST = True
 
     def pol(self):
-        it.start_iteration()
+        start.start_iteration()
         return self.session_issue("policymaker")
 
     def receipt(self, pol):

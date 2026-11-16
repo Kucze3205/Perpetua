@@ -10,6 +10,7 @@ import time
 
 import agent_result
 import artifact_pin
+import check_results
 import closing
 import common as c
 import iteration as it
@@ -99,9 +100,10 @@ def finalize(n, work):
     if status == "done" and sha and not script:
         with merge.Tree("task/%s" % n) as cand:
             ok, out = merge.run_verification(cand, i["body"], n)
+        if merge.verification_commands(i["body"]):
+            upd["verification"] = "pass" if ok else "fail"
         if not ok:
             status, prose = "partial", "The epilogue ran `## Verification` and got an error:\n```\n%s\n```" % out
-            upd["verification"] = "fail"
             if fix_round(n, f, upd, prose):
                 return
     pending = None
@@ -180,15 +182,26 @@ def note_startup_budget(n, policy_results):
 
 def epilogue(n, artifact, baseline, digest, policy_results):
     """The epilogue job, on a fresh runner: first the verdict of the policy scripts' job (`POLICY_OK`, `POLICY_ERROR`, `POLICY_DIGEST`
-    and its artifact `policy_results`); then takes the session job's artifact in as data (`session_artifact`), puts the executor
-    baseline from the channel the session cannot touch (`baseline/`, pinned by `digest`) where admission reads it, and finalizes.
-    A tree that cannot be taken in is as good as no tree."""
+    and its artifact `policy_results`); then takes the session's results in (`receive`) and the results of "Check the results"
+    only from that job's output (`CHECKS_RESULTS`, `check_results.accept`), and finalizes."""
     env = os.environ.get
     why = policy_inputs.refusal(env("POLICY_OK"), env("POLICY_ERROR"), policy_results, env("POLICY_DIGEST"))
     if why:
         refuse_policy_results(n, why)
     note_startup_budget(n, policy_results)
     tmp = os.environ.get("RUNNER_TEMP", tempfile.gettempdir())
+    work = receive(n, artifact, baseline, digest, tmp)
+    check_results.accept(env("CHECKS_RESULTS"))
+    try:
+        finalize(n, work)
+    finally:
+        session_summary.write(n, os.environ.get("ROLE") or "session", work, tmp)
+
+
+def receive(n, artifact, baseline, digest, tmp):
+    """The session job's artifact taken in as data (`session_artifact`), and the executor baseline from the channel the session
+    cannot touch (`baseline/`, pinned by `digest`) put where admission reads it. Returns the tree; one that cannot be taken in
+    is as good as no tree."""
     try:
         artifact_pin.verify(baseline, digest)
     except (OSError, ValueError):
@@ -208,10 +221,7 @@ def epilogue(n, artifact, baseline, digest, policy_results):
     with open(os.path.join(tmp, "trusted", "executor-baseline.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh)
     session_artifact.receive_commits(artifact, ".", n)
-    try:
-        finalize(n, work)
-    finally:
-        session_summary.write(n, os.environ.get("ROLE") or "session", work, tmp)
+    return work
 
 
 def proposals(work, k, source=None):

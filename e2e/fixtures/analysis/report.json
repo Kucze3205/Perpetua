@@ -176,6 +176,47 @@
   "max_concurrent_session_jobs": 2,
   "note": "queue_s = job created -> started; cron_delay_s only for scheduled runs (distance to the :00/:30 slot)"
  },
+ "loop_runs": {
+  "runs": 2,
+  "by_kind": {
+   "session": 2
+  },
+  "tokenless": {
+   "count": 0,
+   "by_purpose": {}
+  },
+  "jobs_by_name": {
+   "session": {
+    "count": 2,
+    "total_s": 240.0,
+    "max_s": 120.0,
+    "queue_s": 0
+   }
+  },
+  "billable_minutes_estimate_rounded_up_per_job": 4,
+  "timing_s": {
+   "iteration_wall_s": 120,
+   "first_run_dispatched_to_its_first_job_s": 0.0,
+   "first_run_dispatched_to_first_session_job_s": 0.0,
+   "first_run_dispatched_to_last_run_end_s": 120.0
+  },
+  "list": [
+   {
+    "run": 121,
+    "kind": "session",
+    "title": "worker",
+    "created_at": "2026-10-01T00:00:00Z",
+    "updated_at": "2026-10-01T00:02:00Z"
+   },
+   {
+    "run": 122,
+    "kind": "session",
+    "title": "policymaker",
+    "created_at": "2026-10-01T00:00:00Z",
+    "updated_at": "2026-10-01T00:02:00Z"
+   }
+  ]
+ },
  "actions_overhead": {
   "per_session_run": [
    {
@@ -184,12 +225,20 @@
     "run": 121,
     "prep_s": null,
     "policy_s": null,
+    "session_job_s": 120.0,
+    "prepare_checks_s": null,
+    "check_results_s": null,
+    "take_in_s": null,
+    "decide_s": null,
+    "start_iteration_s": null,
     "tools_s": 120.0,
     "stage_s": 0,
     "agent_step_s": 120.0,
     "epilogue_s": 120.0,
-    "session_job_s": 120.0,
     "agent_s": 45,
+    "jobs_s": 120.0,
+    "run_s": 120.0,
+    "to_first_job_s": 0.0,
     "around_agent_s": 0.0
    },
    {
@@ -198,12 +247,20 @@
     "run": 122,
     "prep_s": null,
     "policy_s": null,
+    "session_job_s": 120.0,
+    "prepare_checks_s": null,
+    "check_results_s": null,
+    "take_in_s": null,
+    "decide_s": null,
+    "start_iteration_s": null,
     "tools_s": 120.0,
     "stage_s": 0,
     "agent_step_s": 120.0,
     "epilogue_s": 120.0,
-    "session_job_s": 120.0,
     "agent_s": 45,
+    "jobs_s": 120.0,
+    "run_s": 120.0,
+    "to_first_job_s": 0.0,
     "around_agent_s": 0.0
    }
   ],
@@ -464,10 +521,10 @@
     },
     "estimated_tokens": 29,
     "tokens_by_category": {
-     "other": 2,
-     "history": 7,
      "state": 6,
-     "role skill": 12
+     "role skill": 12,
+     "other": 2,
+     "history": 7
     },
     "fixed_tokens": {
      "prompt.md": 2
@@ -484,10 +541,10 @@
     },
     "estimated_tokens": 29,
     "tokens_by_category": {
-     "other": 2,
-     "history": 7,
      "state": 6,
-     "role skill": 12
+     "role skill": 12,
+     "other": 2,
+     "history": 7
     },
     "fixed_tokens": {
      "prompt.md": 2

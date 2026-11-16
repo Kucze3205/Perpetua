@@ -8,6 +8,7 @@ import os
 import re
 
 import common as c
+import policy_script
 import session_reports
 
 STATE_BYTES = 8 * 1024 * 1024       # what the engine accepts from policy/session-state.py
@@ -43,20 +44,20 @@ def facts(directory, role, state, full):
     return {"role": role, "state": state, "outboxes": outboxes, "full": full, "checkout": c.head(), "records": records, "reports": reports}
 
 
-def stage(directory, role, state=None, full=True):
-    """Write `.session/history/` and, with a `state`, `.session/loop-state.json`, as `policy/session-state.py` shapes them.
-    No script: nothing is written. Raises iteration.PolicyScriptError for an answer the engine refuses."""
-    import iteration as it
-
-    out = it.run_policy_script("session-state.py", facts(directory, role, state, full), max_bytes=STATE_BYTES)
+def settle(bundle, state_facts, directory):
+    """In the job that holds no token: run `policy/session-state.py` on the engine's `facts` and write `.session/history/` and,
+    with a `loop_state`, `.session/loop-state.json` into `directory`, as it shapes them. Returns the paths it wrote (relative to
+    `directory`). No script: nothing is written. Raises PolicyScriptError for an answer the engine refuses."""
+    out = policy_script.run(bundle, "session-state.py", state_facts, max_bytes=STATE_BYTES)
     if out is None:
-        return
+        return []
     files, loop_state = out.get("files"), out.get("loop_state")
     if (not isinstance(files, dict) or len(files) > MAX_FILES or not (loop_state is None or isinstance(loop_state, dict))
             or any(not isinstance(k, str) or not isinstance(v, str) or not SAFE.fullmatch(k) or ".." in k.split("/")
                    for k, v in files.items())):
-        raise it.PolicyScriptError("policy/session-state.py: `files` must map history/ paths to text and `loop_state` be an object or null")
+        raise policy_script.PolicyScriptError("policy/session-state.py: `files` must map history/ paths to text and `loop_state` be an object or null")
     for path, text in files.items():
         write(directory, path, text)
     if loop_state is not None:
         write(directory, "loop-state.json", loop_state)
+    return list(files) + (["loop-state.json"] if loop_state is not None else [])

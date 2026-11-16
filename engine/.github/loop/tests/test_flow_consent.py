@@ -124,7 +124,7 @@ class ConsentSecretsTest(Flow):
         fakes.sh(self.w.tmp, "git", "clone", "-q", "--no-hardlinks", self.w.origin, work)
         trusted = os.path.join(self.w.tmp, "trusted-" + tid)
         os.environ["RUNNER_TEMP"] = os.path.join(self.w.tmp, "run-" + tid)
-        session_start.stage(self.task_issue(tid), work, trusted)
+        fakes.stage_session(self.task_issue(tid), work, trusted)
         return work, trusted
 
     def test_stage_writes_the_approved_names_for_agent_sh(self):

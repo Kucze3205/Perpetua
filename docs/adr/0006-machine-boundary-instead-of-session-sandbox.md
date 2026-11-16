@@ -20,3 +20,8 @@ token unsandboxed; it failed on runners (`bwrap: Can't mount proc`) and cost abo
   is dropped: an implementation session is asked not to read them.
 - Status files from a session (duration, tokens) are trusted as data; usage limits that park the loop are checked by
   the engine itself.
+- Any job of a run can upload artifacts: code that runs in a job can read `ACTIONS_RUNTIME_TOKEN` from the runner's
+  memory, and the token stays valid after the job ends. So everything a later job relies on (an artifact, a verdict) is
+  pinned by a digest that reaches it through the outputs of the job that made it, which only that job's runner sets
+  (`artifact_pin.py`). A job that ran foreign code can still say what it likes in its own outputs: a later job with the
+  token uses them only as data the engine bounds again.

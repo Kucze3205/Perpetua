@@ -12,6 +12,7 @@ import iteration as it
 import managed_resources as resources
 import merge
 import owner_requests as requests
+import policy_inputs
 import policymaker_session
 import release_assets
 import session_context
@@ -136,19 +137,9 @@ def session_contract(role, profile, labels):
     return "\n\n".join(parts) + "\n"
 
 
-def policy_output(labels, step, *args, **kwargs):
-    """Run a staging step that uses a policy script; output the engine refuses fails the iteration and rolls policy back."""
-    try:
-        step(*args, **kwargs)
-    except it.PolicyScriptError as e:
-        k = c.iteration_of(labels)
-        if k is not None:
-            it.fail_iteration(k, "invalid policy script output: %s" % e, rollback=True)
-        raise SystemExit("invalid policy script output: %s" % e)
-
-
-def stage(n, work, trusted):
-    """Everything the agent needs, put in place by trusted code before the engine checkout is removed from the disk."""
+def stage(n, work, trusted, bundle):
+    """Everything the agent needs, put in place by trusted code before the engine checkout is removed from the disk, and in
+    `bundle` what the job that runs the policy scripts needs (`policy_inputs`): their results are added to this staging later."""
     i = c.issue(n)
     labels = c.label_names(i)
     role = c.roles_of(labels)[0]
@@ -188,7 +179,7 @@ def stage(n, work, trusted):
     sees_state = role == "policymaker" or "loop:shaper" in labels
     full = sees_state and c.marker(i["body"], "exports") is None and "exports" not in metadata
     state = it.stored_state(n, sess, role=role) if sees_state else None
-    policy_output(labels, session_context.stage, sess, role, state, full=full)
+    state_facts = session_context.facts(sess, role, state, full) if os.path.isfile(os.path.join(resources.ROOT, "session-state.py")) else None
     if "loop:shaper" in labels:
         with open(os.path.join(sess, "capabilities.json"), "w", encoding="utf-8") as fh:
             json.dump(session_inputs.capabilities(), fh, indent=1)
@@ -234,6 +225,7 @@ def stage(n, work, trusted):
     with open(os.path.join(trusted, "settings.json"), "w", encoding="utf-8") as fh:
         json.dump(security.settings(p, trusted), fh)
     executor_boundary.record(work, trusted)
-    if p.get("agent") is not False:
-        policy_output(labels, session_startup.prepare, n, role, session_options(i, role, p)["model"], work, trusted,
-                      shaper="loop:shaper" in labels)
+    startup_plan = None
+    if p.get("agent") is not False and os.path.isfile(os.path.join(resources.ROOT, "session-startup.py")):
+        startup_plan = session_startup.plan(n, role, session_options(i, role, p)["model"], work, trusted, shaper="loop:shaper" in labels)
+    policy_inputs.pack(bundle, state_facts, startup_plan)

@@ -21,7 +21,7 @@ class LayeredSessionTest(LayeredSessionCase):
                 session_start.resolve(n)
                 work = self.work()
                 trusted = os.path.join(self.w.tmp, 'trusted-' + role)
-                session_start.stage(n, work, trusted)
+                fakes.stage_session(n, work, trusted)
                 self.assertIn(expected, read(os.path.join(work, '.session/role/SKILL.md')))
                 if role == 'worker':
                     self.assertIn('Execution rules', read(os.path.join(trusted, 'prompt.md')))
@@ -37,7 +37,7 @@ class LayeredSessionTest(LayeredSessionCase):
         session_start.resolve(n)
         work = self.work()
         trusted = os.path.join(self.w.tmp, 'trusted-policymaker')
-        session_start.stage(n, work, trusted)
+        fakes.stage_session(n, work, trusted)
         self.assertIn('policy role', read(os.path.join(work, '.session/role/SKILL.md')))
         self.assertIn('.session/role/SKILL.md', read(os.path.join(trusted, 'prompt.md')))
         global_skill = os.path.join(self.home, '.claude/skills/policymaker/SKILL.md')
@@ -96,7 +96,7 @@ class LayeredSessionTest(LayeredSessionCase):
                 try:
                     n = self.issue()
                     with self.assertRaisesRegex(SystemExit, reason):
-                        session_start.stage(n, self.work(), os.path.join(self.w.tmp, 'invalid-trusted'))
+                        fakes.stage_session(n, self.work(), os.path.join(self.w.tmp, 'invalid-trusted'))
                 finally:
                     if old is None:
                         shutil.rmtree(os.path.dirname(path))
@@ -125,9 +125,9 @@ class LayeredSessionTest(LayeredSessionCase):
         self.w.write(self.w.loop, 'policy/profiles.yml',
                      'audit: {tools: [Read, WebSearch], write: [audit/**]}\n')
         with self.assertRaisesRegex(SystemExit, 'beyond the accepted limits'):
-            session_start.stage(audit, self.work(), os.path.join(self.w.tmp, 'beyond-limits'))
+            fakes.stage_session(audit, self.work(), os.path.join(self.w.tmp, 'beyond-limits'))
         # The execution role still has its own unchanged profile.
-        session_start.stage(n, self.work(), os.path.join(self.w.tmp, 'worker-after-audit-change'))
+        fakes.stage_session(n, self.work(), os.path.join(self.w.tmp, 'worker-after-audit-change'))
 
     def test_invalid_candidate_catalog_is_not_admitted(self):
         n = self.issue('policymaker')
@@ -145,7 +145,7 @@ class LayeredSessionTest(LayeredSessionCase):
         n = self.issue()
         trusted = os.path.join(self.w.tmp, 'online-trusted')
         work = self.work()
-        session_start.stage(n, work, trusted)
+        fakes.stage_session(n, work, trusted)
         self.assertEqual(read(global_skill), 'global source remains')
         self.assertIn('execution role', read(os.path.join(work, '.session/role/SKILL.md')))
         self.assertIn('.session/role/SKILL.md', read(os.path.join(trusted, 'prompt.md')))
@@ -160,7 +160,7 @@ class LayeredSessionTest(LayeredSessionCase):
         session_start.resolve(n)
         self.assertEqual(self.outputs()['kind'], 'script')
         work, trusted = self.work(), os.path.join(self.w.tmp, 'script-trusted')
-        session_start.stage(n, work, trusted)
+        fakes.stage_session(n, work, trusted)
         self.assertEqual(read(os.path.join(trusted, 'command.sh')), 'echo product\n')
         self.assertFalse(os.path.exists(os.path.join(work, '.session/role')))
         self.w.branch(n, {'src/script.txt': 'product'})
@@ -182,7 +182,7 @@ class LayeredSessionTest(LayeredSessionCase):
                 try:
                     n = self.issue()
                     with self.assertRaisesRegex(SystemExit, 'redirected managed'):
-                        session_start.stage(n, self.work(), os.path.join(self.w.tmp, 'redirect-trusted'))
+                        fakes.stage_session(n, self.work(), os.path.join(self.w.tmp, 'redirect-trusted'))
                 finally:
                     os.unlink(location)
                     if exists:
@@ -200,7 +200,7 @@ class ManagedResourcesRegressionTest(SessionCase):
         session_start.resolve(n)
         self.assertEqual(self.outputs()["tools"], "Read,Grep,Glob,Write,Edit,Skill")
         work = self.work()
-        session_start.stage(n, work, os.path.join(self.w.tmp, "trusted-regression"))
+        fakes.stage_session(n, work, os.path.join(self.w.tmp, "trusted-regression"))
         self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")),
                          "---\nname: worker\ndescription: fixture\n---\nx\n")
         self.w.branch(n, {"execution/roles/worker/SKILL.md": "forbidden"})
@@ -219,7 +219,7 @@ class ManagedResourcesRegressionTest(SessionCase):
         c.sync_main()
         self.assertEqual(it.policy_rev(), receipt["policy_rev_after"])
         work = self.work()
-        session_start.stage(n, work, os.path.join(self.w.tmp, "trusted-adapted"))
+        fakes.stage_session(n, work, os.path.join(self.w.tmp, "trusted-adapted"))
         self.assertEqual(read(os.path.join(work, ".session", "role", "SKILL.md")), replacement)
 
         self.w.push_main({"src/kept.txt": "product", "journal/kept.md": "report"})

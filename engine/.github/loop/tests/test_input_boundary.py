@@ -24,7 +24,7 @@ class InputBoundaryTest(LayeredSessionCase):
             it.store_state(n, state)
         work = work or self.work()
         trusted = os.path.join(self.w.tmp, 'trusted-input-%s' % n)
-        session_start.stage(n, work, trusted)
+        fakes.stage_session(n, work, trusted)
         return n, os.path.join(work, '.session'), trusted
 
     def test_shaper_gets_execution_catalog_and_the_loop_state(self):
@@ -142,7 +142,7 @@ class InputBoundaryTest(LayeredSessionCase):
         self.assertEqual(self.w.origin_file('iterations/suggestions/%s.json' % worker), raw)
         pol = it.start_policymaker(1, 'new session suggestions')
         policy_work = self.work()
-        session_start.stage(pol, policy_work, os.path.join(self.w.tmp, 'pol-trusted'))
+        fakes.stage_session(pol, policy_work, os.path.join(self.w.tmp, 'pol-trusted'))
         staged = json.loads(read(os.path.join(policy_work, '.session/loop-state.json')))
         self.assertEqual(staged['suggestions'][0]['what'], 'Reduce worker context')
         self.assertEqual(staged['suggestions'][0]['source']['issue'], worker)

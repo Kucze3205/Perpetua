@@ -1,11 +1,15 @@
 # One session of the loop. Single input: the issue number. Role, model and limits come from the issue's labels
 # and policy/profiles.yml. Started only by the engine (`launch` in common.py), never by hand.
 #
-# Three jobs (ADR-0006): "Prepare the session" (GitHub token) puts everything the agent needs in a bundle; `session`
-# (`permissions: {}`, only the Claude token and the secrets the owner consented to) runs the agent on it and packs what it
-# left; "Take in results" (GitHub token, a fresh runner) takes that in as data (links, redirected paths and oversized files
-# are refused), reads the files the session left and does everything else itself. The executor baseline reaches the
-# last job through its own artifact, which the session never sees.
+# Four jobs (ADR-0006): "Prepare the session" (GitHub token) puts everything the agent needs in a bundle; "Prepare the
+# session inputs (policy scripts)" (`permissions: {}`, no secret, no checkout) runs the loop's policy scripts on it and
+# checks what they print; `session` (`permissions: {}`, only the Claude token and the secrets the owner consented to) runs
+# the agent on the result and packs what it left; "Take in results" (GitHub token, a fresh runner) takes that in as data
+# (links, redirected paths and oversized files are refused), reads the files the session left and does everything else
+# itself. The executor baseline reaches the last job through its own artifact, which the session never sees.
+# Every artifact a job relies on is pinned by a digest that came through the outputs of the job that made it: any job of a
+# run can upload artifacts (ADR-0006). A job without the engine checks it in the shell, as `pinned` below does
+# (`artifact_pin.py` explains the digest).
 # Two kinds: `agent` (an LLM session) and `script` (a deterministic role, no model, no credential).
 name: Session
 run-name: "session #${{ inputs.issue }}${{ inputs.role && format(' · {0}', inputs.role) || '' }}"
@@ -50,7 +54,9 @@ jobs:
       secrets: ${{ steps.settings.outputs.secrets }}
       iteration: ${{ steps.settings.outputs.iteration }}
       profile_digest: ${{ steps.settings.outputs.profile_digest }}
-      baseline: ${{ steps.aside.outputs.baseline }}
+      staged: ${{ steps.pin.outputs.staged }}
+      bundle: ${{ steps.pin.outputs.bundle }}
+      baseline: ${{ steps.pin.outputs.baseline }}
     env:
       GH_TOKEN: ${{ github.token }}
       VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
@@ -106,23 +112,37 @@ jobs:
           ITERATION: ${{ steps.settings.outputs.iteration }}
           PROFILE_DIGEST: ${{ steps.settings.outputs.profile_digest }}
           WORK: ${{ github.workspace }}/work
-        run: python3 .github/loop/loop.py stage-inputs "$ISSUE" "$WORK" "$RUNNER_TEMP/trusted"
-      # The executor baseline travels in an artifact of its own, pinned by its digest: the session never receives it.
-      - name: Set the executor baseline aside
-        id: aside
+        run: python3 .github/loop/loop.py stage-inputs "$ISSUE" "$WORK" "$RUNNER_TEMP/trusted" "$RUNNER_TEMP/policy"
+      # The executor baseline travels in an artifact of its own: the session never receives it. The policy bundle has its own
+      # too: it holds the loop's facts for the policy scripts, which the session has no need of.
+      - name: Pack the session inputs
         if: steps.autopilot.outputs.go == 'true'
         run: |
-          mkdir "$RUNNER_TEMP/baseline" "$RUNNER_TEMP/ship"
+          mkdir "$RUNNER_TEMP/baseline" "$RUNNER_TEMP/ship" "$RUNNER_TEMP/policy-bundle"
           mv "$RUNNER_TEMP/trusted/executor-baseline.json" "$RUNNER_TEMP/baseline/"
-          echo "baseline=$(sha256sum "$RUNNER_TEMP/baseline/executor-baseline.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           tar -czf "$RUNNER_TEMP/ship/trusted.tar.gz" -C "$RUNNER_TEMP" trusted
           tar -czf "$RUNNER_TEMP/ship/work.tar.gz" -C "$GITHUB_WORKSPACE" work
+          tar -czf "$RUNNER_TEMP/policy-bundle/bundle.tar.gz" -C "$RUNNER_TEMP/policy" .
+      - name: Pin the artifacts by digest
+        id: pin
+        if: steps.autopilot.outputs.go == 'true'
+        run: |
+          pin() { python3 loop/.github/loop/artifact_pin.py digest "$RUNNER_TEMP/$1"; }
+          echo "staged=$(pin ship)" >> "$GITHUB_OUTPUT"
+          echo "bundle=$(pin policy-bundle)" >> "$GITHUB_OUTPUT"
+          echo "baseline=$(pin baseline)" >> "$GITHUB_OUTPUT"
       - name: Upload the session inputs
         if: steps.autopilot.outputs.go == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: staged
           path: ${{ runner.temp }}/ship
+      - name: Upload the policy bundle
+        if: steps.autopilot.outputs.go == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-bundle
+          path: ${{ runner.temp }}/policy-bundle
       - name: Upload the executor baseline
         if: steps.autopilot.outputs.go == 'true'
         uses: actions/upload-artifact@v4
@@ -130,10 +150,61 @@ jobs:
           name: baseline
           path: ${{ runner.temp }}/baseline
 
-  session:
-    name: session
+  policy:
+    name: Prepare the session inputs (policy scripts)
     needs: prep
     if: needs.prep.outputs.go == 'true' && needs.prep.result == 'success'
+    runs-on: ubuntu-latest
+    # No GitHub permission, no secret and no checkout (the repository may be private): it runs only the code of the bundle
+    # "Prepare the session" made. The policy scripts are the loop's own and may print anything; the engine's checks decide.
+    permissions: {}
+    timeout-minutes: 30
+    outputs:
+      ok: ${{ steps.run.outputs.ok }}
+      error: ${{ steps.run.outputs.error }}
+      digest: ${{ steps.run.outputs.digest }}
+    steps:
+      - name: Download the session inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: staged
+          path: ${{ runner.temp }}/ship
+      - name: Download the policy bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: policy-bundle
+          path: ${{ runner.temp }}/policy-bundle
+      - name: Check the downloads against their digests
+        env:
+          STAGED: ${{ needs.prep.outputs.staged }}
+          BUNDLE: ${{ needs.prep.outputs.bundle }}
+        run: |
+          pinned() {
+            [ "$(cd "$1" && shopt -s dotglob && LC_ALL=C sha256sum -- * | sha256sum | cut -d' ' -f1)" = "$2" ] || { echo "::error::$1 is not the artifact the earlier job pinned"; exit 1; }
+          }
+          pinned "$RUNNER_TEMP/ship" "$STAGED"
+          pinned "$RUNNER_TEMP/policy-bundle" "$BUNDLE"
+      # the scripts read the tree the agent will get, without its git history
+      - name: Unpack the session inputs
+        run: |
+          mkdir "$RUNNER_TEMP/policy"
+          tar -xzf "$RUNNER_TEMP/policy-bundle/bundle.tar.gz" -C "$RUNNER_TEMP/policy"
+          tar -xzf "$RUNNER_TEMP/ship/work.tar.gz" -C "$GITHUB_WORKSPACE" --exclude=work/.git
+      - name: Run the policy scripts
+        id: run
+        run: python3 "$RUNNER_TEMP/policy/engine/loop.py" run-policy-scripts "$RUNNER_TEMP/policy" "$GITHUB_WORKSPACE/work" "$RUNNER_TEMP/policy-results"
+      - name: Upload the policy script results
+        if: steps.run.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-results
+          path: ${{ runner.temp }}/policy-results
+
+  session:
+    name: Run the session
+    needs: [prep, policy]
+    # bad policy script results: the session does not start, and "Take in results" fails the iteration
+    if: needs.prep.outputs.go == 'true' && needs.prep.result == 'success' && needs.policy.result == 'success' && needs.policy.outputs.ok == 'true'
     runs-on: ubuntu-latest
     # No GitHub permission at all: the agent's code never runs next to the GitHub token (ADR-0006).
     permissions: {}
@@ -154,12 +225,29 @@ jobs:
         with:
           name: staged
           path: ${{ runner.temp }}/ship
+      - name: Download the policy script results
+        uses: actions/download-artifact@v4
+        with:
+          name: policy-results
+          path: ${{ runner.temp }}/policy-results
+      - name: Check the downloads against their digests
+        env:
+          STAGED: ${{ needs.prep.outputs.staged }}
+          RESULTS: ${{ needs.policy.outputs.digest }}
+        run: |
+          pinned() {
+            [ "$(cd "$1" && shopt -s dotglob && LC_ALL=C sha256sum -- * | sha256sum | cut -d' ' -f1)" = "$2" ] || { echo "::error::$1 is not the artifact the earlier job pinned"; exit 1; }
+          }
+          pinned "$RUNNER_TEMP/ship" "$STAGED"
+          pinned "$RUNNER_TEMP/policy-results" "$RESULTS"
       # an action and a shell step cannot be one step; tar stays because artifacts lose file modes
       - name: Unpack the session inputs
         run: |
           date +%s > "$RUNNER_TEMP/session-start"
           tar -xzf "$RUNNER_TEMP/ship/trusted.tar.gz" -C "$RUNNER_TEMP"
           tar -xzf "$RUNNER_TEMP/ship/work.tar.gz" -C "$GITHUB_WORKSPACE"
+          tar -xzf "$RUNNER_TEMP/policy-results/session.tar.gz" -C "$WORK/.session"
+          [ ! -f "$RUNNER_TEMP/policy-results/prompt.md" ] || cp "$RUNNER_TEMP/policy-results/prompt.md" "$RUNNER_TEMP/trusted/prompt.md"
       # the name comes from the engine's output, not from this file; a script session needs no agent tool
       - name: Install ${{ needs.prep.outputs.tool }} ${{ needs.prep.outputs.tool_version }}
         if: needs.prep.outputs.kind == 'agent'
@@ -214,7 +302,7 @@ jobs:
 
   epilogue:
     name: Take in results
-    needs: [prep, session]
+    needs: [prep, policy, session]
     if: always() && needs.prep.outputs.go == 'true' && needs.prep.result == 'success'
     runs-on: ubuntu-latest
     env:
@@ -248,15 +336,25 @@ jobs:
         with:
           name: baseline
           path: ${{ runner.temp }}/baseline
+      # bad policy script results leave none (and the session did not start): "Take in results" refuses it
+      - name: Download the policy script results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: policy-results
+          path: ${{ runner.temp }}/policy-results
       - name: Check, gate and merge the results
         working-directory: loop
         env:
           GH_TOKEN: ${{ github.token }}
           # the engine's own check confirms a usage limit a session reports
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          POLICY_OK: ${{ needs.policy.outputs.ok }}
+          POLICY_ERROR: ${{ needs.policy.outputs.error }}
+          POLICY_DIGEST: ${{ needs.policy.outputs.digest }}
         run: |
           pip install -q pyyaml
-          python3 .github/loop/loop.py take-results "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}"
+          python3 .github/loop/loop.py take-results "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}" "$RUNNER_TEMP/policy-results"
       # a release asset, not an artifact: the artifact quota of an account can be used up, and then nothing is stored
       - name: Store the capture (E2E only)
         if: always() && vars.E2E_CAPTURE == 'on'

@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """The engine's commands, zero agent. Each command's code lives in its own module (see the code map): the start of a
-session in `session_start`, the epilogue in `session_finalize`, the watchdog in `watchdog`.
+session in `session_start`, the policy scripts that shape its inputs in `policy_inputs`, the epilogue in `session_finalize`,
+the watchdog in `watchdog`.
 
-Always run from a checkout of the default branch, never from a task branch. The agent's work arrives as commits
-fetched into this checkout; nothing is executed inside the agent's directory.
+Always run from a checkout of the default branch, never from a task branch (`run-policy-scripts` runs from the copy of the
+engine in the bundle that "Prepare the session" made from it). The agent's work arrives as commits fetched into this
+checkout; nothing is executed inside the agent's directory.
 
-Commands: check-autopilot, check-credentials, session-settings, stage-inputs, take-results, watch, resume-after-limit.
+Commands: check-autopilot, check-credentials, session-settings, stage-inputs, run-policy-scripts, take-results, watch,
+resume-after-limit.
 """
 import sys
 
 import common as c
 import loop_status
+import policy_inputs
 import request_continuation
 import session_finalize
 import session_start
@@ -50,9 +54,11 @@ def command(cmd, args):
     if cmd == "session-settings":
         session_start.resolve(int(args[0]))
     elif cmd == "stage-inputs":
-        session_start.stage(int(args[0]), args[1], args[2])
+        session_start.stage(int(args[0]), *args[1:4])
+    elif cmd == "run-policy-scripts":
+        policy_inputs.run(*args[:3])
     elif cmd == "take-results":
-        session_finalize.epilogue(int(args[0]), *args[1:4])
+        session_finalize.epilogue(int(args[0]), *args[1:5])
     elif cmd == "watch":
         return watch()
     elif cmd == "resume-after-limit":

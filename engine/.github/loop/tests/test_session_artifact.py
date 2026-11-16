@@ -8,6 +8,7 @@ import tarfile
 import unittest
 
 import fakes
+import artifact_pin
 import session_finalize
 import session_artifact as artifact
 
@@ -93,8 +94,13 @@ class EpilogueBaselineTest(unittest.TestCase):
             os.environ["RUNNER_TEMP"] = rt
             with open(os.path.join(baseline, "executor-baseline.json"), "w") as fh:
                 fh.write('{"baseline": "forged", "paths": [], "work": "/"}')
+            results = os.path.join(w.tmp, "policy-results")
+            os.makedirs(results)
+            with open(os.path.join(results, "prompt.md"), "w") as fh:
+                fh.write("x")
+            os.environ.update(POLICY_OK="true", POLICY_DIGEST=artifact_pin.digest(results))
             with self.assertRaises(SystemExit):
-                session_finalize.epilogue(1, os.path.join(w.tmp, "none"), baseline, "0" * 64)
+                session_finalize.epilogue(1, os.path.join(w.tmp, "none"), baseline, "0" * 64, results)
         finally:
             w.close()
 

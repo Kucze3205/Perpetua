@@ -62,7 +62,7 @@ class TemplateFlowTest(unittest.TestCase):
         session_start.resolve(issue)
         work = Path(self.w.tmp, 'stage-' + str(issue))
         fakes.sh(self.w.tmp, 'git', 'clone', '-q', self.w.origin, str(work))
-        session_start.stage(issue, str(work), str(work.parent / ('trusted-' + str(issue))))
+        fakes.stage_session(issue, str(work), str(work.parent / ('trusted-' + str(issue))))
         return work
 
     def test_selected_shaper_product_suggestion_atomic_change_and_rollback(self):

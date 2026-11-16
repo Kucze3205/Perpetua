@@ -1,0 +1,10 @@
+{
+ "report": {
+  "body": "<!-- session-report -->\n```yaml\nbranch: task/386\niteration: 20\nrunner: Linux\ncause: terminal_reason=completed\nturns: 7\npeak_context: 22901\ntokens_in: 10\ntokens_out: 2866\ncache_read: 94010\ncache_write: 8390\nmodels: {\"claude-haiku-5-5\":{\"cache_read\":94010,\"cache_write\":8390,\"in\":10,\"out\":2866}}\nmodel: claude-haiku-5-5\neffort: low\nagent_s: 15\ntotal_s: 64\ncommit: 8c4f839\nmerged: true\nstatus: done\n```\nPolicymaker, iteration 0020.\n\nChanged: nothing in `execution/` or `policy/`. Only `policy/working-memory.md` was updated.\nOrdered: nothing. `.session/orders.json` was not written.\n\nWhy: `loop-state.json` shows no closed iteration records (`iterations: []`, `history.records: 0`), no pending suggestions, no open owner requests, `no_progress: 0`, and no audit report. Without outcomes there is no evidence for an organization change.\n\nOpen: `gate_accepted` is false, although request #162 (goal met) closed as completed. Confirm this before the next Policymaker run.\n\nWaiting for the iteration to continue: then `policy/` merges.\n",
+  "comment": 6914455098,
+  "issue": 386,
+  "snapshot": "c627d80e5fb378794e212ab49b790cde6b6b180e0d377240cdc1b86ed3ab32b8",
+  "source": "https://github.com/Kucze3205/Perpetua/issues/386#issuecomment-6914455098"
+ },
+ "schema_version": 1
+}

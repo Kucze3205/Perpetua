@@ -207,5 +207,28 @@ class OfflineAnalysis(unittest.TestCase):
         self.assertEqual(selected, [(0, "data-1"), (1, "data-2")])
 
 
+class LoopRuns(unittest.TestCase):
+    """What the run list of an iteration holds, as the API names the runs (`name` is the run-name, not the workflow's)."""
+
+    @staticmethod
+    def make(n, title, at, end, jobs=(), name=None):
+        return {"id": n, "name": name or title, "display_title": title, "created_at": at, "updated_at": end,
+                "jobs_list": [{"name": j, "created_at": at, "started_at": at, "completed_at": end} for j in jobs]}
+
+    def test_counts_kinds_tokenless_fallbacks_and_job_times(self):
+        record = {"started": "2026-11-15T14:11:23Z", "ended": "2026-11-15T14:22:24Z", "outcome": {"wall_s": 661}}
+        runs = [self.make(1, "Watchdog check", "2026-11-15T14:11:05Z", "2026-11-15T14:12:34Z", ["Check the loop"]),
+                self.make(2, "session #363 · policymaker", "2026-11-15T14:12:23Z", "2026-11-15T14:16:07Z", ["Prepare the session", "Take in results"]),
+                self.make(3, "Tokenless: verification for #367 [c237f69964e2]", "2026-11-15T14:20:42Z", "2026-11-15T14:21:03Z", ["Run the command / run"]),
+                self.make(4, "Engine tests", "2026-11-15T14:14:02Z", "2026-11-15T14:17:27Z", ["test"], name="Engine tests"),
+                self.make(5, "e2e-probe", "2026-11-15T14:23:26Z", "2026-11-15T14:24:27Z", ["probe"])]
+        self.assertEqual(analysis.session_issue(runs[1]), 363)
+        report = analysis.loop_runs(runs, record)
+        self.assertEqual(report["by_kind"], {"watchdog": 1, "session": 1, "tokenless": 1})
+        self.assertEqual(report["tokenless"], {"count": 1, "by_purpose": {"verification for": 1}})
+        self.assertEqual(report["jobs_by_name"]["Take in results"]["count"], 1)
+        self.assertEqual(report["timing_s"]["first_run_dispatched_to_last_run_end_s"], 598.0)
+
+
 if __name__ == "__main__":
     unittest.main()

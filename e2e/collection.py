@@ -109,8 +109,7 @@ def fetch_runs(out, R, begun):
         d = out / "github" / "runs" / str(r["id"])
         r["jobs_list"] = api_items("repos/%s/actions/runs/%s/jobs?per_page=100" % (R, r["id"]), "jobs")
         write_json(d / "jobs.json", r["jobs_list"])
-        found = re.match(r"session #(\d+)", r.get("display_title") or "")       # session.yml's run-name
-        r["issue"] = int(found.group(1)) if found and r["name"].lower() == "session" else None
+        r["issue"] = analysis.session_issue(r)            # session.yml's run-name; the API's `name` of such a run is that title too
         write_json(d / "run.json", {k: v for k, v in r.items() if k != "jobs_list"})
     return runs
 

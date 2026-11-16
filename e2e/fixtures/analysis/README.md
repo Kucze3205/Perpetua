@@ -8,7 +8,8 @@ context the CLI really reported on its first model call.
 
 - `report.json`: `run` (repo, commits, times, platform); `sessions` (report fields as the engine published them);
   `iteration_record`; `actions` (queue, start, job and step times, cron delay, concurrency, billable-minute estimate);
-  `actions_overhead` (prep, Tools, Stage, Epilogue around the agent per session run; width of the iteration: sessions, report sizes);
+  `loop_runs` (runs of the iteration by kind, Tokenless runs = fallbacks, time per job name, iteration wall time);
+  `actions_overhead` (every job of a session run, Tools, Stage around the agent; width of the iteration: sessions, report sizes);
   `growth` (`accumulating` x50, `per_iteration_not_scaled`, and what one iteration adds to the next sessions' inputs);
   `session_inputs` (estimated vs measured context, two projection models); `visibility` (did the planted step, the
   iteration's results and the exports reach the next iteration's sessions); `mechanics` (could the Policymaker change

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""When the Policymaker is called next. The engine runs this in the tokenless job (`python3 policymaker-trigger.py facts.json`)
+"""When the Policymaker is called next. The engine runs this without the token (`python3 policymaker-trigger.py facts.json`)
 and prints nothing else: one JSON object, {"reason": "<why>"} or {"reason": null}. The engine adds its own rules (one open
 Policymaker at a time; every iteration until the first session ended `done`) and validates the output; invalid output fails
 the iteration and rolls `policy/` back.

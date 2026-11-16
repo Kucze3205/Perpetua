@@ -9,6 +9,7 @@ import fakes
 from fakes import common as c, iteration as it, task, tasks_json
 import session_startup as startup
 from flow_fixtures import Flow
+import iteration_start as start
 
 BAD_STATE = "print('nope')\n"
 BAD_STARTUP = "print('{\"reads\": [\"policy/params.yml\"], \"prompt\": \"\", \"budget\": {\"status\": \"ok\"}}')\n"
@@ -47,7 +48,7 @@ class PinTest(unittest.TestCase):
 
 class PolicyJobTest(Flow):
     def started(self):
-        it.start_iteration()
+        start.start_iteration()
         return self.session_issue("orchestrator", n=0)
 
     def refused(self, script, body):
@@ -118,7 +119,7 @@ class PolicyJobTest(Flow):
         self.w.push_main({"execution/roles/worker/SKILL.md": "---\nname: worker\nstartup: [journal/focus.md]\n---\nWork.\n",
                           "journal/focus.md": BIG}, "a big startup read")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("t"))
         self.w.session(self.task_issue("t"), files={"src/t.txt": "t"})
         self.assertEqual([x["role"] for x in startup.pending()], ["worker"])

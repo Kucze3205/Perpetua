@@ -9,13 +9,14 @@ from fakes import common as c, iteration as it, task, tasks_json
 import watchdog
 from flow_fixtures import Flow
 from gate_fixtures import SCRIPT_GATE
+import iteration_start as start
 
 
 class PolicymakerTriggerTest(Flow):
     PARAMS = "policymaker_triggers:\n  every_iterations: 2\n  no_progress: 3\n"
 
     def test_the_policymaker_opens_the_iteration_on_its_count(self):
-        it.start_iteration()
+        start.start_iteration()
         self.assertEqual(self.hub.role_issues("policymaker"), [])                # iteration 0: no trigger due
         self.finish(0)
         self.finish(1)
@@ -33,47 +34,47 @@ class PolicymakerTriggerTest(Flow):
         self.assertIsNotNone(self.session_issue("orchestrator", n=2))
 
     def test_without_a_due_trigger_the_iteration_starts_on_the_last_organization(self):
-        it.start_iteration()
+        start.start_iteration()
         self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
         self.finish(0)                                                           # iteration 1: no trigger due either
         self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
         self.assertEqual(self.hub.role_issues("policymaker", "all")[-1]["number"], 0)      # only the fixture's old session
 
     def test_one_policymaker_session_at_a_time(self):
-        it.start_iteration()
+        start.start_iteration()
         self.finish(0)
         self.finish(1)
         self.assertEqual(len(self.hub.role_issues("policymaker")), 1)
-        self.assertIsNone(it.policymaker_due(3))
+        self.assertIsNone(start.policymaker_due(3)[0])
 
     def test_no_progress_calls_the_policymaker(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS + "policymaker_triggers:\n  no_progress: 1\n"}, "params")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.play_shaper(task("a"))
         self.w.session(self.task_issue("a"), files={"src/a.txt": "BAD"})       # rejected by the gate: no progress
         self.assertEqual(it.read_state(self.session_issue("policymaker"))["trigger"], "1 iterations without progress")
 
     def test_a_new_audit_report_calls_the_policymaker(self):
-        it.start_iteration()
+        start.start_iteration()
         self.policymaker_session(0)
-        self.assertIsNone(it.policymaker_due(1))                                      # one is open
+        self.assertIsNone(start.policymaker_due(1)[0])                                      # one is open
         self.hub.close_issue(self.session_issue("policymaker"))
-        self.assertIsNone(it.policymaker_due(1))
+        self.assertIsNone(start.policymaker_due(1)[0])
         self.w.push_main({"audit/latest.md": "numbers\n"}, "the audit merged")
         c.sync_main()
-        self.assertEqual(it.policymaker_due(1), "a new audit report")
+        self.assertEqual(start.policymaker_due(1)[0], "a new audit report")
 
     def test_audit_revision_is_acknowledged_once_even_when_commit_clock_is_older(self):
-        it.start_iteration()
+        start.start_iteration()
         first = self.policymaker_session(0)
         self.hub.close_issue(first)
         self.w.push_main({"audit/latest.md": "numbers\n"}, "audit revision")
         c.sync_main()
-        self.assertEqual(it.policymaker_due(1), "a new audit report")
+        self.assertEqual(start.policymaker_due(1)[0], "a new audit report")
         second = self.policymaker_session(0)
         self.hub.close_issue(second)
-        self.assertIsNone(it.policymaker_due(1))
+        self.assertIsNone(start.policymaker_due(1)[0])
 
 
 class PolicyScriptTest(Flow):
@@ -86,12 +87,12 @@ class PolicyScriptTest(Flow):
 
     def test_the_trigger_rule_is_policy_and_the_policymaker_can_change_it(self):
         self.set_script("import json\nprint(json.dumps({'reason': 'my own rule'}))\n")
-        it.start_iteration()
+        start.start_iteration()
         self.assertEqual(it.read_state(self.session_issue("policymaker"))["trigger"], "my own rule")
 
     def test_a_script_that_never_calls_it_leaves_the_last_organization(self):
         self.set_script("print('{\"reason\": null}')\n")
-        it.start_iteration()
+        start.start_iteration()
         self.assertEqual(self.hub.role_issues("policymaker"), [])
         self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
 
@@ -99,7 +100,7 @@ class PolicyScriptTest(Flow):
         good = open(self.SCRIPT, encoding="utf-8").read()
         fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
         self.set_script(body)
-        it.start_iteration()
+        start.start_iteration()
         self.assertEqual(it.read_json(it.record_path(0))["status"], "failed")
         c.sync_main()
         self.assertEqual(open(self.SCRIPT, encoding="utf-8").read(), good)             # rolled back
@@ -125,13 +126,13 @@ class PolicyScriptTest(Flow):
 
     def test_a_script_that_cannot_run_in_the_tokenless_job_fails_the_iteration(self):
         self.hub.tokenless_fault = "no-artifact"
-        n = it.start_iteration()
+        n = start.start_iteration()
         self.assertEqual(it.read_json(it.record_path(n))["status"], "failed")
 
     def test_one_open_policymaker_whatever_the_script_returns(self):
         self.set_script("raise SystemExit(1)\n")
         self.policymaker_session(0)
-        self.assertIsNone(it.policymaker_due(1))
+        self.assertIsNone(start.policymaker_due(1)[0])
 
 
 class FirstPolicymakerScriptTest(Flow):
@@ -140,7 +141,7 @@ class FirstPolicymakerScriptTest(Flow):
     def test_until_the_first_done_the_policymaker_is_called_whatever_the_script_returns(self):
         self.w.push_main({"policy/policymaker-trigger.py": "print('{\"reason\": null}')\n"}, "no trigger ever")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.assertEqual(it.read_state(self.session_issue("policymaker"))["trigger"], "the first iteration of the loop")
 
 
@@ -150,7 +151,7 @@ class FirstPolicymakerTest(Flow):
     ORDER = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
 
     def test_the_first_iteration_starts_with_the_policymaker_and_its_orders_become_its_tasks(self):
-        self.assertEqual(it.start_iteration(), 0)
+        self.assertEqual(start.start_iteration(), 0)
         cur = self.open_iteration()
         pol = self.session_issue("policymaker")
         self.assertEqual(c.report_fields(cur["number"])["phase"], "policy")
@@ -166,18 +167,18 @@ class FirstPolicymakerTest(Flow):
         self.assertEqual(self.hub.issues[pol]["state"], "closed")
 
     def test_the_first_trigger_returns_until_a_policymaker_session_ends_done(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         c.update_report(pol, {"status": "crashed"})
         self.hub.close_issue(pol)
-        self.assertEqual(it.policymaker_due(1), "the first iteration of the loop")
+        self.assertEqual(start.policymaker_due(1)[0], "the first iteration of the loop")
         retry = self.policymaker_session(1)
         c.update_report(retry, {"status": "done"})
         self.hub.close_issue(retry)
-        self.assertIsNone(it.policymaker_due(2))
+        self.assertIsNone(start.policymaker_due(2)[0])
 
     def test_a_policy_change_of_the_policy_phase_takes_effect_before_the_shaper_starts(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         rev = it.policy_rev()
         self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: faster" + chr(10)})
@@ -193,7 +194,7 @@ class FirstPolicymakerTest(Flow):
 
     def test_the_change_merges_in_its_iteration_when_the_label_filter_lags(self):
         self.hub.lagging_label = "awaiting:iteration"
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: faster" + chr(10)})
         self.assertIn("faster", self.w.origin_file("policy/params.yml"))
@@ -204,7 +205,7 @@ class FirstPolicymakerTest(Flow):
     def test_the_orders_alone_make_an_iteration_when_no_shaper_is_set(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": tasks_json(task("w", title="Build"))})   # a worker: any role is orderable
         w = self.task_issue("order-%s-w" % pol)
@@ -219,14 +220,14 @@ class FirstPolicymakerTest(Flow):
     def test_no_shaper_and_no_orders_fail_the_iteration_with_the_reason(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.w.session(self.session_issue("policymaker"))
         rec = self.record(0)
         self.assertEqual(rec["status"], "failed")
         self.assertIn("no shaper", rec["failure"])
 
     def test_a_crashed_policymaker_fails_open_with_the_last_organization(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, files={"policy/params.yml": "criterion: x" + chr(10)}, report=False, exit_code="1")
         self.assertEqual(self.hub.report(pol)["status"], "crashed")
@@ -237,11 +238,11 @@ class FirstPolicymakerTest(Flow):
 
     def test_an_iteration_closed_without_a_record_rolls_policy_back(self):
         fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
-        it.start_iteration()
+        start.start_iteration()
         self.w.push_main({"policy/params.yml": "criterion: broken\n"}, "what a Policymaker session merged")
         c.sync_main()
         self.hub.close_issue(self.open_iteration()["number"], "not planned")                   # closed by hand: no record
-        it.start_iteration()
+        start.start_iteration()
         self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))
         self.assertIn("closed without a record", self.hub.by_label("owner-request:notice")[0]["body"])
         self.assertEqual(it.iteration_number(self.open_iteration()), 1)
@@ -250,7 +251,7 @@ class FirstPolicymakerTest(Flow):
         fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         self.w.session(self.session_issue("policymaker"), session_files={"orders.json": tasks_json(task("w", role="nobody"))})
         self.assertEqual(self.record(0)["status"], "failed")
         self.assertIn("shaper: orchestrator", self.w.origin_file("policy/params.yml"))          # back to the setup baseline
@@ -266,7 +267,7 @@ class PolicymakerTest(Flow):
     ORDER = tasks_json(task("e", role="evaluator", title="Fix evaluator"))
 
     def test_the_iteration_records_the_orders_of_the_policy_phase(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.ORDER})
         self.w.session(self.task_issue("order-%s-e" % pol))
@@ -278,7 +279,7 @@ class PolicymakerTest(Flow):
         self.assertEqual({t["id"]: t.get("pass") for t in rec["tasks"]}, {"order-%s-e" % pol: 1, "t0": None})    # the shaper's task has no pass
 
     def test_an_order_of_a_role_outside_policymaker_only_roles_is_refused(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": tasks_json(task("w"))})
         self.assertIsNone(self.task_issue("order-%s-w" % pol))
@@ -289,7 +290,7 @@ class PolicymakerTest(Flow):
         self.assertIn("orders only", it.index_lines()[0]["orders_refused"])
 
     def test_a_policymaker_change_outside_its_zone_is_refused(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, files={"engine.yml": "# hacked" + chr(10)})
         self.assertEqual(self.hub.report(pol)["status"], "blocked")
@@ -297,7 +298,7 @@ class PolicymakerTest(Flow):
         self.assertNotIn("hacked", self.w.origin_file("engine.yml"))
 
     def test_the_policymaker_cannot_touch_the_evaluator(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, files={"policy/evaluator/gate.sh": "echo hacked"})
         self.finish(0)
@@ -322,7 +323,7 @@ class PolicyPhaseTest(Flow):
         return c.report_fields(self.open_iteration()["number"])["phase"]
 
     def test_the_policymaker_returns_when_an_ordered_session_failed_and_sees_it(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         orders = json.dumps({"tasks": [task("e", role="evaluator"), task("a", role="audit")], "wake": True})
         self.w.session(pol, session_files={"orders.json": orders})
@@ -336,7 +337,7 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(it.stored_state(pol, sess, role="policymaker")["policy_pass"]["pass"], 2)
 
     def test_a_pass_may_defer_its_changes_to_the_end_of_the_policy_phase(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         later = json.dumps({"merge": "later", "wake": True, "tasks": json.loads(self.E)["tasks"]})
         self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)}, session_files={"orders.json": later})
@@ -352,7 +353,7 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(it.read_state(self.open_iteration()["number"])["policy_params"]["criterion"], "one")
 
     def test_a_deferred_change_of_the_evaluator_is_refused_at_the_end_of_the_phase_with_the_rest_of_the_branch(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         later = json.dumps({"merge": "later", "wake": True, "tasks": json.loads(self.E)["tasks"]})
         self.w.session(pol, files={"policy/evaluator/gate.sh": "echo hacked", "policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)},
@@ -365,7 +366,7 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.phase(), "shape")
 
     def test_an_audit_ordered_and_read_in_the_iteration_does_not_call_the_policymaker_in_the_next(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_A})
         self.w.session(self.task_issue("order-%s-a" % pol), files={"audit/latest.md": "numbers"})
@@ -375,10 +376,10 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(len(self.hub.role_issues("policymaker", "all")), 1)     # iteration 1: no session for the report
         self.w.push_main({"audit/latest.md": "changed"}, "a later audit")
         c.sync_main()
-        self.assertEqual(it.policymaker_due(2), "a new audit report")
+        self.assertEqual(start.policymaker_due(2)[0], "a new audit report")
 
     def test_a_long_policy_phase_opens_one_informational_notice_that_blocks_nothing(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         notices = lambda: self.hub.by_label("owner-request:notice", "all")
         for k, (orders, tid) in enumerate([(self.WAKE_E, "e"), (self.WAKE_A, "a")] * 3, 1):
@@ -394,7 +395,7 @@ class PolicyPhaseTest(Flow):
         self.assertIsNotNone(self.session_issue("orchestrator"))
 
     def test_refused_orders_end_the_policy_phase(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": json.dumps({"tasks": [task("e", role="evaluator"), task("w")], "wake": True})})
         self.assertIsNone(self.task_issue("order-%s-e" % pol))                   # refused whole
@@ -402,7 +403,7 @@ class PolicyPhaseTest(Flow):
         self.assertIn("orders only", c.report_fields(self.open_iteration()["number"])["orders_refused"])
 
     def test_the_watchdog_resumes_a_policymaker_whose_ordered_session_ended_without_an_event(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         self.hub.close_issue(self.task_issue("order-%s-e" % pol))                # the end-of-session event is lost
@@ -414,7 +415,7 @@ class PolicyPhaseTest(Flow):
         self.assertNotIn("awaiting:orders", self.hub.issue(pol)["_labels"])
 
     def test_a_policymaker_waiting_for_orders_past_the_age_limit_ends_and_the_iteration_fails_open(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         self.hub.runs.clear()
@@ -431,14 +432,14 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.phase(), "shape")
 
     def test_a_failed_iteration_does_not_leave_the_waiting_policymaker_open(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         it.fail_iteration(0, "test")
         self.assertEqual(self.hub.issues[pol]["state"], "closed")
 
     def test_a_crashed_second_run_fails_open(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         self.w.session(self.task_issue("order-%s-e" % pol))
@@ -447,7 +448,7 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.phase(), "shape")
 
     def test_the_record_gives_the_pass_that_placed_each_order(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         self.w.session(self.task_issue("order-%s-e" % pol))
@@ -459,7 +460,7 @@ class PolicyPhaseTest(Flow):
                          {"order-%s-e" % pol: 1, "order-%s-2-a" % pol: 2, "t0": None})
 
     def test_a_woken_run_may_wake_again(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         for k, (orders, tid, role) in enumerate([(self.WAKE_E, "e", "evaluator"), (self.WAKE_A, "a", "audit")] * 3, 1):
             self.w.session(pol, session_files={"orders.json": orders})
@@ -472,7 +473,7 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(self.phase(), "shape")
 
     def test_the_relaunched_branch_holds_what_merged_and_a_second_run_merges_its_own_change(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         orders = json.dumps({"tasks": [task("e", role="evaluator", title="Fix evaluator")], "wake": True})
         self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS + "criterion: one" + chr(10)}, session_files={"orders.json": orders})
@@ -490,7 +491,7 @@ class PolicyPhaseTest(Flow):
         return self.record(0)
 
     def test_with_wake_the_shaper_starts_only_after_the_run_that_follows_the_orders_ordered_nothing(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.WAKE_E})
         e = self.task_issue("order-%s-e" % pol)
@@ -511,7 +512,7 @@ class PolicyPhaseTest(Flow):
     def test_no_pass_sequence_an_audit_ordered_before_workers_runs_first_through_dependencies(self):
         self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
         c.sync_main()
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": tasks_json(task("a", role="audit"), task("w", blocked_by=["a"]))})
         a, w = self.task_issue("order-%s-a" % pol), self.task_issue("order-%s-w" % pol)
@@ -524,7 +525,7 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(sorted(t["id"] for t in self.record(0)["tasks"]), ["order-%s-a" % pol, "order-%s-w" % pol])
 
     def test_without_wake_the_orders_run_beside_the_shaper_and_the_policymaker_does_not_return(self):
-        it.start_iteration()
+        start.start_iteration()
         pol = self.session_issue("policymaker")
         self.w.session(pol, session_files={"orders.json": self.E})
         e = self.task_issue("order-%s-e" % pol)
@@ -544,7 +545,7 @@ class PolicymakerFailureTest(Flow):
         saved = it.revert_policy
         it.revert_policy = lambda why: calls.append(why) or True
         try:
-            it.start_iteration()
+            start.start_iteration()
             self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
             self.assertEqual(calls, [])
             self.finish(0)
@@ -561,7 +562,7 @@ class PolicymakerFailureTest(Flow):
         saved = it.revert_policy
         it.revert_policy = lambda why: calls.append(why) or True
         try:
-            it.start_iteration()
+            start.start_iteration()
             pol = self.session_issue("policymaker")
             for _ in range(2):
                 self.w.session(pol, session_files={"orders.json": json.dumps({"tasks": [task("e", role="evaluator")], "wake": True})})
@@ -580,7 +581,7 @@ class PolicymakerFailureTest(Flow):
         saved = it.revert_policy
         it.revert_policy = lambda why: calls.append(why) or True
         try:
-            it.start_iteration()
+            start.start_iteration()
             self.w.session(self.session_issue("policymaker"))
             self.finish(0)
             pol = self.session_issue("policymaker")
@@ -597,7 +598,7 @@ class PolicymakerFailureTest(Flow):
         saved, listed = it.revert_policy, c.list_issues
         it.revert_policy = lambda why: calls.append(why) or True
         try:
-            it.start_iteration()
+            start.start_iteration()
             for k in range(2):
                 self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
                 self.finish(k)

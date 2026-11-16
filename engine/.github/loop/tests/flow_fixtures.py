@@ -5,6 +5,7 @@ import unittest
 import fakes
 from fakes import common as c, iteration as it, task, tasks_json
 from gate_fixtures import GATE_SH, SCRIPT_GATE
+import iteration_start as start
 
 
 class Flow(unittest.TestCase):
@@ -54,4 +55,4 @@ class Flow(unittest.TestCase):
 
     def policymaker_session(self, n=0):
         """A Policymaker session opening iteration n, started by hand (the iteration is open without waiting for it)."""
-        return it.start_policymaker(n, "a test")
+        return start.start_policymaker(n, "a test")

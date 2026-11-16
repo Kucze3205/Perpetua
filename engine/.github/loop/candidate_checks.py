@@ -8,16 +8,13 @@ from the accepted tree), the shaper's task graph and the Policymaker's orders (`
 Policymaker's managed set at the iteration boundary, and the evaluator change a verifier passed. What it predicts wrong costs
 time, never correctness: a bundle it did not plan, or planned on another main, goes to a Tokenless run in "Take in results".
 
-The bundles and the engine's code that runs them (`check_results.run`) are one artifact, pinned by digest (`artifact_pin`).
+The bundles and the engine's code that runs them (`check_results.run`) are one artifact, pinned by digest (`check_results.ship`).
 Nothing planned: no artifact, and "Check the results" does not run.
 """
 import json
 import os
-import shutil
-import tarfile
 import tempfile
 
-import artifact_pin
 import check_results
 import common as c
 import iteration as it
@@ -27,8 +24,6 @@ import policy_apply
 import policymaker_session
 import session_finalize
 import task_graph as graph
-
-MINUTES = 340       # the time limit of "Check the results": its bundles' limits added up, and at most this (a job gets 360)
 
 
 def prepare(n, artifact, baseline, digest, out):
@@ -42,17 +37,7 @@ def prepare(n, artifact, baseline, digest, out):
             walk(n, work, tmp)
         except (Exception, SystemExit) as error:        # a prediction: "Take in results" runs what is missing
             c.say("session #%s: the checks were planned only in part: %s" % (n, error))
-    if not plan["checks"]:
-        c.set_output(count="0", minutes="1")
-        return
-    with open(os.path.join(root, "bundles", "plan.json"), "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(plan["checks"], fh)
-    shutil.copytree(".github/loop", os.path.join(root, "engine"), ignore=shutil.ignore_patterns("tests", "data", "__pycache__"))
-    os.makedirs(out)
-    with tarfile.open(os.path.join(out, "checks.tar.gz"), "w:gz") as tar:
-        tar.add(root, arcname="checks")
-    c.set_output(count=str(len(plan["checks"])), minutes=str(min(MINUTES, 10 + sum(x["minutes"] for x in plan["checks"]))),
-                 digest=artifact_pin.digest(out))
+    check_results.ship(plan, out)
 
 
 def status(n, work, tmp, script):

@@ -104,8 +104,9 @@ when updating a loop.
 
 ## Session lifecycle and outputs
 
-`session.yml` (displayed as *Session*) runs six jobs. Every job, step and command has a name that says what it does;
-the job ids (`prep`, `policy`, `session`, `checks_prep`, `checks`, `epilogue`) stay the same.
+`session.yml` (displayed as *Session*) runs six jobs, and *Iteration start* when the session's end starts an iteration.
+Every job, step and command has a name that says what it does; the job ids (`prep`, `policy`, `session`, `checks_prep`,
+`checks`, `epilogue`, `start`) stay the same.
 
 - `prep`, *Prepare the session* (GitHub token): checks AUTOPILOT and the LLM provider credentials
   (`check-autopilot`, `check-credentials`), loads the session settings (`session-settings`), checks out the engine and
@@ -142,6 +143,12 @@ the job ids (`prep`, `policy`, `session`, `checks_prep`, `checks`, `epilogue`) s
   planned, outputs that do not validate) runs in a Tokenless run, as before. The rebase is reproducible (committer date of
   the baseline), so the same candidate on the same main is the same commit. The run's Summary shows the checks
   (`verification`, `check`, the gate's verdict and reason); Loop status shows them in the task's node.
+- `start`, *Iteration start* (`iteration-start.yml`, also called by `watchdog.yml`; only when *Take in results* says a
+  start or a goal check is due): *Decide whether the Policymaker runs* (`permissions: {}`, no secret, no checkout) checks
+  the facts *Take in results* pinned and runs `policy/policymaker-trigger.py` and the goal gate on them (`run-checks`);
+  what they printed goes only to its job outputs. *Start the iteration* (GitHub token, `start-iteration`,
+  `iteration_start.py`) takes those outputs in as data and opens the Policymaker or begins the execution phase; for facts
+  that changed since, it runs the script or the gate in a Tokenless run.
 
 Any job of a run can upload artifacts, so every artifact a job relies on is pinned by a digest that reached it through
 the outputs of the job that made it (`artifact_pin.py`, ADR-0006).

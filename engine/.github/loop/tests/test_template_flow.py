@@ -19,6 +19,7 @@ import managed_resources as resources
 import setup_roles
 from gate_fixtures import GATE_SH
 from proposal_fixtures import PROPOSAL
+import iteration_start as start
 
 
 class TemplateFlowTest(unittest.TestCase):
@@ -66,7 +67,7 @@ class TemplateFlowTest(unittest.TestCase):
         return work
 
     def test_selected_shaper_product_suggestion_atomic_change_and_rollback(self):
-        self.assertEqual(it.start_iteration(), 0)
+        self.assertEqual(start.start_iteration(), 0)
         shaper = self.hub.role_issues('orchestrator')[0]['number']
         staged = self.stage(shaper)
         capabilities = json.loads((staged / '.session/capabilities.json').read_text())
@@ -82,7 +83,7 @@ class TemplateFlowTest(unittest.TestCase):
         self.assertEqual(record['status'], 'closed')
         # Keep the controller at an explicit boundary while a new set is prepared.
         with patch.object(watchdog, 'reconcile'):
-            policymaker = it.start_policymaker(1, 'new session suggestion')
+            policymaker = start.start_policymaker(1, 'new session suggestion')
             staged = self.stage(policymaker)
             state = json.loads((staged / '.session/loop-state.json').read_text())
             pending = state['suggestions']
@@ -98,7 +99,7 @@ class TemplateFlowTest(unittest.TestCase):
         receipt = it.applied('changes', it.change_id(policymaker))
         self.assertEqual(receipt['policy_rev_before'], self.initial)
         self.assertEqual(receipt['policy_rev_after'], resources.revision())
-        later = it.start_policymaker(2, 'after the decision')
+        later = start.start_policymaker(2, 'after the decision')
         state = json.loads((self.stage(later) / '.session/loop-state.json').read_text())
         self.assertEqual(state['suggestions'], [])
         self.assertEqual(self.w.origin_file('policy/roles/policymaker/reference.md'), 'private governance')

@@ -10,7 +10,9 @@
 # only in its job outputs; "Take in results" (GitHub token, a fresh runner) takes the session's files in as data (links,
 # redirected paths and oversized files are refused), uses those outputs where its checks are the same (otherwise they go
 # to a Tokenless run, as when main moved) and does everything else itself. The executor baseline reaches the token jobs
-# through its own artifact, which the session never sees.
+# through its own artifact, which the session never sees. When the session's end makes an iteration start, or makes the
+# goal gate due, "Iteration start" follows (`iteration-start.yml`): "Decide whether the Policymaker runs" (no token) and
+# "Start the iteration" (GitHub token).
 # Every artifact a job relies on is pinned by a digest that came through the outputs of the job that made it: any job of a
 # run can upload artifacts (ADR-0006). A job without the engine checks it in the shell, as `pinned` below does
 # (`artifact_pin.py` explains the digest).
@@ -388,6 +390,11 @@ jobs:
     needs: [prep, policy, session, checks_prep, checks]
     if: always() && needs.prep.outputs.go == 'true' && needs.prep.result == 'success'
     runs-on: ubuntu-latest
+    outputs:
+      start: ${{ steps.take.outputs.start }}
+      count: ${{ steps.take.outputs.count }}
+      minutes: ${{ steps.take.outputs.minutes }}
+      digest: ${{ steps.take.outputs.digest }}
     env:
       ISSUE: ${{ inputs.issue }}
       ROLE: ${{ needs.prep.outputs.role }}
@@ -427,6 +434,7 @@ jobs:
           name: policy-results
           path: ${{ runner.temp }}/policy-results
       - name: Check, gate and merge the results
+        id: take
         working-directory: loop
         env:
           GH_TOKEN: ${{ github.token }}
@@ -437,9 +445,17 @@ jobs:
           POLICY_DIGEST: ${{ needs.policy.outputs.digest }}
           # the results of the checks come only from the outputs of the job that ran them, never from an artifact
           CHECKS_RESULTS: ${{ needs.checks.outputs.results }}
+          # an iteration due to start waits for the jobs of "Iteration start": the facts they decide on go here
+          START_PLAN: ${{ runner.temp }}/start-facts
         run: |
           pip install -q pyyaml
           python3 .github/loop/loop.py take-results "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}" "$RUNNER_TEMP/policy-results"
+      - name: Upload the facts for the iteration start
+        if: always() && steps.take.outputs.start == 'true' && steps.take.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: start-facts
+          path: ${{ runner.temp }}/start-facts
       # a release asset, not an artifact: the artifact quota of an account can be used up, and then nothing is stored
       - name: Store the capture (E2E only)
         if: always() && vars.E2E_CAPTURE == 'on'
@@ -451,3 +467,13 @@ jobs:
           cp "$RUNNER_TEMP/results/capture.tgz" "$RUNNER_TEMP/$name.tgz"
           gh release create e2e-capture --title e2e-capture --notes "Session captures of the E2E test" --target "$DEFAULT_BRANCH" -R "$GITHUB_REPOSITORY" || true
           gh release upload e2e-capture "$RUNNER_TEMP/$name.tgz" --clobber -R "$GITHUB_REPOSITORY"
+
+  start:
+    name: Iteration start
+    needs: epilogue
+    if: always() && needs.epilogue.outputs.start == 'true'
+    uses: ./.github/workflows/iteration-start.yml
+    with:
+      count: ${{ needs.epilogue.outputs.count }}
+      minutes: ${{ needs.epilogue.outputs.minutes }}
+      digest: ${{ needs.epilogue.outputs.digest }}

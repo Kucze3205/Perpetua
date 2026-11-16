@@ -7,6 +7,7 @@ from datetime import timedelta
 import closing
 import common as c
 import iteration as it
+import iteration_start as start
 
 
 MAX_AGE_DAYS = 30
@@ -163,7 +164,7 @@ def commitments():
 def kick():
     """A jam: kick before calling. Fruitless kicks are counted in the issue's report."""
     if not it.open_iteration():
-        it.start_iteration()
+        start.begin()          # with the jobs that start an iteration after this check, they do it (iteration_start.prepare)
         return 0
     ready = [x for x in loop_open() if c.is_unblocked(x["number"]) and not (c.label_names(x) & {"blocked:rate-limit", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"})]
     if not ready:

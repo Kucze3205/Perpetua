@@ -9,6 +9,7 @@ import session_start
 import session_reports as reports
 from session_fixtures import SessionCase
 from proposal_fixtures import PROPOSAL
+import iteration_start as start
 
 
 class ReportsTest(SessionCase):
@@ -50,10 +51,10 @@ class ReportsTest(SessionCase):
             self.assertIn("Evidence: three full-tree reads", fh.read())
         decision = {proposal["id"]: {"status": "handled", "reason": "Updated the worker's context budget"}}
         self.w.session(pol, files={"policy/suggestion-decisions.json": json.dumps(decision)})
-        later = it.start_policymaker(1, "after the decision")
+        later = start.start_policymaker(1, "after the decision")
         self.assertEqual(self.pending(later), [])
         self.assertEqual(self.w.origin_file(archive), raw)        # the archive is not rewritten by decisions
-        self.assertIsNone(it.policymaker_due(1))
+        self.assertIsNone(start.policymaker_due(1)[0])
 
     def test_shaper_reads_report_body_without_network_and_untrusted_marker_is_ignored(self):
         good, _ = self.producer()
@@ -76,7 +77,7 @@ class ReportsTest(SessionCase):
             issues.append(n)
             self.assertEqual(self.w.origin_file("iterations/suggestions/%s.json" % n), text)
             self.assertTrue(all("Prose of" in doc["report"]["body"] for _, doc in reports.source_records(n)))
-        pol = it.start_policymaker(1, "test")
+        pol = start.start_policymaker(1, "test")
         state = self.read(os.path.join(self.stage(pol), "loop-state.json"))
         self.assertEqual(len(state["suggestions"]), 1)
         self.assertEqual(state["suggestions"][0]["source"]["issue"], issues[1])
@@ -85,13 +86,13 @@ class ReportsTest(SessionCase):
     def test_pending_trigger_consumed_once_but_new_suggestion_still_triggers(self):
         self.producer()                                           # its end started iteration 0, opened by the Policymaker
         pol = self.hub.role_issues("policymaker")[0]["number"]
-        self.assertIsNone(it.policymaker_due(1))  # Policymaker is open
+        self.assertIsNone(start.policymaker_due(1)[0])  # Policymaker is open
         self.producer()
         self.hub.close_issue(pol)
-        self.assertEqual(it.policymaker_due(1), "new session suggestions")
-        later = it.start_policymaker(1, "new session suggestions")
+        self.assertEqual(start.policymaker_due(1)[0], "new session suggestions")
+        later = start.start_policymaker(1, "new session suggestions")
         self.hub.close_issue(later)
-        self.assertIsNone(it.policymaker_due(1))  # still pending; already delivered
+        self.assertIsNone(start.policymaker_due(1)[0])  # still pending; already delivered
 
     def test_empty_outbox_does_not_trigger(self):
         self.producer("[]")

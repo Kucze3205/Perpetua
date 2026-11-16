@@ -175,7 +175,7 @@ class EpilogueTest(SessionCase):
         n = self.issue(body="## Goal\nx\n## Verification\n`test -f src/a.txt`\n")
         self.w.session(n, files={"src/a.txt": "A"})
         self.assertEqual(self.hub.report(n)["status"], "done")
-        self.assertTrue(self.hub.tokenless)
+        self.assertIn("verification for #%s" % n, self.hub.checked)          # without the token, in "Check the results"
 
     def test_a_refused_merge_ends_blocked(self):
         n = self.issue()
@@ -208,7 +208,7 @@ class EpilogueTest(SessionCase):
         after = self.issue("worker", title="After")
         self.hub.add_blocker(after, n)
         self.w.session(n, status="partial", files={"src/a.txt": "half"}, report_extra="## What next\n- go on\n\n## Successor\ntitle: Part two\nbody: finish it\n")
-        succ = max(self.hub.issues)
+        succ = max(x for x in self.hub.issues if "generation:1" in self.hub.issues[x]["_labels"])     # the iteration start comes after it
         s = self.hub.issues[succ]
         self.assertEqual(s["title"], "Part two")
         self.assertIn("generation:1", s["_labels"])
@@ -217,7 +217,7 @@ class EpilogueTest(SessionCase):
         self.assertIn((after, succ), self.hub.deps)                                  # what waited for the parent waits for the successor
         self.assertEqual(self.hub.issues[after]["state"], "open")
         self.assertEqual(self.hub.issues[n]["state"], "closed")
-        self.assertEqual(self.hub.dispatched[-1][1]["issue"], succ)
+        self.assertIn(succ, [int(i["issue"]) for w, i in self.hub.dispatched if w == "session.yml"])
 
     def test_the_third_generation_does_not_delegate(self):
         n = self.issue(labels=["generation:3"])

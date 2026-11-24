@@ -643,6 +643,17 @@ def marker(body, name):
     return m.group(1) if m else None
 
 
+def start_ref(name):
+    """What a session can start from for an ordered `start_branch`: the branch while it is on origin, else the newest
+    `iter/NNNN/N` tag of a deleted `task/N` (what the engine leaves of unmerged work), else None."""
+    listing = lambda *refs: git(".", "ls-remote", "origin", *refs, check=False, remote=True).stdout
+    if listing("refs/heads/" + name).strip():
+        return name
+    m = re.fullmatch(r"task/(\d+)", name)
+    tags = re.findall(r"refs/tags/(iter/\d{4}/%s)$" % m.group(1), listing("refs/tags/iter/*/" + m.group(1)), re.M) if m else []
+    return max(tags, default=None)
+
+
 # ---------------------------------------------------------------- launching sessions
 
 LAUNCHED = set()     # dispatches from this process: `gh run list` shows a new run late

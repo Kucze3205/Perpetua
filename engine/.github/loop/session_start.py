@@ -102,7 +102,13 @@ def resolve(n):
     options = session_options(i, role, p)
     branch = "task/%s" % n
     has = c.git(".", "ls-remote", "--exit-code", "--heads", "origin", branch, check=False, remote=True).returncode == 0
-    start = branch if has else (c.marker(i["body"], "start-branch") or c.default_branch())
+    wanted = c.marker(i["body"], "start-branch")
+    start = branch if has else (c.start_ref(wanted) if wanted else c.default_branch())
+    if start is None:
+        why = "The session did not start: start branch `%s` is on origin neither as a branch nor as an `iter/*` tag." % wanted
+        closing.close_out(n, i, "blocked", {"cause": "start:start-branch"}, why)
+        watchdog.reconcile()
+        raise SystemExit(why)
     c.edit_labels(n, remove=["blocked:rate-limit", "conflict"])
     agent = options["kind"] == "agent"
     c.set_output(**options, start=start, consented="true" if granted else "false",

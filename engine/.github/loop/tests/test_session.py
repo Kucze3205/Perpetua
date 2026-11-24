@@ -47,11 +47,29 @@ class ResolveTest(SessionCase):
 
     def test_the_start_branch_is_the_marker_or_the_existing_task_branch(self):
         n = self.issue(body="x\n<!-- start-branch: task/77 -->\n")
+        self.w.branch(77, {"src/b.txt": "y"})
         session_start.resolve(n)
         self.assertEqual(self.outputs()["start"], "task/77")
         self.w.branch(n, {"src/a.txt": "x"})
         session_start.resolve(n)
         self.assertEqual(self.outputs()["start"], "task/%s" % n)
+
+    def test_a_deleted_task_branch_starts_from_the_newest_iteration_tag(self):
+        for tag in ("iter/0003/77", "iter/0005/77", "iter/0009/177"):      # the last one is task 177, not 77
+            self.w.branch(77, {"src/a.txt": tag})
+            fakes.sh(self.w.origin, "git", "tag", tag, "task/77")
+        fakes.sh(self.w.origin, "git", "branch", "-D", "task/77")
+        n = self.issue(body="x\n<!-- start-branch: task/77 -->\n")
+        session_start.resolve(n)
+        self.assertEqual(self.outputs()["start"], "iter/0005/77")
+
+    def test_a_missing_start_branch_blocks_the_session_without_an_outage(self):
+        n = self.issue(body="x\n<!-- start-branch: task/77 -->\n")
+        with self.assertRaises(SystemExit):
+            session_start.resolve(n)
+        self.assertEqual(self.hub.report(n)["status"], "blocked")
+        self.assertEqual(self.hub.report(n)["cause"], "start:start-branch")
+        self.assertIn("task/77", self.hub.prose(n))
 
     def test_refusals_close_the_issue_as_blocked(self):
         for role, why in (("nobody", "no profile"), ("ghost", "no skill"), ("cmdless", "no command")):

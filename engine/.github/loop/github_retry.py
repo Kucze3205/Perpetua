@@ -1,8 +1,9 @@
 """A passing GitHub failure is asked again, never taken for GitHub's answer: one HTTP 500 must not stop the loop.
 
 `gh` names the status of a refused API call as `HTTP <code>`. A 5xx, or no status at all (no answer: a lost connection), is
-GitHub's failure and passes. Any other status (404, 409, 422) is an answer the engine's callers rely on, so a call is
-asked again only for the first.
+GitHub's failure and passes. Any other status (404, 409, 422) is an answer the engine's callers rely on, so a read is asked
+again only for the first. A write the engine must not leave undone (a dispatch, a download, a label edit, a close) is asked
+again on any failure.
 
 Standard library only.
 """
@@ -11,6 +12,7 @@ import subprocess
 import time
 
 READ_PAUSES_S = (2, 8)
+WRITE_PAUSES_S = (2, 10)
 
 
 def passing(stderr):
@@ -27,3 +29,8 @@ def run(args, inp=None, pauses=READ_PAUSES_S, again=passing):
         if r.returncode == 0 or pause is None or not again(r.stderr):
             return r
         time.sleep(pause)
+
+
+def write(args, inp=None):
+    """A write the engine must not leave undone: asked again on any failure."""
+    return run(args, inp, WRITE_PAUSES_S, lambda stderr: True)

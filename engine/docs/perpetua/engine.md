@@ -214,6 +214,15 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
   (after 2 and 8 s); any other answer (404, 409, 422) is final. When *Prepare the session* fails anyway, the job *Try the
   session again later* parks the session (`paused`, `cause: stage-failed`, `blocked:rate-limit`) and dispatches its resume
   5 minutes on, then 30; the third failure in a row opens an outage. A session that reaches *Take in results* clears the count.
+  A dispatch, a result download, a label edit and a close are asked again on any failure (after 2 and 10 s). A dispatch
+  GitHub keeps refusing is no launch (the watchdog's kicks count it); a close it keeps refusing turns the run red before the
+  labels go, so the open issue is the watchdog's;
+- never blames the policy or the agent for a job GitHub did not run. A policy script whose tokenless job left no output, or
+  no `stdout.txt` (the job creates it before the script starts), did not run: the iteration fails without a rollback where
+  it was deciding (the start, the policy pass), and anywhere else the run turns red and the work is tried again. A script
+  that left `stdout.txt` and no exit code ran out of time: a policy fault, rolled back as before. A `## Verification` or
+  `check` command the job never ran costs no fix round (the run turns red, the session stays open); one that fails still
+  costs one. Sessions a failed iteration ended (`cause: iteration-failed`) do not count toward the crash outage below;
 - `ceilings.iteration_minutes` (the Policymaker's own): fails an iteration that runs past it;
 - `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, both managed roots are rolled back to the
   state in which the last iteration closed (at the start: the `setup-baseline` tag), and a `notice` is opened for the owner.

@@ -443,7 +443,8 @@ def audit_revision():
 
 def run_policy_script(name, facts, max_bytes=policy_script.OUTPUT_BYTES):
     """The JSON object `policy/<name>` prints for `facts`, run on a machine without the token (`python3 <script> facts.json`).
-    Anything else - no output, over `max_bytes`, a failed run, not one JSON object - raises PolicyScriptError. None: no script."""
+    Anything else - over `max_bytes`, a failed run or one out of time, not one JSON object - raises PolicyScriptError; a job
+    that never ran the script raises check_results.TokenlessUnavailable (GitHub's failure rolls nothing back). None: no script."""
     path = "%s/%s" % (resources.ROOT, name)
     if not os.path.isfile(path):
         return None
@@ -456,14 +457,7 @@ def run_policy_script(name, facts, max_bytes=policy_script.OUTPUT_BYTES):
         out = check_results.run_bundle(bundle, policy_script.MINUTES, "policy script %s" % name, keep=max_bytes + 1)
     finally:
         shutil.rmtree(bundle, ignore_errors=True)
-    try:
-        with open(os.path.join(out, "exit-code"), encoding="utf-8") as fh:
-            code = fh.read().strip()
-        with open(os.path.join(out, "stdout.txt"), encoding="utf-8", errors="replace") as fh:
-            text = fh.read(max_bytes + 1)
-    except (OSError, TypeError):
-        raise PolicyScriptError("policy/%s returned no output" % name)
-    return policy_script.parse(name, code, text, max_bytes)
+    return policy_script.parse(name, *check_results.script_output(name, out, max_bytes + 1), max_bytes)
 
 
 def policy_errors(name, facts):
@@ -504,8 +498,13 @@ def orders_of(sessions):
 
 
 def place_orders(n, it, orders):
-    """The orders of a Policymaker session left over from an earlier iteration become tasks of iteration n, running beside the shaper and its graph. True when placed."""
-    errs = validate_tasks({"tasks": orders}, ordered=True)
+    """The orders of a Policymaker session left over from an earlier iteration become tasks of iteration n, running beside the
+    shaper and its graph. True when placed. Orders already in the graph (a list still showing the session) are dropped."""
+    taken = {t["id"] for t in graph.read(n)}
+    orders = [o for o in orders if o.get("id") not in taken]
+    if not orders:
+        return False
+    errs = validate_tasks({"tasks": orders}, ordered=True, taken=taken)
     if errs:
         c.update_report(it, {"orders_refused": "; ".join(errs[:6])[:300]}, "The Policymaker's orders were refused: %s." % "; ".join(errs[:6]))
         return False
@@ -574,8 +573,9 @@ def advance():
         elif policy_settled(n):
             try:
                 policy_pass(n, it["number"])
-            except PolicyScriptError as e:
-                fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
+            except (PolicyScriptError, check_results.TokenlessUnavailable) as e:
+                policy = isinstance(e, PolicyScriptError)       # a job GitHub never ran is no fault of the policy: nothing rolls back
+                fail_iteration(n, "invalid policy script output: %s" % e if policy else str(e), rollback=policy)
     elif phase == "starting":          # being decided, or lost: decided again (iteration_start.lost)
         start.begin()
     return n

@@ -12,7 +12,7 @@ import iteration_start as start
 
 MAX_AGE_DAYS = 30
 MAX_KICKS = 3
-CRASH_STREAK = 3                # consecutive `crashed` without a commit
+CRASH_STREAK = 3                # consecutive `crashed` without a commit, not counting those a failed iteration ended
 MAX_SLEEP_S = 340 * 60          # resume.yml: a job is limited to 360 min; a longer park is the watchdog's
 GRACE_MIN = 30                  # covers dispatch latency, never working time
 STAGE_RETRY_MIN = (5, 30)       # the waits before a session GitHub kept from starting is tried again
@@ -75,7 +75,8 @@ def drive():
     roll back policy; no commitments -> kick or start the next iteration."""
     if crash_streak():
         c.open_outage("%s sessions in a row crashed without a commit" % CRASH_STREAK,
-                      "The last %s sessions ended `crashed` with no commit. The counter is blind to the cause." % CRASH_STREAK,
+                      "The last %s sessions ended `crashed` with no commit. Sessions a failed iteration ended are not counted "
+                      "(failed iterations have a count of their own); otherwise the counter is blind to the cause." % CRASH_STREAK,
                       "Look at the machine cause (`cause`) in the reports of the latest sessions and fix it.")
         c.say("outage: %s sessions in a row crashed without a commit" % CRASH_STREAK)
         return 1
@@ -108,13 +109,17 @@ def crash_streak():
     closed = c.list_issues(state="closed", labels=("outage",))
     since = max([x["closed_at"] for x in closed if x.get("closed_at")], default="")
     sessions = [x for x in c.recent_closed() if x["closed_at"] > since and c.in_loop(c.label_names(x))]
-    if len(sessions) < CRASH_STREAK:
-        return False
-    for x in sessions[:CRASH_STREAK]:
+    counted = 0
+    for x in sessions:
         f = c.report_fields(x["number"])
+        if f.get("cause") == "iteration-failed":
+            continue
         if f.get("status") != "crashed" or f.get("commit"):
             return False
-    return True
+        counted += 1
+        if counted == CRASH_STREAK:
+            return True
+    return False
 
 
 def parked_until(n):

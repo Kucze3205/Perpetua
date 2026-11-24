@@ -47,9 +47,9 @@ def close_out(n, i, status, upd, prose, work=None):
             session_startup.acknowledge(n)
         except (Exception, SystemExit):
             c.say("session #%s: startup notices remain pending" % n)
-    c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"])
     succ = spawn_successor(n, i, body) if status == "partial" else None
-    c.close_issue(n, "completed" if status == "done" else "not planned")
+    c.close_issue(n, "completed" if status == "done" else "not planned")       # first: a close that fails keeps the labels a retry looks for
+    c.edit_labels(n, remove=["blocked:rate-limit", "conflict", "awaiting:owner", "awaiting:verifier", "awaiting:iteration", "awaiting:orders"])
     if not succ:        # the successor starts from this branch
         c.git(".", "push", "-q", "origin", "--delete", "task/%s" % n, check=False, remote=True)
     if status == "done":

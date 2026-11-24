@@ -25,6 +25,9 @@ jobs:
         with:
           name: bundle-${{ inputs.key }}
           path: .
+      # The redirect creates out/stdout.txt before the command starts: the engine reads a missing stdout.txt as "the command
+      # never ran" (GitHub's failure, nothing rolls back) and a missing exit-code beside it as "it ran out of time" (the
+      # command's own failure). Keep both files written this way.
       - name: Run the bundle's command
         run: |
           mkdir bundle out

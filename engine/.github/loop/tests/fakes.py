@@ -132,7 +132,10 @@ class FakeHub:
         self.next_n = 1
         self.tokenless = []                 # (bundle files) of every command sent to the tokenless job
         self.tokenless_purposes = []        # how each of them was named for the owner
-        self.tokenless_fault = None         # "no-artifact" | "failed": what the next tokenless job does wrong instead
+        # what the next tokenless job does wrong instead: "no-artifact" (never ran), "no-stdout" (its command never started),
+        # "timeout" (no exit code), "failed"
+        self.tokenless_fault = None
+        self.dispatch_refused = False       # GitHub refuses every dispatch (after the engine's retries)
         self.checked = []                   # the purposes of the bundles "Check the results" ran (and left a result of), in order
         self.decided = []                   # the same for "Decide whether the Policymaker runs"
         self.limit = (True, None)           # the engine's own probe of a usage limit: (limited, reset)
@@ -212,10 +215,13 @@ class FakeHub:
         self.deps.append((int(blocked), int(blocker)))
 
     def workflow_run(self, workflow, **inputs):
+        if self.dispatch_refused:
+            return False
         self.dispatched.append((workflow, dict(inputs)))
         if workflow == "session.yml":
             self.runs.append({"databaseId": 9000 + len(self.runs), "displayTitle": "session #%s" % inputs["issue"], "status": "queued",
                               "createdAt": self.ts()})
+        return True
 
     def run_list(self, workflow):
         return list(self.runs) if workflow == "session.yml" else []
@@ -253,6 +259,8 @@ class FakeHub:
         r = subprocess.run(["bash", os.path.join(bundle, "run.sh")], env=common.clean_env(),
                            capture_output=True, text=True, timeout=timeout_minutes * 60)
         for name, text in (("stdout.txt", r.stdout), ("stderr.txt", r.stderr), ("exit-code", "%d\n" % (1 if fault == "failed" else r.returncode))):
+            if (fault, name) in (("no-stdout", "stdout.txt"), ("timeout", "exit-code")):
+                continue
             with open(os.path.join(out, name), "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
         return out

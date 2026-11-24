@@ -160,7 +160,7 @@ def start_iteration():
 def decide(n, issue):
     """Whether the Policymaker opens iteration n, and the act that follows: it opens the policy phase, or the execution phase
     begins on the last organization. The report says which and why (`policy_trigger` or `policy_not_needed`). Invalid
-    output of a policy script fails the iteration and rolls policy back."""
+    output of a policy script fails the iteration and rolls policy back; a script GitHub never ran fails it and rolls nothing back."""
     try:
         why, skip = policymaker_due(n)
         if why and c.guard_ok():
@@ -170,6 +170,8 @@ def decide(n, issue):
         it.begin_work(n, issue)
     except it.PolicyScriptError as e:
         it.fail_iteration(n, "invalid policy script output: %s" % e, rollback=True)
+    except check_results.TokenlessUnavailable as e:
+        it.fail_iteration(n, str(e))
     return n
 
 

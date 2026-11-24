@@ -74,7 +74,9 @@ def fetch_candidate(work, n):
     touched = [f for f in c.git(".", "diff", "--name-only", "origin/%s...task/%s" % (d, n), check=False).stdout.split()
                if resources.is_protected(f)]
     if not touched:
-        c.git(".", "push", "-q", "-f", "origin", "task/%s:refs/heads/task/%s" % (n, n), check=False, remote=True)
+        r = c.git(".", "push", "-q", "-f", "origin", "task/%s:refs/heads/task/%s" % (n, n), check=False, remote=True)
+        if r.returncode:
+            print("task/%s was not pushed: %s" % (n, (r.stderr or r.stdout).strip()))
     return c.git(".", "rev-parse", "--short", "task/%s" % n).stdout.strip(), touched
 
 
@@ -89,10 +91,19 @@ def verification_rules(body):
     return ["Bash(%s)" % re.sub(r"([\\()*])", r"\\\1", cmd) for cmd in verification_commands(body) if "\n" not in cmd]
 
 
+def run_for_agent(cmd, cand, purpose):
+    """A command whose failure the agent is asked to fix (`## Verification`, `check`). A job that never ran it is GitHub's
+    failure: it raises TokenlessUnavailable (the run goes red, the session stays open) and costs no fix round."""
+    r = check_results.run_command(cmd, cand, purpose=purpose)
+    if r.returncode == check_results.NO_RESULT:
+        raise check_results.TokenlessUnavailable("%s did not run: the tokenless job left no output" % purpose)
+    return r
+
+
 def run_verification(cand, body, n):
     """`## Verification` of the task: commands from code blocks or backticked lines, each on a machine without the token."""
     for cmd in verification_commands(body):
-        r = check_results.run_command(cmd, cand, purpose="verification for #%s" % n)
+        r = run_for_agent(cmd, cand, "verification for #%s" % n)
         print("$ %s\n%s%s" % (cmd, r.stdout, r.stderr))
         if r.returncode:
             return False, cmd + "\n" + (r.stdout + r.stderr)[-1500:]
@@ -174,7 +185,7 @@ def checks(n, role, i, cand, res, override, checked_evaluator_rev, boundary, dat
         return dict(res, result="large", detail=", ".join(big))
     if work_paths:
         if cfg["check"]:
-            t = check_results.run_command(cfg["check"], cand, purpose="check for #%s" % n)
+            t = run_for_agent(cfg["check"], cand, "check for #%s" % n)
             res["check"] = "fail" if t.returncode else "pass"
             if t.returncode:
                 return dict(res, result="check", detail=(t.stdout + t.stderr)[-1500:])

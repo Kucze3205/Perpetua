@@ -40,8 +40,8 @@ Execution roles see the same checkout as policy roles. Policy internals are not 
 from them (ADR-0006).
 
 Candidate-owned product checks and task verification run on a machine without the token (*Check the results*, or the
-tokenless job) on a copy of the candidate tree without `.git`, like the change gate; a job that returns nothing fails the
-command. The accepted change gate still
+tokenless job) on a copy of the candidate tree without `.git`, like the change gate; a job that never ran the command is
+GitHub's failure, not the command's: it costs the agent no fix round and the run turns red. The accepted change gate still
 runs from the accepted tree with the full candidate and baseline required by ADR-0003.
 
 ## Model process and network access
@@ -117,7 +117,9 @@ Every job, step and command has a name that says what it does; the job ids (`pre
   against the digests, runs `policy/session-state.py` and `policy/session-startup.py` from the bundle
   (`run-policy-scripts`, `policy_inputs.py`), applies the engine's checks to what they print and uploads the validated
   results (files for `.session/`, the bootstrap prompt) pinned by a digest. The job outputs say `ok` or the `error`.
-  Bad results: `session` does not start, and `take-results` fails the iteration and rolls policy back.
+  Bad results: `session` does not start, and `take-results` fails the iteration and rolls policy back. A job that left no
+  verdict, or results that did not arrive as pinned, is GitHub's failure: the session is parked and tried again 5, then
+  30 minutes on (the third time is an outage), and the iteration goes on.
 - `session`, *Run the session* (`permissions: {}`; only the Claude token and the secrets the owner consented to): checks
   its downloads against the digests, unpacks the staged bundle and the policy script results, installs the agent tool (named from the engine's output, for agent sessions only), runs the policy's `prepare.sh` and the role, and packs the results: status files, the working tree
   (`work.tar`) and the session's commits (`commits.bundle`). The agent's code never runs next to the GitHub token.

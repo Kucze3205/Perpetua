@@ -441,7 +441,7 @@ class ProtectionTest(unittest.TestCase):
 # A module that outgrows MODULE_LINES is hard for a session to read whole; new behavior goes into a module of its own.
 # These two are already bigger: their size is frozen, may only shrink, and the entry is deleted once the file fits.
 MODULE_LINES = 800
-FROZEN_LINES = {"iteration.py": 863}
+FROZEN_LINES = {"iteration.py": 857}
 
 
 class ModuleSizeTest(unittest.TestCase):

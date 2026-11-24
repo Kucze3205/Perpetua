@@ -169,6 +169,25 @@ def evaluator_revision_string(rev="HEAD", cwd="."):
     return ",".join(hashes[path] for path in c.cfg()["evaluator_paths"])
 
 
+def shaper_error(cwd="."):
+    """Why the shaper `policy/params.yml` in `cwd` names cannot write an iteration's task graph (None: it can). An engine
+    rule, not policy's: every iteration has a shaper, and `policy/layer-rules.py` can only refuse more. Only a fresh engine,
+    before setup selects one, has none."""
+    import common as c
+    shaper = c.load_yaml(os.path.join(cwd, PARAMS)).get("shaper")
+    if not isinstance(shaper, str) or not shaper:
+        return "no shaper is set: `shaper` in %s names the execution role that writes each iteration's task graph" % PARAMS
+    profile = role_profiles(cwd).get(shaper)
+    if profile is None or profile["layer"] != EXECUTION:
+        return "shaper `%s` has no execution profile" % shaper
+    if profile.get("agent", True):
+        if not os.path.isfile(os.path.join(cwd, EXECUTION, "roles", shaper, "SKILL.md")):
+            return "shaper `%s` has no complete local skill" % shaper
+    elif not profile.get("command"):
+        return "script shaper `%s` has no command" % shaper
+    return None
+
+
 def layer_facts(cwd, activation):
     """What `policy/layer-rules.py` judges: every role of the catalog in `cwd` with its layer, profile shape and the layers
     that hold a directory for its skill. `activation`: the definitions are about to become the active ones."""

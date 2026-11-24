@@ -297,16 +297,9 @@ def begin_work(n, it):
     if policymaker_failures(int(latest) if latest.isdigit() else None) >= 2:
         revert_policy("two Policymaker sessions in a row failed")
     store_state(it, build_state(n))
-    if c.params()["shaper"]:
-        if orders:
-            place_orders(n, it, orders)
-        return begin_shape(n, it)
     if orders:
         place_orders(n, it, orders)
-    ordered = graph.read(n)
-    if not ordered:
-        return fail_iteration(n, "no shaper is set and the Policymaker ordered no valid tasks", rollback=True)
-    c.update_report(it, {"phase": "run", "shaper": None, "tasks": len(ordered), "width": graph.width(ordered)})
+    return begin_shape(n, it)
 
 
 def policy_pass(n, it):
@@ -423,10 +416,11 @@ def failed_streak():
 
 def begin_shape(n, it):
     """The shaper decides what the iteration does and writes its task graph: an LLM orchestrator or a script role (a
-    deterministic rule)."""
-    shaper = c.params()["shaper"]
-    if shaper not in c.profiles():
-        return fail_iteration(n, "shaper role `%s` has no profile" % shaper, rollback=True)
+    deterministic rule). A merge never makes the shaper unusable; a loop updated from an engine that allowed `shaper: null`
+    can still have none: its iteration fails, and the failure calls the Policymaker to select one."""
+    shaper, error = c.params()["shaper"], resources.shaper_error()
+    if error:
+        return fail_iteration(n, error, rollback=True)
     s = c.create_issue("Shape iteration %s" % tag(n),
                        "Decide what iteration %s does and write its task graph.\n\nInput: `.session/loop-state.json`. "
                        "Output: `.session/tasks.json` (format: the engine contract in system instructions).\n" % tag(n),

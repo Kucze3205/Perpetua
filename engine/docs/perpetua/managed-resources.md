@@ -76,13 +76,13 @@ continue through protected/write checks and the accepted-tree change gate.
 ## Layer rules and activation validation
 
 The engine checks the structure of the catalog (valid YAML, role names, one profile per role, no `layer` field, no links,
-no Policymaker profile in a layer). Which layer a role belongs to, and whether definitions are complete enough to become
-active, is `policy/layer-rules.py`: the engine writes the catalog as facts, the script runs in the tokenless job and prints
-`{"errors": [...]}` (at most 20 strings of 300 characters). The shipped script requires `audit`, `evaluator` and the verifier
-in the policy layer, refuses a policy role as shaper and a skill directory in the wrong or both layers, and at activation
-requires the shaper to have an execution profile with a complete skill (or a command). A change to `execution/` or `policy/`
-merges only if the script, run from the active `policy/`, finds no error; a change to the script applies from the next
-change. Invalid output is not an error list: it fails the iteration and rolls `execution/` and `policy/` back.
+no Policymaker profile in a layer) and the shaper: `shaper` in `policy/params.yml` must name a role with an execution
+profile and a complete skill (or, for `agent: false`, a `command`); outside setup it is never unset. Which layer a role
+belongs to is `policy/layer-rules.py`: the engine writes the catalog as facts, the script runs in the tokenless job and
+prints `{"errors": [...]}` (at most 20 strings of 300 characters). The shipped script requires `audit`, `evaluator` and the
+verifier in the policy layer and refuses a skill directory in the wrong or both layers. A change to `execution/` or
+`policy/` merges only if the engine and the script, run from the active `policy/`, find no error; a change to the script
+applies from the next change. Invalid output is not an error list: it fails the iteration and rolls `execution/` and `policy/` back.
 
 Likewise `policy/graph-rules.py`, when present, adds task-graph rules: facts `{tasks, ordered, taken, roles}`, answer
 `{"errors": [...]}`. It runs only for a graph the engine accepted, so policy can refuse more and never less.
@@ -109,7 +109,7 @@ iteration's commit, or `setup-baseline` before the first closed iteration. It
 restores deleted definitions and removes newly added definitions, retaining
 products, reports and Git history. Quiet time, consecutive failed
 Policymaker sessions and owner-wait accounting retain their existing rules. A third trigger: an iteration closed
-without a record, or failed on invalid policy-supplied data (for example, no shaper and no valid Policymaker orders),
+without a record, or failed on invalid policy-supplied data (for example, a shaper that wrote no valid task graph),
 rolls both roots back and opens a `notice` that the next Policymaker session sees.
 
 ## New-loop setup
@@ -120,7 +120,7 @@ The setup map writes each execution role's complete skill in `execution/roles/<r
 
 Rules for a role: one responsibility (do not combine skills "just in case"); a narrow `write`, only the paths the role produces; no tool beyond what the owner accepted (`limits` in `engine.yml`); no `gh` and no token, since the engine does the rest. A model role is a `SKILL.md` with `name` and `description` frontmatter and sections for method, output (checkable items) and never. Protocol: the engine contract in system instructions; terms: `CONTEXT.md`.
 
-Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline whose managed definitions and configuration match HEAD. `shaper: null` is valid; if selected, the shaper must be a complete execution role. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This is fresh-setup validation; it does not migrate formats or reconfigure an existing loop.
+Before enabling execution, `setup_roles.py validate --baseline setup-baseline` requires all required policy roles, local skills and layer instructions, valid profiles within accepted limits, and a clean accepted baseline whose managed definitions and configuration match HEAD. The shaper must be selected and be a complete execution role: `prepare` requires a fresh engine without one, and setup selects it before `validate`. Every local managed definition and skill reference must also exist with matching content in that commit, including files hidden by ignore rules; ignored work products outside managed definitions remain allowed. It prints the common managed revision without starting any session. The setup notes contain the selection and arming procedure. This is fresh-setup validation; it does not migrate formats or reconfigure an existing loop.
 
 ## Ownership after arming
 

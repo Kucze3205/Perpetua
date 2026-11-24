@@ -117,7 +117,7 @@ in the policy phase.
 **Implementation layer**:
 The part of the loop that applies policy to plan, execute and evaluate work
 toward the goal. Its skills belong to this layer even when the Policymaker
-creates or revises them. It includes the shaper (when one is set) and roles performing
+creates or revises them. It includes the shaper and roles performing
 goal-directed tasks, and runs in the execution phase. Its sessions are asked not to read policy-layer internals; they
 receive their work instructions and may submit suggestions for policy changes.
 
@@ -126,14 +126,13 @@ A role that turns the goal and the loop's state into concrete work: what to
 analyse, build, search, whom to bring in. Decides what the loop does today;
 may propose changes to its own prompt, which the policymaker judges. It is one
 of the organizations of the implementation layer that the policymaker chooses,
-not a fixed first step: the policymaker may replace it with a deterministic rule
-or remove it (`shaper: null`), and the first Policymaker session decides whether
-it exists. The owner is not asked about it.
+not a fixed first step: setup selects it as the initial shaper and the policymaker
+may replace it with a deterministic rule. The owner is not asked about it.
 _Avoid_: manager
 
 **Shaper**:
 The orchestrator, or a script role acting as a deterministic rule: whatever turns
-the goal and the loop's state into a task graph. It writes the graph to a file; the
+the goal and the loop's state into a task graph. Every iteration has one; only its form is free. It writes the graph to a file; the
 engine creates the issues. It has no GitHub credentials.
 _Avoid_: planner, scheduler
 

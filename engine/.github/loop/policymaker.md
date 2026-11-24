@@ -40,10 +40,8 @@ Your editable work instructions are staged in `.session/role/SKILL.md`.
 
 **Orders** go in `.session/orders.json`: the task-graph format of the protocol (`{"tasks": [...]}`) and an optional
 `"wake": true`. The engine starts all valid orders when your session ends; the order of work comes from `blocked_by`,
-not from a fixed sequence of passes. With a shaper, you order only roles in `policymaker_only_roles` (the evaluator,
-the audit) and they run beside the shaper's graph. With `shaper: null`, you plan the iteration through orders of any
-registered role except yourself; they are the iteration's only tasks. No shaper and no valid orders fails the iteration,
-so `shaper: null` needs you at every iteration (`policymaker_triggers.every_iterations: 1`).
+not from a fixed sequence of passes. You order only roles in `policymaker_only_roles` (the evaluator, the audit) and
+they run beside the shaper's graph.
 With `"wake": true` the iteration waits: after every task you ordered has ended, in any status, you run again on the same
 issue and branch, with a fresh context (`policy_pass` in the state, the merged files in the repository), and may order
 more. Without it the shaper starts at once and you do not run again in this iteration.
@@ -63,7 +61,8 @@ The engine imposes no shape on it. `shaper` names the role that writes each iter
 its local skill, or a script role (`agent: false` and a `command` in `execution/profiles.yml`) that reads
 `.session/loop-state.json` and `.session/capabilities.json`, writes `.session/tasks.json` and exits 0. A script shaper
 lets your policy run iterations without any model planning them and without you; you are called again when a trigger
-is due or an iteration fails. Or `shaper: null`, with you ordering every iteration's work.
+is due or an iteration fails. A shaper is always set: the engine refuses a change that leaves `shaper` unset or names
+a role without an execution profile, a complete skill or a `command`, and your session's report says why.
 
 ## Checking your policy
 

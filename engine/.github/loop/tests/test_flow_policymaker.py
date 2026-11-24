@@ -202,29 +202,15 @@ class FirstPolicymakerTest(Flow):
         cur = self.open_iteration()
         self.assertEqual(it.read_state(cur["number"])["policy_params"]["criterion"], "faster")
 
-    def test_the_orders_alone_make_an_iteration_when_no_shaper_is_set(self):
-        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
-        c.sync_main()
+    def test_a_policy_without_a_shaper_is_refused_and_the_iteration_runs_on_the_last_organization(self):
         start.start_iteration()
         pol = self.session_issue("policymaker")
-        self.w.session(pol, session_files={"orders.json": tasks_json(task("w", title="Build"))})   # a worker: any role is orderable
-        w = self.task_issue("order-%s-w" % pol)
-        cur = self.open_iteration()
-        self.assertEqual(c.report_fields(cur["number"])["phase"], "run")
-        self.assertIsNone(self.session_issue("orchestrator"))
-        self.w.session(w, files={"src/w.txt": "w"})
-        rec = self.record(0)
-        self.assertEqual((rec["status"], rec["decided_by"]), ("closed", None))
-        self.assertEqual([t["id"] for t in rec["tasks"]], ["order-%s-w" % pol])
-
-    def test_no_shaper_and_no_orders_fail_the_iteration_with_the_reason(self):
-        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
-        c.sync_main()
-        start.start_iteration()
-        self.w.session(self.session_issue("policymaker"))
-        rec = self.record(0)
-        self.assertEqual(rec["status"], "failed")
-        self.assertIn("no shaper", rec["failure"])
+        self.w.session(pol, files={"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")})
+        self.assertIn("shaper: orchestrator", self.w.origin_file("policy/params.yml"))
+        self.assertEqual(self.hub.report(pol)["status"], "blocked")
+        self.assertIn("no shaper is set", self.hub.prose(pol))              # the Policymaker sees why
+        self.assertEqual(c.report_fields(self.open_iteration()["number"])["phase"], "shape")
+        self.assertIsNotNone(self.session_issue("orchestrator"))
 
     def test_a_crashed_policymaker_fails_open_with_the_last_organization(self):
         start.start_iteration()
@@ -246,21 +232,6 @@ class FirstPolicymakerTest(Flow):
         self.assertNotIn("broken", self.w.origin_file("policy/params.yml"))
         self.assertIn("closed without a record", self.hub.by_label("owner-request:notice")[0]["body"])
         self.assertEqual(it.iteration_number(self.open_iteration()), 1)
-
-    def test_invalid_orders_without_a_shaper_roll_back_policy_and_tell_the_next_policymaker(self):
-        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline')
-        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
-        c.sync_main()
-        start.start_iteration()
-        self.w.session(self.session_issue("policymaker"), session_files={"orders.json": tasks_json(task("w", role="nobody"))})
-        self.assertEqual(self.record(0)["status"], "failed")
-        self.assertIn("shaper: orchestrator", self.w.origin_file("policy/params.yml"))          # back to the setup baseline
-        (note,) = self.hub.by_label("owner-request:notice")
-        self.assertIn("no shaper is set", note["body"])
-        state = it.read_state(self.session_issue("policymaker"))           # the failure calls it into the next iteration
-        self.assertTrue(state["trigger"].startswith("iteration 0000 failed: no shaper is set"))
-        self.assertIn(note["number"], [x["number"] for x in state["owner_requests"]["open"]])
-
 
 class PolicymakerTest(Flow):
     FIRST = True
@@ -509,20 +480,15 @@ class PolicyPhaseTest(Flow):
         self.assertEqual(len(self.hub.role_issues("policymaker", "all")), 1)     # all its runs are one issue
         self.assertEqual(len(self.record_after_finish()["tasks"]), 2)
 
-    def test_no_pass_sequence_an_audit_ordered_before_workers_runs_first_through_dependencies(self):
-        self.w.push_main({"policy/params.yml": fakes.POLICY_PARAMS.replace("shaper: orchestrator", "shaper: null")}, "no shaper")
-        c.sync_main()
+    def test_no_pass_sequence_an_audit_ordered_before_an_evaluator_runs_first_through_dependencies(self):
         start.start_iteration()
         pol = self.session_issue("policymaker")
-        self.w.session(pol, session_files={"orders.json": tasks_json(task("a", role="audit"), task("w", blocked_by=["a"]))})
-        a, w = self.task_issue("order-%s-a" % pol), self.task_issue("order-%s-w" % pol)
+        self.w.session(pol, session_files={"orders.json": tasks_json(task("a", role="audit"), task("e", role="evaluator", blocked_by=["a"]))})
+        a, e = self.task_issue("order-%s-a" % pol), self.task_issue("order-%s-e" % pol)
         started = {int(i["issue"]) for _, i in self.hub.dispatched}
-        self.assertEqual((a in started, w in started), (True, False))            # the worker is blocked by the audit
-        self.assertEqual(self.phase(), "run")
+        self.assertEqual((a in started, e in started), (True, False))            # the evaluator is blocked by the audit
         self.w.session(a)
-        self.assertIn(w, {int(i["issue"]) for _, i in self.hub.dispatched})
-        self.w.session(w, files={"src/w.txt": "w"})
-        self.assertEqual(sorted(t["id"] for t in self.record(0)["tasks"]), ["order-%s-a" % pol, "order-%s-w" % pol])
+        self.assertIn(e, {int(i["issue"]) for _, i in self.hub.dispatched})
 
     def test_without_wake_the_orders_run_beside_the_shaper_and_the_policymaker_does_not_return(self):
         start.start_iteration()

@@ -210,3 +210,16 @@ class ActivationTest(LayeredSessionCase):
         policy_apply.apply_policy()
         self.assert_a()
         self.assertEqual(self.hub.report(n)['status'], 'blocked')
+
+    def test_a_policy_without_a_shaper_is_refused_by_the_engine_whatever_its_layer_rules_say(self):
+        self.w.push_main({'policy/layer-rules.py': 'print(\'{"errors": []}\')\n'}, 'a policy that refuses nothing')
+        c.sync_main()
+        for shaper, reason in (('null', 'no shaper is set'), ('absent', 'shaper `absent` has no execution profile'),
+                               ('audit', 'shaper `audit` has no execution profile')):
+            with self.subTest(shaper=shaper):
+                n = self.issue('policymaker')
+                self.w.session(n, files={'policy/params.yml': fakes.POLICY_PARAMS.replace('orchestrator', shaper)})
+                policy_apply.apply_policy()
+                self.assertIn('shaper: worker', self.w.origin_file('policy/params.yml'))
+                self.assertEqual(self.hub.report(n)['status'], 'blocked')
+                self.assertIn(reason, self.hub.prose(n))           # the Policymaker reads why in its session's report

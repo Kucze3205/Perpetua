@@ -28,7 +28,7 @@ def prepare(repo):
     if c.load_yaml(root / resources.EXECUTION / 'profiles.yml') or (root / resources.EXECUTION / 'roles').exists():
         raise ValueError('setup already prepared with selected roles; no reconfiguration mode')
     if c.load_yaml(root / resources.PARAMS).get('shaper') is not None:
-        raise ValueError('fresh engine must have no selected shaper')
+        raise ValueError('fresh engine must have no selected shaper')   # setup selects it before `validate` arms the loop
 
 
 def install(repo, role, layer, profile=None):
@@ -81,10 +81,7 @@ def validate(repo, baseline=None):
         os.chdir(root)
         if not resources.layered():
             raise ValueError('setup requires layered resources')
-        params = c.load_yaml('policy/params.yml')
-        if params.get('shaper') is not None and not isinstance(params['shaper'], str):
-            raise ValueError('shaper must be a role name or null')
-        refused = layer_errors()
+        refused = [e for e in [resources.shaper_error()] if e] + layer_errors()
         if refused:
             raise ValueError('; '.join(refused))
         profiles = resources.role_profiles()

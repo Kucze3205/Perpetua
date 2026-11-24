@@ -171,7 +171,7 @@ def checks(n, role, i, cand, res, override, checked_evaluator_rev, boundary, dat
         try:
             resources.role_profiles(cand)
             if boundary or any(resources.is_managed(f) for f in res["changed"]):
-                refused = it.layer_errors(cand, boundary)
+                refused = [e for e in [resources.shaper_error(cand)] if e] + it.layer_errors(cand, boundary)
                 if refused:
                     return dict(res, result="invalid-resources", detail="; ".join(refused[:6]))
         except (ValueError, it.PolicyScriptError) as error:

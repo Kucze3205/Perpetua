@@ -37,6 +37,8 @@ Every path in `conflicts` holds git conflict markers. For each, read both intent
 - Workflows (`.github/workflows/`): keep the loop's secrets, environments and runners; take Perpetua's logic.
 - `ENGINE_VERSION`: Perpetua's.
 
+Whether or not `policy/params.yml` conflicts: the engine runs no iteration without a shaper. If `shaper` is `null` or missing, set it to the execution role that plans iterations, with a complete skill or a `command` (the loop's orchestrator if it has one, else the role the Policymaker's skill or working memory names), and list it in the report; ask the owner only if no such role exists. Step 8's `validate` refuses the loop without one.
+
 Decide routine cases yourself and list them in the report. Ask the owner only when keeping one side visibly removes something the other relies on. No markers may remain: `git grep -nE '^(<<<<<<<|=======|>>>>>>>)( |$)'` is empty. Stage the results.
 
 ## 5. Check

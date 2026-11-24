@@ -31,7 +31,7 @@ TASK_FIELDS = {"id", "title", "role", "body", "model", "effort", "blocked_by", "
 
 def validate_tasks(doc, ordered=False, taken=()):
     """Errors of a task graph (empty: valid), the engine's own; `iteration.validate_tasks` adds those of `policy/graph-rules.py`. `ordered`: the Policymaker's orders, the only tasks of the roles in
-    `policymaker_only_roles` and only of them, unless no shaper is set: then it orders any role. `taken`: ids the iteration already uses."""
+    `policymaker_only_roles` and only of them. `taken`: ids the iteration already uses."""
     profiles, parameters = c.profiles(), c.params()
     policymaker_roles = parameters["policymaker_only_roles"]
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
@@ -63,7 +63,7 @@ def validate_tasks(doc, ordered=False, taken=()):
         role = task.get("role")
         if not isinstance(role, str) or role not in profiles or role == "policymaker":
             errors.append("task %s: role %r has no profile" % (task_id, role))
-        elif ordered and parameters["shaper"] and role not in policymaker_roles:
+        elif ordered and role not in policymaker_roles:
             errors.append("task %s: the Policymaker orders only %s" % (task_id, ", ".join(policymaker_roles)))
         elif not ordered and role in policymaker_roles:
             errors.append("task %s: role `%s` is ordered only by the Policymaker" % (task_id, role))

@@ -27,7 +27,8 @@ class SetupRolesTest(unittest.TestCase):
             repo = os.path.join(tmp, 'loop')
             shutil.copytree(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')), repo)
             setup_roles.prepare(repo)
-            setup_roles.validate(repo)
+            with self.assertRaisesRegex(ValueError, 'no shaper is set'):      # the loop is not armed without one
+                setup_roles.validate(repo)
             with self.assertRaisesRegex(ValueError, 'write the complete skill first'):
                 setup_roles.install(repo, 'planner', 'execution', {'tools': ['Read']})
             write_skill(repo, 'execution', 'planner', **{'references/detail.md': 'complete reference'})

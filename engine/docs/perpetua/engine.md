@@ -23,8 +23,10 @@ Setup clarifies the owner-accepted goal, derives an initial approach, then prepa
 the environment it requires. Its active map's `docs/perpetua/setup-notes.md` holds
 the outcome checklist, role-writing and arming procedure. Arming preserves decisions
 in `docs/perpetua/setup-decisions.md`, records `setup-baseline` and enables the
-owner's `AUTOPILOT` switch. The first Policymaker session chooses the execution
-organization; setup leaves `shaper: null`.
+owner's `AUTOPILOT` switch. Setup selects the initial shaper (the generic orchestrator it
+writes), and `setup_roles.py validate` does not arm a loop without one; the first Policymaker
+session may change the execution organization. A loop that still has `shaper: null` from an
+earlier engine selects a shaper during `/kucze:perpetua-setup update` (see [organizing an iteration](#organizing-an-iteration)).
 
 GitHub Actions, a Claude subscription and GitHub issue owner requests are the
 shipped defaults. The owner may replace them during setup by implementing and
@@ -90,12 +92,12 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    `crashed` (`cause: iteration-failed`) with the iteration's sessions: it does not block the next Policymaker and,
    having never run, does not count as a failed session.
    With no trigger due there is no policy phase.
-3. **Shape.** The execution phase. The optional execution shaper reads the staged state and writes
+3. **Shape.** The execution phase. The execution shaper reads the staged state and writes
    `.session/tasks.json`. The engine
    validates and creates graph issues, blocking edges and consent requests. A graph the engine accepts also goes to
    `policy/graph-rules.py`, if present, which may add refusals (see [layer rules](managed-resources.md#layer-rules-and-activation-validation)).
-   Accepted Policymaker orders become tasks alongside it. A shaper without a valid graph, a shaper role without a profile,
-   and, with `shaper: null`, no valid orders each fail the iteration and roll both managed roots back.
+   Accepted Policymaker orders become tasks alongside it. A shaper without a valid graph, and a shaper that cannot run
+   (only in a loop still unset from an earlier engine), each fail the iteration and roll both managed roots back.
    See [organizing an iteration](#organizing-an-iteration).
    A graph holds at most 50 tasks (shaper output and orders together); a larger one is refused with that reason and
    creates no issues.
@@ -119,8 +121,13 @@ The Policymaker chooses how the execution phase is organized; the engine imposes
   without a model or credential, reads `.session/loop-state.json` and `.session/capabilities.json`, writes
   `.session/tasks.json` and exits 0. A policy alone then runs the iterations: no model plans them and the Policymaker
   is called only when a trigger is due or an iteration failed.
-- **No shaper** (`shaper: null`): the Policymaker's orders are the only tasks. An iteration without a policy phase has
-  none and fails, so this needs a Policymaker at every iteration (`policymaker_triggers.every_iterations: 1`).
+
+A shaper is always set; only its form is free. Outside setup the engine refuses at merge a change to `execution/` or
+`policy/` that leaves `shaper` unset or names a role without an execution profile, a complete skill (model shaper) or a
+`command` (script shaper); the Policymaker reads the reason in its session's report. This rule is the engine's
+(`managed_resources.shaper_error`), so `policy/layer-rules.py` cannot lift it. A loop updated from an engine that
+allowed `shaper: null` gets a shaper during `/kucze:perpetua-setup update`; if it still has none, its next iteration fails with that
+reason and the failure calls the Policymaker, whose next change must select one.
 
 Whatever the shaper produces is checked by the same task-graph rules, cap and change gate. A policy that does not work
 fails its iteration through the paths above; the rollback returns the last good organization and the next iteration

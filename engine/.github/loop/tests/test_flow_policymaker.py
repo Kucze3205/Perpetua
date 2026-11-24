@@ -554,9 +554,9 @@ class PolicymakerFailureTest(Flow):
         fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")
         start.start_iteration()
         dead = self.session_issue("policymaker")
-        original, fakes.policy_job = fakes.policy_job, lambda *args: fakes.Staged("", "", "", "/nonexistent")
+        original, fakes.policy_job = fakes.policy_job, lambda *args: fakes.Staged("false", "policy/session-state.py printed too much", "", "/nonexistent")
         try:
-            with self.assertRaises(SystemExit):            # the policy scripts' job left no result: the session did not start
+            with self.assertRaises(SystemExit):            # the policy scripts' job refused their output: the session did not start
                 self.w.session(dead)
         finally:
             fakes.policy_job = original

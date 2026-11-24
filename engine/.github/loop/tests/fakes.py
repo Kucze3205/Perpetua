@@ -110,8 +110,8 @@ def stage_session(n, work, trusted, through_epilogue=False):
         if os.path.exists(os.path.join(staged.results, "prompt.md")):
             shutil.copy(os.path.join(staged.results, "prompt.md"), os.path.join(trusted, "prompt.md"))
     if not through_epilogue:
-        why = policy_inputs.refusal(staged.ok, staged.error, staged.results, staged.digest)
-        if why:
+        why, policy = policy_inputs.refusal(staged.ok, staged.error, staged.results, staged.digest)
+        if policy:
             session_finalize.refuse_policy_results(n, why)
         session_finalize.note_startup_budget(n, staged.results)
     return staged

@@ -160,8 +160,8 @@ def finalize(n, work):
 
 
 def refuse_policy_results(n, why):
-    """The policy scripts' job left bad results: the session did not start. Fails the iteration and rolls policy back, as for any
-    policy script output the engine refuses."""
+    """The policy scripts' job refused what they printed: the session did not start. Fails the iteration and rolls policy back,
+    as for any policy script output the engine refuses."""
     k = c.iteration_of(c.label_names(c.issue(n)))
     if k is not None:
         it.fail_iteration(k, "invalid policy script output: %s" % why, rollback=True)
@@ -182,12 +182,15 @@ def note_startup_budget(n, policy_results):
 
 def epilogue(n, artifact, baseline, digest, policy_results):
     """The epilogue job, on a fresh runner: first the verdict of the policy scripts' job (`POLICY_OK`, `POLICY_ERROR`, `POLICY_DIGEST`
-    and its artifact `policy_results`); then takes the session's results in (`receive`) and the results of "Check the results"
+    and its artifact `policy_results`: a refusal is the policy's fault or a retry); then takes the session's results in (`receive`) and the results of "Check the results"
     only from that job's output (`CHECKS_RESULTS`, `check_results.accept`), and finalizes."""
     env = os.environ.get
-    why = policy_inputs.refusal(env("POLICY_OK"), env("POLICY_ERROR"), policy_results, env("POLICY_DIGEST"))
-    if why:
+    why, policy = policy_inputs.refusal(env("POLICY_OK"), env("POLICY_ERROR"), policy_results, env("POLICY_DIGEST"))
+    if policy:
         refuse_policy_results(n, why)
+    if why:             # GitHub's failure: the session is tried again, the iteration and the sessions beside it go on
+        watchdog.stage_failed(n, why)
+        return
     note_startup_budget(n, policy_results)
     tmp = os.environ.get("RUNNER_TEMP", tempfile.gettempdir())
     work = receive(n, artifact, baseline, digest, tmp)

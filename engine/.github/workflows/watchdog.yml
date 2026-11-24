@@ -37,7 +37,7 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - name: Get the engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
@@ -52,7 +52,7 @@ jobs:
           python3 .github/loop/loop.py watch
       - name: Upload the facts for the iteration start
         if: always() && steps.watch.outputs.start == 'true' && steps.watch.outputs.count != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: start-facts
           path: ${{ runner.temp }}/start-facts

@@ -141,7 +141,7 @@ class WorkflowTest(unittest.TestCase):
                 self.assertNotIn("ANTHROPIC_API_KEY", str(job.get("steps", [])), f)
             lines = text.splitlines()
             for i, line in enumerate(lines):
-                if "uses: actions/checkout@v4" in line:
+                if "uses: actions/checkout@v7" in line:
                     block = []
                     for nxt in lines[i + 1:]:
                         if re.match(r"^\s{6}- ", nxt):

@@ -70,7 +70,7 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - name: Get the engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: loop
@@ -98,7 +98,7 @@ jobs:
           python3 .github/loop/loop.py session-settings "${{ inputs.issue }}"
       - name: Get the task's working copy
         if: steps.autopilot.outputs.go == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.settings.outputs.start }}
           path: work
@@ -140,19 +140,19 @@ jobs:
           echo "baseline=$(pin baseline)" >> "$GITHUB_OUTPUT"
       - name: Upload the session inputs
         if: steps.autopilot.outputs.go == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: staged
           path: ${{ runner.temp }}/ship
       - name: Upload the policy bundle
         if: steps.autopilot.outputs.go == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: policy-bundle
           path: ${{ runner.temp }}/policy-bundle
       - name: Upload the executor baseline
         if: steps.autopilot.outputs.go == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: baseline
           path: ${{ runner.temp }}/baseline
@@ -172,12 +172,12 @@ jobs:
       digest: ${{ steps.run.outputs.digest }}
     steps:
       - name: Download the session inputs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: staged
           path: ${{ runner.temp }}/ship
       - name: Download the policy bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: policy-bundle
           path: ${{ runner.temp }}/policy-bundle
@@ -202,7 +202,7 @@ jobs:
         run: python3 "$RUNNER_TEMP/policy/engine/loop.py" run-policy-scripts "$RUNNER_TEMP/policy" "$GITHUB_WORKSPACE/work" "$RUNNER_TEMP/policy-results"
       - name: Upload the policy script results
         if: steps.run.outputs.ok == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: policy-results
           path: ${{ runner.temp }}/policy-results
@@ -228,12 +228,12 @@ jobs:
       WORK: ${{ github.workspace }}/work
     steps:
       - name: Download the session inputs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: staged
           path: ${{ runner.temp }}/ship
       - name: Download the policy script results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: policy-results
           path: ${{ runner.temp }}/policy-results
@@ -287,7 +287,7 @@ jobs:
           present=(); for f in trusted capture stream.ndjson agent-exit agent-start agent-end claude-stderr.txt claude-execution-output.json script-output.txt secret-missing; do [ -e "$f" ] && present+=("$f"); done
           tar -czf capture.tgz "${present[@]}" -C "$WORK" .session || true
       - name: Upload the raw stream
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         # The stream is a diagnostic copy. A full artifact quota must not turn a good session into `failure`;
         # the record then simply has no `stream`.
         continue-on-error: true
@@ -300,7 +300,7 @@ jobs:
         if: always()
         run: python3 "$RUNNER_TEMP/trusted/session_artifact.py" pack "$WORK" "$RUNNER_TEMP" "$RUNNER_TEMP/results"
       - name: Upload the results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results
@@ -320,19 +320,19 @@ jobs:
       digest: ${{ steps.plan.outputs.digest }}
     steps:
       - name: Get the engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: loop
           fetch-depth: 0
           persist-credentials: false
       - name: Download the results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: results
           path: ${{ runner.temp }}/results
       - name: Download the executor baseline
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: baseline
           path: ${{ runner.temp }}/baseline
@@ -349,7 +349,7 @@ jobs:
           python3 .github/loop/loop.py prepare-checks "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}" "$RUNNER_TEMP/checks-bundle"
       - name: Upload the checks
         if: steps.plan.outputs.count != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: checks
           path: ${{ runner.temp }}/checks-bundle
@@ -368,7 +368,7 @@ jobs:
       results: ${{ steps.run.outputs.results }}
     steps:
       - name: Download the checks
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: checks
           path: ${{ runner.temp }}/checks-bundle
@@ -408,7 +408,7 @@ jobs:
       VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
     steps:
       - name: Get the engine
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: loop
@@ -417,19 +417,19 @@ jobs:
           persist-credentials: false
       # a session that died leaves no results: the last job still closes it
       - name: Download the results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: results
           path: ${{ runner.temp }}/results
       - name: Download the executor baseline
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: baseline
           path: ${{ runner.temp }}/baseline
       # bad policy script results leave none (and the session did not start): "Take in results" refuses it
       - name: Download the policy script results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: policy-results
@@ -453,7 +453,7 @@ jobs:
           python3 .github/loop/loop.py take-results "$ISSUE" "$RUNNER_TEMP/results" "$RUNNER_TEMP/baseline" "${{ needs.prep.outputs.baseline }}" "$RUNNER_TEMP/policy-results"
       - name: Upload the facts for the iteration start
         if: always() && steps.take.outputs.start == 'true' && steps.take.outputs.count != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: start-facts
           path: ${{ runner.temp }}/start-facts

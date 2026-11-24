@@ -30,13 +30,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Get the bundle
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: refs/tokenless/${{ inputs.key }}
           path: bundle
           persist-credentials: false
       - name: Upload the bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle-${{ inputs.key }}
           path: bundle/bundle.tar.gz

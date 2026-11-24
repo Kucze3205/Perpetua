@@ -62,7 +62,7 @@ def finalize(n, work):
         return
     exec_path = os.path.join(tmp, "claude-execution-output.json")
     limited, reset, prose = False, None, ""
-    upd = {"branch": "task/%s" % n, "iteration": k, "runner": os.environ.get("RUNNER_OS") or None}
+    upd = {"branch": "task/%s" % n, "iteration": k, "runner": os.environ.get("RUNNER_OS") or None, "stage_failures": None}
     if script:
         upd["cause"] = "exit=%s" % exit_code if exit_code not in ("0", "") else None
         status = "done" if exit_code == "0" else "crashed"

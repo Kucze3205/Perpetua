@@ -15,6 +15,7 @@ MAX_KICKS = 3
 CRASH_STREAK = 3                # consecutive `crashed` without a commit
 MAX_SLEEP_S = 340 * 60          # resume.yml: a job is limited to 360 min; a longer park is the watchdog's
 GRACE_MIN = 30                  # covers dispatch latency, never working time
+STAGE_RETRY_MIN = (5, 30)       # the waits before a session GitHub kept from starting is tried again
 
 
 def park(n, i, f, upd, prose, reset, head):
@@ -39,6 +40,27 @@ def park(n, i, f, upd, prose, reset, head):
     c.edit_labels(n, add=["blocked:rate-limit"])
     c.workflow_run("resume.yml", issue=n)      # the clock lives in a workflow: GitHub's cron lags by hours
     return None
+
+
+def stage_failed(n, why):
+    """GitHub kept session n from starting (*Prepare the session* failed, or the policy scripts' job left no verdict): not
+    the session's fault, so it is parked and resumed, not left to the watchdog's cron. The third time in a row is an outage."""
+    if not c.guard_ok() or c.outage_open():
+        return
+    i = c.issue(n)
+    if i["state"] != "open" or not c.in_loop(c.label_names(i)):        # a start that ended it on purpose closed it
+        return
+    k = int(c.report_fields(n).get("stage_failures") or 0)
+    if k >= len(STAGE_RETRY_MIN):
+        c.update_report(n, {"stage_failures": None})
+        c.open_outage("session #%s failed to start %s times in a row" % (n, k + 1), why,
+                      "Look at the latest runs of session #%s in the Actions tab, fix the cause, then close this issue." % n)
+        return
+    when = c.now() + timedelta(minutes=STAGE_RETRY_MIN[k])
+    c.update_report(n, {"status": "paused", "cause": "stage-failed", "stage_failures": k + 1, "resume_after": c.iso(when)},
+                    "The session did not start (%s); next attempt at %s." % (why, c.iso(when)))
+    c.edit_labels(n, add=["blocked:rate-limit"])
+    c.workflow_run("resume.yml", issue=n)
 
 
 def reconcile():

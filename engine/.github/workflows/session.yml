@@ -12,7 +12,8 @@
 # to a Tokenless run, as when main moved) and does everything else itself. The executor baseline reaches the token jobs
 # through its own artifact, which the session never sees. When the session's end makes an iteration start, or makes the
 # goal gate due, "Iteration start" follows (`iteration-start.yml`): "Decide whether the Policymaker runs" (no token) and
-# "Start the iteration" (GitHub token).
+# "Start the iteration" (GitHub token). When GitHub fails "Prepare the session", no job above runs: "Try the session again
+# later" (GitHub token) parks the session for its next attempt.
 # Every artifact a job relies on is pinned by a digest that came through the outputs of the job that made it: any job of a
 # run can upload artifacts (ADR-0006). A job without the engine checks it in the shell, as `pinned` below does
 # (`artifact_pin.py` explains the digest).
@@ -477,3 +478,26 @@ jobs:
       count: ${{ needs.epilogue.outputs.count }}
       minutes: ${{ needs.epilogue.outputs.minutes }}
       digest: ${{ needs.epilogue.outputs.digest }}
+
+  stage_failed:
+    name: Try the session again later
+    needs: prep
+    # GitHub failed "Prepare the session" (a 5xx past the retries, a lost runner): no later job runs, so this one parks the
+    # session and dispatches its resume, 5 and then 30 minutes on; the third failure in a row opens an outage
+    if: always() && needs.prep.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VARS_AUTOPILOT: ${{ vars.AUTOPILOT }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Get the engine
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Park the session and schedule its next attempt
+        run: |
+          pip install -q pyyaml
+          python3 .github/loop/loop.py stage-failed "${{ inputs.issue }}"

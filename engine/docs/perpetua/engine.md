@@ -210,6 +210,10 @@ A plain script (`watchdog.yml`, every 30 minutes and on demand), never an agent:
 - three consecutive `crashed` sessions without a commit is an outage; three fruitless kicks of one issue too; three failed
   iterations in a row too;
 - resumes parked sessions that are due; relaunches ready sessions nobody started (kicking before calling);
+- is not the loop's clock after a passing GitHub failure. A call to GitHub that gets a 5xx or no answer is asked again twice
+  (after 2 and 8 s); any other answer (404, 409, 422) is final. When *Prepare the session* fails anyway, the job *Try the
+  session again later* parks the session (`paused`, `cause: stage-failed`, `blocked:rate-limit`) and dispatches its resume
+  5 minutes on, then 30; the third failure in a row opens an outage. A session that reaches *Take in results* clears the count.
 - `ceilings.iteration_minutes` (the Policymaker's own): fails an iteration that runs past it;
 - `params.quiet_minutes` (the setup's): an iteration that does not close in time fails, both managed roots are rolled back to the
   state in which the last iteration closed (at the start: the `setup-baseline` tag), and a `notice` is opened for the owner.

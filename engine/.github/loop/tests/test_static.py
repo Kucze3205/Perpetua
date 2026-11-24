@@ -163,7 +163,7 @@ class WorkflowTest(unittest.TestCase):
         with open(os.path.join(ENGINE, ".github", "loop", "loop.py"), encoding="utf-8") as fh:
             src = fh.read()
         self.assertEqual(set(re.findall(r'cmd == "([a-z-]+)"', src)),
-                         {"check-autopilot", "check-credentials", "session-settings", "stage-inputs", "run-policy-scripts",
+                         {"check-autopilot", "check-credentials", "session-settings", "stage-inputs", "stage-failed", "run-policy-scripts",
                           "prepare-checks", "run-checks", "take-results", "start-iteration", "watch", "resume-after-limit"})
 
     def test_the_owner_sees_names_not_commands(self):
@@ -184,10 +184,14 @@ class WorkflowTest(unittest.TestCase):
     def test_the_session_prepares_in_one_job_and_installs_the_agent_only_for_agents(self):
         with open(os.path.join(ENGINE, ".github", "workflows", "session.yml"), encoding="utf-8") as fh:
             doc = yaml.safe_load(fh)
-        self.assertEqual(list(doc["jobs"]), ["prep", "policy", "session", "checks_prep", "checks", "epilogue", "start"])
+        self.assertEqual(list(doc["jobs"]), ["prep", "policy", "session", "checks_prep", "checks", "epilogue", "start", "stage_failed"])
         self.assertEqual([j["name"] for j in doc["jobs"].values()],
                          ["Prepare the session", "Prepare the session inputs (policy scripts)", "Run the session", "Prepare the checks",
-                          "Check the results", "Take in results", "Iteration start"])
+                          "Check the results", "Take in results", "Iteration start", "Try the session again later"])
+        # a failed "Prepare the session" runs no later job but this one, which parks the session for its next attempt
+        retry = doc["jobs"]["stage_failed"]
+        self.assertEqual((retry["needs"], retry["if"]), ("prep", "always() && needs.prep.result == 'failure'"))
+        self.assertIn("loop.py stage-failed", str(retry["steps"]))
         install = next(s for s in doc["jobs"]["session"]["steps"] if s["name"].startswith("Install "))
         self.assertEqual(install["if"], "needs.prep.outputs.kind == 'agent'")
         self.assertNotIn("Claude Code", install["name"])               # the tool comes from the engine's output, not from the file

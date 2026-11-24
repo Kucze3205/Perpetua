@@ -129,6 +129,47 @@ class JamTest(WatchCase):
         self.assertFalse(watchdog.crash_streak())
 
 
+class StageFailedTest(WatchCase):
+    """GitHub failed "Prepare the session": the job "Try the session again later" parks the session and resumes it."""
+
+    def setUp(self):
+        super().setUp()
+        self.n = self.hub.create_issue("T", "b", labels=["role:worker", "loop:iteration 0"])
+
+    def fail(self):
+        self.assertEqual(loop.main(["loop.py", "stage-failed", str(self.n)]), 0)
+        return self.hub.report(self.n)
+
+    def test_it_parks_five_then_thirty_minutes_then_opens_an_outage(self):
+        t0 = c.now()
+        f = self.fail()
+        self.assertEqual((f["status"], f["cause"], f["stage_failures"]), ("paused", "stage-failed", "1"))
+        self.assertAlmostEqual((c.parse_time(f["resume_after"]) - t0).total_seconds(), 300, delta=5)
+        self.assertIn("blocked:rate-limit", self.hub.issues[self.n]["_labels"])
+        self.assertEqual(self.hub.dispatched[-1], ("resume.yml", {"issue": self.n}))
+        f = self.fail()
+        self.assertAlmostEqual((c.parse_time(f["resume_after"]) - t0).total_seconds(), 1800, delta=5)
+        self.assertEqual(self.hub.by_label("outage"), [])
+        f = self.fail()
+        self.assertNotIn("stage_failures", f)
+        (o,) = self.hub.by_label("outage")
+        self.assertIn("session #%s failed to start 3 times in a row" % self.n, o["title"])
+
+    def test_the_count_is_cleared_once_a_session_reaches_its_epilogue(self):
+        self.fail()
+        self.w.session(self.n, files={"src/a.txt": "A"})
+        self.assertNotIn("stage_failures", self.hub.report(self.n))
+
+    def test_nothing_happens_to_a_closed_issue_or_during_an_outage(self):
+        self.hub.close_issue(self.n, "not planned")
+        self.fail()
+        self.assertEqual(self.hub.dispatched, [])
+        self.hub.issues[self.n]["state"] = "open"
+        self.hub.create_issue("OUTAGE: x", "b", labels=["outage"])
+        self.assertEqual(self.fail(), {})
+        self.assertEqual(self.hub.dispatched, [])
+
+
 class StallTest(WatchCase):
     YML = SCRIPT_GATE + "params:\n  quiet_minutes: 30\n"
 

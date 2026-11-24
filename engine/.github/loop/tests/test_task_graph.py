@@ -42,6 +42,16 @@ class TaskGraphTest(unittest.TestCase):
                        {"width": 3}, ["max_turns"]):
             self.assertTrue(self.errs(fakes.task("a", limits=limits)), limits)
 
+    def test_start_branch_must_resolve_on_origin(self):
+        for bad in (7, "", "  ", "task/77", "feature/x"):
+            self.assertTrue(self.errs(fakes.task("a", start_branch=bad)), bad)
+        self.assertEqual(self.errs(fakes.task("a", start_branch=None)), [])
+        self.w.branch(77, {"src/a.txt": "x"})
+        self.assertEqual(self.errs(fakes.task("a", start_branch="task/77")), [])
+        fakes.sh(self.w.origin, "git", "tag", "iter/0002/78", "task/77")
+        self.assertEqual(self.errs(fakes.task("a", start_branch="task/78")), [])        # tag only: the branch was deleted
+        self.assertTrue(self.errs(fakes.task("a", start_branch="task/8")))
+
     def test_cycle(self):
         self.assertTrue(self.errs(fakes.task("a", blocked_by=["b"]), fakes.task("b", blocked_by=["a"])))
 

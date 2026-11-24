@@ -26,7 +26,7 @@ The shaper writes `.session/tasks.json`; the engine creates the issues and the b
 
 `id` is yours (letters, digits, dashes) and names a task in `blocked_by` and `inputs`. `role` must have a profile.
 The `"..."` values are placeholders, not types: `limits` values, `iterations` and `sessions` are integers
-(`"limits": {"timeout_minutes": 20}`), `start_branch` is a branch name or null.
+(`"limits": {"timeout_minutes": 20}`), `start_branch` is a branch name or null. It must exist on origin when the graph is submitted, or the graph is refused; a closed task's `task/N` still works through its `iter/NNNN/N` tag, a merged task's does not.
 `model` and `effort` are optional (omitted: the role's default); `model` is an alias (a key of `models`, never a model id) from `policy/params.yml`, and `limits` never exceed the ceilings there. A shaper without `policy/` finds the allowed aliases, efforts and ceilings in `.session/loop-state.json` under `task_options`, and what each role does in `.session/capabilities.json`. A graph or order naming anything else is refused whole; the Policymaker sees a refused order as `orders_refused` of that iteration in `loop-state.json`. `consent` is optional: the
 engine asks the owner by itself when a role's profile is beyond the accepted limits. `consent.secrets` lists the names
 (`^[A-Z][A-Z0-9_]*$`, no duplicates, never values) of the repository secrets this one session needs; the owner accepts

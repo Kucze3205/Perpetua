@@ -32,7 +32,14 @@ PASSED = '{"verdict": "accepted"}\n'        # what a recorded bundle "printed": 
 RESULTS = {}                # digest -> {"exit", "stdout", "tail"}: what "Check the results" said, accepted as data
 MINUTES = 340               # the time limit of a job that runs bundles: their limits added up, and at most this (a job gets 360)
 JOB_ENV = ("GITHUB_OUTPUT", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_STATE", "GITHUB_STEP_SUMMARY")
+NO_RESULT = -1              # `run_command`'s exit code when the job never ran the command
 _plan = []                  # while planning: [the plan] (bundles recorded for the job)
+
+
+class TokenlessUnavailable(SystemExit):
+    """GitHub ran nothing: the tokenless job never started or left no output. No fault of the policy or of the agent, so it
+    costs neither a rollback nor a fix round; uncaught it turns the run red and the work is tried again (the watchdog, the
+    resume of a session)."""
 
 
 def digest(directory):
@@ -111,7 +118,8 @@ def ship(plan, out):
 
 def run_command(cmd, tree, timeout_minutes=60, purpose="command", keep=0):
     """A shell command from the repo (check, verification, goal gate) run on a copy of `tree` on a machine without the token.
-    Returns a CompletedProcess; a job that left no output counts as a failed command. `keep`: as `run_bundle`."""
+    Returns a CompletedProcess: exit code NO_RESULT when the job never ran it (no stdout), 1 when it ran out of time (no exit
+    code). `keep`: as `run_bundle`."""
     bundle = tempfile.mkdtemp(prefix="bundle-")
     try:
         shutil.copytree(tree, os.path.join(bundle, "tree"), symlinks=True, ignore=shutil.ignore_patterns(".git"))
@@ -130,9 +138,26 @@ def run_command(cmd, tree, timeout_minutes=60, purpose="command", keep=0):
     stdout, stderr, code = read("stdout.txt"), read("stderr.txt"), read("exit-code")
     if out:
         shutil.rmtree(out, ignore_errors=True)
-    if stdout is None or code is None or not code.strip().isdigit():
-        return subprocess.CompletedProcess(cmd, 1, "", "the tokenless job returned no result for the command")
+    if stdout is None:
+        return subprocess.CompletedProcess(cmd, NO_RESULT, "", "the tokenless job did not run the command")
+    if code is None or not code.strip().isdigit():
+        return subprocess.CompletedProcess(cmd, 1, stdout, (stderr or "") + "\nthe command left no exit code: it ran out of time")
     return subprocess.CompletedProcess(cmd, int(code.strip()), stdout, stderr or "")
+
+
+def script_output(name, out, keep):
+    """(exit code, the first `keep` characters of stdout) of `policy/<name>` in the output directory `out` of the job that ran
+    it (None: the job left none). The job creates `stdout.txt` before the script starts, so without it the script never ran:
+    GitHub's failure, not the policy's (TokenlessUnavailable). No exit code beside it: the script ran out of time."""
+    if out is None or not os.path.isfile(os.path.join(out, "stdout.txt")):
+        raise TokenlessUnavailable("policy/%s did not run: the tokenless job left %s" % (name, "no stdout" if out else "no output"))
+    with open(os.path.join(out, "stdout.txt"), encoding="utf-8", errors="replace") as fh:
+        text = fh.read(keep)
+    try:
+        with open(os.path.join(out, "exit-code"), encoding="utf-8") as fh:
+            return fh.read().strip(), text
+    except OSError:
+        return "no exit code (it ran out of time)", text
 
 
 def accept(text):

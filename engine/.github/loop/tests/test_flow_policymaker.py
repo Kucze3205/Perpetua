@@ -124,10 +124,29 @@ class PolicyScriptTest(Flow):
     def test_a_failing_script_is_refused(self):
         self.assert_refused("import sys\nprint('{\"reason\": \"a\"}')\nsys.exit(1)\n")
 
-    def test_a_script_that_cannot_run_in_the_tokenless_job_fails_the_iteration(self):
-        self.hub.tokenless_fault = "no-artifact"
+    def assert_not_run_and_kept(self, fault):
+        """GitHub never ran the script: the iteration fails on GitHub's failure, and the policy stays as it is."""
+        self.set_script("import json\nprint(json.dumps({'reason': 'my own rule'}))\n")
+        mine = open(self.SCRIPT, encoding="utf-8").read()
+        fakes.sh(self.w.loop, 'git', 'tag', '-f', 'setup-baseline', 'HEAD~1')      # a rollback would take the script away
+        self.hub.tokenless_fault = fault
         n = start.start_iteration()
-        self.assertEqual(it.read_json(it.record_path(n))["status"], "failed")
+        record = it.read_json(it.record_path(n))
+        self.assertEqual(record["status"], "failed")
+        self.assertIn("policy/policymaker-trigger.py did not run", record["failure"])
+        c.sync_main()
+        self.assertEqual(open(self.SCRIPT, encoding="utf-8").read(), mine)
+        self.assertFalse(any(x["title"] == "policy/ rolled back" for x in self.hub.issues.values()))
+
+    def test_a_script_the_tokenless_job_never_ran_fails_the_iteration_and_keeps_the_policy(self):
+        self.assert_not_run_and_kept("no-artifact")
+
+    def test_a_tokenless_job_without_stdout_never_ran_the_script_and_keeps_the_policy(self):
+        self.assert_not_run_and_kept("no-stdout")
+
+    def test_a_script_out_of_time_is_the_policys_fault_and_rolls_back(self):
+        self.hub.tokenless_fault = "timeout"
+        self.assert_refused("print('{\"reason\": \"a\"}')\n")
 
     def test_one_open_policymaker_whatever_the_script_returns(self):
         self.set_script("raise SystemExit(1)\n")
@@ -165,6 +184,14 @@ class FirstPolicymakerTest(Flow):
         self.assertEqual(c.report_fields(cur["number"])["phase"], "shape")       # no wake: the iteration goes on at once
         self.assertIsNotNone(self.session_issue("orchestrator"))
         self.assertEqual(self.hub.issues[pol]["state"], "closed")
+
+    def test_orders_already_in_the_graph_are_not_placed_twice(self):
+        start.start_iteration()
+        pol = self.session_issue("policymaker")
+        self.w.session(pol, session_files={"orders.json": self.ORDER})
+        count = len(self.hub.issues)
+        self.assertFalse(it.place_orders(0, self.open_iteration()["number"], it.read_orders(pol)))
+        self.assertEqual(len(self.hub.issues), count)
 
     def test_the_first_trigger_returns_until_a_policymaker_session_ends_done(self):
         start.start_iteration()

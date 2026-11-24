@@ -21,6 +21,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import git_identity
+import github_retry
 import managed_resources as resources
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
@@ -34,7 +35,8 @@ AGENT_STATUSES = {"done", "partial", "blocked", "rejected"}
 OWNED = ("attempts", "idle_resumes", "head", "resume_after", "kicks", "kicked", "conflicts", "fixes", "cause", "verification", "check", "verdict", "improved",
          "merged", "detail", "model", "effort", "turns", "peak_context", "tokens_in", "tokens_out", "cache_read", "cache_write",
          "models", "agent_s", "gate_s", "total_s", "parked_s", "paused_at", "runner", "branch", "iteration", "artifacts",
-         "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit", "pass", "ordered")
+         "verifier_issue", "verified_commit", "verifier_passed", "owner_accepted", "owner_accepted_commit", "pass", "ordered",
+         "stage_failures")
 SECRETS = ("GH_TOKEN", "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
 
 DEFAULT_TOOLS = ["Read", "Grep", "Glob", "Write", "Edit", "Skill", "Bash(git:*)", "Bash(python3:*)", "Bash(echo:*)", "Bash(printf:*)", "Bash(mkdir:*)"]
@@ -194,7 +196,7 @@ def path_match(path, patterns):
 # ---------------------------------------------------------------- GitHub (thin: tests replace these functions)
 
 def gh(*args, inp=None, check=True):
-    r = subprocess.run(["gh", *args], input=inp, capture_output=True, text=True)
+    r = github_retry.run(args, inp)          # a 5xx or a lost connection is asked again, any other answer is final
     if check and r.returncode:
         raise SystemExit("gh %s: %s" % (" ".join(args[:3]), r.stderr.strip()))
     return r.stdout
@@ -253,14 +255,22 @@ def create_issue(title, body, labels=(), assignees=()):
 
 
 def edit_labels(n, add=(), remove=()):
+    """Only labels the issue has are removed: `gh issue edit` refuses the whole edit over one the repository lacks. A failed
+    edit is logged, not raised."""
+    try:
+        remove = label_names(issue(n)) & set(remove) if remove else ()
+    except SystemExit as e:
+        print("#%s: labels left as they are, the issue could not be read: %s" % (n, e), file=sys.stderr)
+        return
     args = ["issue", "edit", str(n)]
     for a in add:
         ensure_label(a)
         args += ["--add-label", a]
-    for r in remove:
+    for r in sorted(remove):
         args += ["--remove-label", r]
-    if len(args) > 3:
-        gh(*args, check=False)
+    r = github_retry.write(args) if len(args) > 3 else None
+    if r and r.returncode:
+        print("#%s: labels not edited: %s" % (n, r.stderr.strip()), file=sys.stderr)
 
 
 def edit_issue_body(n, body):
@@ -275,7 +285,10 @@ def pin_issue(n):
 
 
 def close_issue(n, reason="completed"):
-    gh("issue", "close", str(n), "--reason", reason, check=False)
+    """Raises when GitHub keeps refusing: what follows a close must not run, and an issue left open is the watchdog's."""
+    r = github_retry.write(["issue", "close", str(n), "--reason", reason])
+    if r.returncode:
+        raise SystemExit("#%s stays open: %s" % (n, r.stderr.strip()))
 
 
 _ENSURED = set()
@@ -346,7 +359,7 @@ def workflow_run(workflow, **inputs):
     args = ["workflow", "run", workflow]
     for k, v in inputs.items():
         args += ["-f", "%s=%s" % (k, v)]
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
+    r = github_retry.write(args)
     if r.returncode:
         print("gh workflow run %s: %s" % (workflow, r.stderr.strip()), file=sys.stderr)
     return r.returncode == 0
@@ -377,7 +390,9 @@ def run_tokenless(bundle, timeout_minutes, purpose="command", poll=15):
             time.sleep(poll)
             run = next((r for r in run_list("tokenless.yml") if r["displayTitle"] == title), None)
             if run and run["status"] == "completed":
-                gh("run", "download", str(run["databaseId"]), "-n", "result-%s" % key, "-D", out, check=False)
+                r = github_retry.write(["run", "download", str(run["databaseId"]), "-n", "result-%s" % key, "-D", out])
+                if r.returncode:
+                    print("tokenless run %s: no result downloaded: %s" % (key, r.stderr.strip()), file=sys.stderr)
                 return out if os.path.isdir(out) else None
         return None
     finally:
@@ -672,7 +687,8 @@ def launch(n):
            for r in session_runs()):
         return False
     roles = roles_of(label_names(i))
-    workflow_run("session.yml", issue=n, role=roles[0] if len(roles) == 1 else "")
+    if not workflow_run("session.yml", issue=n, role=roles[0] if len(roles) == 1 else ""):
+        return False            # no run will appear: the watchdog's kicks count it, not a commitment
     LAUNCHED.add(n)
     say("launch #%s" % n)
     return True

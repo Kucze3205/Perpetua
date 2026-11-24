@@ -12,9 +12,10 @@ import iteration_start as start
 
 MAX_AGE_DAYS = 30
 MAX_KICKS = 3
-CRASH_STREAK = 3                # consecutive `crashed` without a commit
+CRASH_STREAK = 3                # consecutive `crashed` without a commit, not counting those a failed iteration ended
 MAX_SLEEP_S = 340 * 60          # resume.yml: a job is limited to 360 min; a longer park is the watchdog's
 GRACE_MIN = 30                  # covers dispatch latency, never working time
+STAGE_RETRY_MIN = (5, 30)       # the waits before a session GitHub kept from starting is tried again
 
 
 def park(n, i, f, upd, prose, reset, head):
@@ -41,6 +42,27 @@ def park(n, i, f, upd, prose, reset, head):
     return None
 
 
+def stage_failed(n, why):
+    """GitHub kept session n from starting (*Prepare the session* failed, or the policy scripts' job left no verdict): not
+    the session's fault, so it is parked and resumed, not left to the watchdog's cron. The third time in a row is an outage."""
+    if not c.guard_ok() or c.outage_open():
+        return
+    i = c.issue(n)
+    if i["state"] != "open" or not c.in_loop(c.label_names(i)):        # a start that ended it on purpose closed it
+        return
+    k = int(c.report_fields(n).get("stage_failures") or 0)
+    if k >= len(STAGE_RETRY_MIN):
+        c.update_report(n, {"stage_failures": None})
+        c.open_outage("session #%s failed to start %s times in a row" % (n, k + 1), why,
+                      "Look at the latest runs of session #%s in the Actions tab, fix the cause, then close this issue." % n)
+        return
+    when = c.now() + timedelta(minutes=STAGE_RETRY_MIN[k])
+    c.update_report(n, {"status": "paused", "cause": "stage-failed", "stage_failures": k + 1, "resume_after": c.iso(when)},
+                    "The session did not start (%s); next attempt at %s." % (why, c.iso(when)))
+    c.edit_labels(n, add=["blocked:rate-limit"])
+    c.workflow_run("resume.yml", issue=n)
+
+
 def reconcile():
     """End of every session: a loop with no commitments moves on at once, not at the next cron (it lags by hours)."""
     if c.guard_ok() and not c.outage_open():
@@ -53,7 +75,8 @@ def drive():
     roll back policy; no commitments -> kick or start the next iteration."""
     if crash_streak():
         c.open_outage("%s sessions in a row crashed without a commit" % CRASH_STREAK,
-                      "The last %s sessions ended `crashed` with no commit. The counter is blind to the cause." % CRASH_STREAK,
+                      "The last %s sessions ended `crashed` with no commit. Sessions a failed iteration ended are not counted "
+                      "(failed iterations have a count of their own); otherwise the counter is blind to the cause." % CRASH_STREAK,
                       "Look at the machine cause (`cause`) in the reports of the latest sessions and fix it.")
         c.say("outage: %s sessions in a row crashed without a commit" % CRASH_STREAK)
         return 1
@@ -86,13 +109,17 @@ def crash_streak():
     closed = c.list_issues(state="closed", labels=("outage",))
     since = max([x["closed_at"] for x in closed if x.get("closed_at")], default="")
     sessions = [x for x in c.recent_closed() if x["closed_at"] > since and c.in_loop(c.label_names(x))]
-    if len(sessions) < CRASH_STREAK:
-        return False
-    for x in sessions[:CRASH_STREAK]:
+    counted = 0
+    for x in sessions:
         f = c.report_fields(x["number"])
+        if f.get("cause") == "iteration-failed":
+            continue
         if f.get("status") != "crashed" or f.get("commit"):
             return False
-    return True
+        counted += 1
+        if counted == CRASH_STREAK:
+            return True
+    return False
 
 
 def parked_until(n):

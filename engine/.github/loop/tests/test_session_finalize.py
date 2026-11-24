@@ -11,6 +11,8 @@ from unittest.mock import patch
 import fakes
 from fakes import common as c
 import agent_result
+import check_results
+import closing
 import release_assets
 import session_start
 import watchdog
@@ -282,11 +284,31 @@ class EpilogueTest(SessionCase):
         c.sync_main()
         self.assertEqual(c.limits(), {"fix_rounds": 5, "successor_generations": 5, "merge_conflict_retries": 0, "backoff_hours": [1, 72]})
 
-    def test_a_verification_job_that_returns_nothing_fails_the_verification(self):
+    def test_a_verification_job_that_returns_nothing_costs_no_fix_round(self):
         n = self.issue(body="## Goal\nx\n## Verification\n`true`\n")
         self.w.before_finalize = lambda: setattr(self.hub, "tokenless_fault", "no-artifact")     # after staging, which runs the state script
+        with self.assertRaises(check_results.TokenlessUnavailable):          # the run goes red; the session stays for the watchdog
+            self.w.session(n, files={"src/a.txt": "A"})
+        f = self.hub.report(n)
+        self.assertNotIn("fixes", f)
+        self.assertNotIn("verification", f)
+        self.assertEqual(self.hub.issues[n]["state"], "open")
+
+    def test_a_close_that_fails_keeps_the_labels_a_retry_looks_for(self):
+        n = self.issue(labels=["blocked:rate-limit"])
+
+        def refused(*a, **k):
+            raise SystemExit("#%s stays open: HTTP 502" % n)
+        self.hub.close_issue = refused
+        c.close_issue = refused
+        with self.assertRaises(SystemExit):
+            closing.close_out(n, self.hub.issue(n), "crashed", {}, "x")
+        self.assertIn("blocked:rate-limit", self.hub.issues[n]["_labels"])
+
+    def test_a_verification_that_fails_still_costs_a_fix_round(self):
+        n = self.issue(body="## Goal\nx\n## Verification\n`false`\n")
         self.w.session(n, files={"src/a.txt": "A"})
-        self.assertEqual(self.hub.report(n)["verification"], "fail")
+        self.assertEqual((self.hub.report(n)["verification"], self.hub.report(n)["fixes"]), ("fail", "1"))
 
     def test_the_clock_of_a_park_is_the_probes_not_the_sessions(self):
         n = self.issue()

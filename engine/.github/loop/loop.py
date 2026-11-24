@@ -9,8 +9,8 @@ the copy of the engine in the bundle that "Prepare the session", "Prepare the ch
 it). The agent's work
 arrives as commits fetched into this checkout; nothing is executed inside the agent's directory.
 
-Commands: check-autopilot, check-credentials, session-settings, stage-inputs, run-policy-scripts, prepare-checks, run-checks,
-take-results, start-iteration, watch, resume-after-limit.
+Commands: check-autopilot, check-credentials, session-settings, stage-inputs, stage-failed, run-policy-scripts, prepare-checks,
+run-checks, take-results, start-iteration, watch, resume-after-limit.
 """
 import sys
 
@@ -65,6 +65,8 @@ def command(cmd, args):
         session_start.resolve(int(args[0]))
     elif cmd == "stage-inputs":
         session_start.stage(int(args[0]), *args[1:4])
+    elif cmd == "stage-failed":
+        watchdog.stage_failed(int(args[0]), "*Prepare the session* failed")
     elif cmd == "run-policy-scripts":
         policy_inputs.run(*args[:3])
     elif cmd == "prepare-checks":

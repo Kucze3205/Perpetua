@@ -5,7 +5,8 @@ their own that holds no token (ADR-0006), between "Prepare the session" and the 
 - `run` (the job, `loop.py run-policy-scripts`): runs the scripts, applies the engine's checks to what they print and
   leaves the validated results (files for `.session/`, the bootstrap prompt) as an artifact; the job's outputs say `ok`
   or the `error`, and pin the artifact by digest (`artifact_pin`);
-- `refusal` and `budget` (with the token, in "Take in results"): whether the results are accepted, and the startup budget they hold.
+- `refusal` and `budget` (with the token, in "Take in results"): whether the results are accepted, whose fault a refusal is,
+  and the startup budget they hold.
 """
 import json
 import os
@@ -56,15 +57,18 @@ def run(bundle, work, out):
 
 
 def refusal(ok, error, directory, digest):
-    """Why "Take in results" refuses what the policy scripts' job left (None: it takes it in): the job said no, left no result,
-    or the artifact is not the one it pinned."""
+    """(why "Take in results" refuses what the policy scripts' job left, whether the policy is at fault); (None, False): it
+    takes it in. The policy is at fault only when the job ran the scripts and said no (`ok` false). A job that left no
+    verdict (it never ran, or died) or an artifact that did not arrive as pinned is GitHub's failure: refused all the same."""
+    if ok == "false":
+        return (error or "the policy scripts' output was refused")[:ERROR_CHARS], True
     if ok != "true":
-        return (error or "the job that runs the policy scripts left no result")[:ERROR_CHARS]
+        return "the job that runs the policy scripts left no result", False
     try:
         artifact_pin.verify(directory, digest)
     except (OSError, ValueError):
-        return "the policy script results are not the ones that job pinned"
-    return None
+        return "the policy script results are not the ones that job pinned", False
+    return None, False
 
 
 def budget(directory):

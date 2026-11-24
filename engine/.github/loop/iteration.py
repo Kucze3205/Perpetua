@@ -105,14 +105,14 @@ def no_progress(idx=None):
 
 def policymaker_sessions(limit=5, latest=None):
     """The latest Policymaker sessions that ran, newest first, and how they ended. An issue closed before its session
-    started (the E2E probe's, say) has no report and is no session. `latest`: a session that just ended, which the list of
-    closed issues may not return yet."""
+    started (the E2E probe's, say) has no report, and one its failed iteration closed before any run ended has no `branch`:
+    neither is a session. `latest`: a session that just ended, which the list of closed issues may not return yet."""
     numbers = {x["number"] for x in c.list_issues(state="closed", labels=("role:policymaker",), limit=3 * limit)}
     out = []
     for n in sorted(numbers | ({latest} if latest else set()), reverse=True):
-        status = c.report_fields(n).get("status")
-        if status:
-            out.append({"issue": n, "status": status})
+        f = c.report_fields(n)
+        if f.get("status") and (f.get("branch") or f.get("cause") != "iteration-failed"):
+            out.append({"issue": n, "status": f["status"]})
         if len(out) == limit:
             break
     return out
@@ -583,11 +583,11 @@ def advance():
 
 def fail_iteration(n, why, rollback=False):
     """`rollback`: the iteration failed on data the policy supplied; `execution/` and `policy/` return to the last good state."""
-    it = find_iteration_issue(n)
-    if it:
+    if find_iteration_issue(n):
         if rollback:
             revert_policy(why)
-        for x in iteration_issues(n):
+        unended = [s for s in c.list_issues(labels=("role:policymaker", c.ITER + str(n))) if not c.report_fields(s["number"]).get("status")]
+        for x in iteration_issues(n) + unended:         # its Policymaker too, while no run of it ended: no one would relaunch it
             if x["state"] == "open" and c.roles_of(c.label_names(x)):
                 for r in c.session_runs():
                     if c.run_issue(r["displayTitle"]) == "session #%s" % x["number"] and r["status"] in ("queued", "in_progress", "waiting"):

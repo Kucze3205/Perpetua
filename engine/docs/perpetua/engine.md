@@ -73,6 +73,10 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    begins the execution phase. Anything else (main moved, a decision job that failed) runs in a Tokenless run. A start
    whose run was lost is picked up by the watchdog: no open iteration, or one still `starting` without a decision after
    45 minutes, is started or decided again; a goal check that was due stays on the closed iteration (`goal_check: due`).
+   GitHub's issue list lags: it shows a just-closed iteration as open and leaves out a just-opened one for a while. The
+   engine reads the state of each listed iteration directly, so a close starts the next one at once; and a start reads
+   the issues just below the one it opened, one by one, so of two starts at the same moment only the lower number stays
+   (one iteration, one shaper).
 2. **Policy phase.** When due, the Policymaker session opens the iteration and writes proposed
    definitions and orders. `apply_policy` admits the completed candidate when the session ends
    (or, if it says `"merge": "later"` and waits for its orders, at the end of the phase); completion alone does not activate it.

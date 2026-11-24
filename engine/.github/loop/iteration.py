@@ -174,8 +174,8 @@ def find_iteration_issue(n, state="open"):
 
 
 def open_iteration():
-    found = c.list_issues(labels=(MAP,))
-    return found[0] if found else None
+    """Each listed one's state read directly: GitHub's list shows a just-closed iteration as open for a while."""
+    return next((x for x in (c.issue(y["number"]) for y in c.list_issues(labels=(MAP,))) if x["state"] == "open"), None)
 
 
 def applied_list(fields, key):

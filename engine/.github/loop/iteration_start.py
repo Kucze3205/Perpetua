@@ -28,6 +28,8 @@ import session_startup
 
 START_MINUTES = 45      # a start that decided nothing this long after it opened its iteration was lost: deciding takes at
                         # most the trigger's Tokenless run (policy_script.MINUTES and the wait for the run, 25 minutes)
+RACE_MINUTES = 10       # how long GitHub's issue list may leave out a new iteration: a start that raced this one opened its
+                        # iteration less than this before (`raced`)
 
 
 def jobs():
@@ -134,7 +136,10 @@ def start_iteration():
     c.sync_main()
     cur = it.open_iteration()
     if cur:
-        return decide(it.iteration_number(cur), cur["number"]) if lost(cur) else None
+        if lost(cur):
+            return decide(it.iteration_number(cur), cur["number"])
+        c.say("iteration #%s is still open: none started" % cur["number"])
+        return None
     if (gone := it.closed_without_record()) is not None:
         it.revert_policy("iteration %s was closed without a record" % it.tag(gone))
     if not cadence_ok():
@@ -150,11 +155,28 @@ def start_iteration():
         c.ensure_label(l, "0E8A16" if l == it.MAP else "C5DEF5", "iteration of the loop")
     issue = c.create_issue("Iteration %s" % it.tag(n), "Iteration %s of the loop. State is in the comments and in `iterations/`.\n" % it.tag(n),
                            labels=(it.MAP, label))
-    if any(x["number"] < issue for x in c.list_issues(labels=(it.MAP,))):      # two runs started one at once: the lower number stays
+    if (other := raced(issue)) is not None:      # two runs started one at once: the lower number stays
+        c.say("iteration #%s was opened at the same time: #%s closed" % (other, issue))
         c.close_issue(issue, "not planned")
         return None
     c.update_report(issue, {"phase": "starting", "started": c.iso(), "policy_rev_start": it.policy_rev()})
     return decide(n, issue)
+
+
+def raced(issue):
+    """The open iteration another start opened just before `issue`, or None. Issue by issue down from `issue`, each read
+    directly: GitHub's list leaves out a new issue for a while. Issues older than RACE_MINUTES the list shows, and
+    `open_iteration` saw them."""
+    for n in range(issue - 1, 0, -1):
+        try:
+            x = c.issue(n)
+        except SystemExit:          # deleted or moved away
+            continue
+        if (c.now() - c.parse_time(x["created_at"])).total_seconds() > RACE_MINUTES * 60:
+            return None
+        if x["state"] == "open" and it.MAP in c.label_names(x):
+            return n
+    return None
 
 
 def decide(n, issue):
@@ -230,9 +252,10 @@ def goal_gate():
 
 
 def due_goal():
-    """(n, issue) of the latest iteration when it is closed and its goal check is due; else None."""
+    """(n, issue) of the latest iteration when it is closed and its goal check is due; else None. Its state is read
+    directly: GitHub's list shows a just-closed iteration as open for a while."""
     latest = max(c.list_issues(state="all", labels=(it.MAP,), limit=5), key=lambda x: x["number"], default=None)
-    if latest and latest["state"] == "closed" and c.report_fields(latest["number"]).get("goal_check") == "due":
+    if latest and c.issue(latest["number"])["state"] == "closed" and c.report_fields(latest["number"]).get("goal_check") == "due":
         return it.iteration_number(latest), latest["number"]
     return None
 

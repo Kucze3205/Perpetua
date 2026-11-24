@@ -122,6 +122,9 @@ class FakeHub:
         self.base = datetime.now(timezone.utc)
         self.tick = 0
         self.lagging_label = None
+        self.lagging_close = None           # a label: such an issue, once closed, stays in the list as open for a while
+        self.lagging_create = None          # a label: a new issue with it is not in the list yet
+        self.listed_open, self.unlisted = set(), set()
         self.issues = {}
         self.cmts = {}
         self.deps = []                      # (blocked, blocker)
@@ -154,13 +157,16 @@ class FakeHub:
         return d
 
     def issue(self, n):
+        if int(n) not in self.issues:
+            raise SystemExit("gh api repos/o/r/issues/%s: Not Found (HTTP 404)" % n)
         return self._view(self.issues[int(n)])
 
     def list_issues(self, state="open", labels=(), limit=None):
         if self.lagging_label in labels:
             return []                       # GitHub's label-filtered list does not return a label added a moment ago
-        out = [self._view(x) for x in self.issues.values()
-               if (state == "all" or x["state"] == state) and set(labels) <= x["_labels"]]
+        shown = {n: "open" if n in self.listed_open else x["state"] for n, x in self.issues.items() if n not in self.unlisted}
+        out = [dict(self._view(self.issues[n]), state=s) for n, s in shown.items()
+               if (state == "all" or s == state) and set(labels) <= self.issues[n]["_labels"]]
         out = sorted(out, key=lambda x: x["number"])
         return out[::-1][:limit] if limit else out
 
@@ -169,6 +175,8 @@ class FakeHub:
         self.next_n += 1
         self.issues[n] = {"number": n, "id": 1000 + n, "title": title, "body": body, "state": "open", "state_reason": None,
                           "_labels": set(labels), "assignees": list(assignees), "created_at": self.ts(), "closed_at": None}
+        if self.lagging_create in labels:
+            self.unlisted.add(n)
         return n
 
     def edit_issue_body(self, n, body):
@@ -186,6 +194,8 @@ class FakeHub:
     def close_issue(self, n, reason="completed"):
         x = self.issues[int(n)]
         x.update(state="closed", state_reason="not_planned" if reason == "not planned" else "completed", closed_at=self.ts())
+        if self.lagging_close in x["_labels"]:
+            self.listed_open.add(int(n))
 
     def ensure_label(self, *a, **k):
         pass

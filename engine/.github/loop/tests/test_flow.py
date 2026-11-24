@@ -167,15 +167,12 @@ class RaceTest(Flow):
             c.now = saved
 
     def test_a_second_iteration_started_at_the_same_moment_gives_way(self):
+        self.hub.lagging_create = it.MAP                       # neither run sees the other's new iteration in the list yet
         start.start_iteration()
-        first = self.open_iteration()["number"]
-        real = it.open_iteration
-        it.open_iteration = lambda: None                       # the second run did not see the first yet
-        try:
-            self.assertIsNone(start.start_iteration())
-        finally:
-            it.open_iteration = real
-        self.assertEqual([x["number"] for x in self.hub.by_label("loop:map")], [first])
+        self.assertIsNone(start.start_iteration())
+        maps = [x for x in self.hub.issues.values() if it.MAP in x["_labels"]]
+        self.assertEqual([(x["state"], x["state_reason"]) for x in maps], [("open", None), ("closed", "not_planned")])
+        self.assertEqual(len(self.hub.role_issues("orchestrator", "all")), 1)          # one shaper
 
 
 class ShaperFailureTest(Flow):

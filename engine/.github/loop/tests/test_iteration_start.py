@@ -134,6 +134,32 @@ class DecisionInTheJobTest(StartCase):
         self.assertEqual(self.report(1)["policy_not_needed"], "no trigger is due")
 
 
+class ListLagTest(StartCase):
+    """GitHub's issue list shows a just-closed iteration as open for a while."""
+    def open_maps(self):
+        return [n for n, x in self.hub.issues.items() if it.MAP in x["_labels"] and x["state"] == "open"]
+
+    def test_a_list_that_still_shows_the_closed_iteration_does_not_stop_the_loop(self):
+        self.set_gate(False)
+        start.start_iteration()
+        self.hub.lagging_close = it.MAP
+        self.finish(0)
+        self.assertEqual(self.hub.decided, [TRIGGER, "goal gate"])                # planned by `prepare`, not left to the watchdog
+        self.assertNotIn("goal_check", self.report(0))
+        cur = it.open_iteration()
+        self.assertEqual(it.iteration_number(cur), 1)
+        self.assertEqual(self.open_maps(), [cur["number"]])                           # not closed as a duplicate of iteration 0
+
+    def test_without_the_jobs_the_start_at_once_is_not_stopped_either(self):
+        self.w.start_jobs = None
+        start.start_iteration()
+        self.hub.lagging_close = it.MAP
+        self.finish(0)
+        cur = it.open_iteration()
+        self.assertEqual(it.iteration_number(cur), 1)
+        self.assertEqual(self.open_maps(), [cur["number"]])
+
+
 class OnlyTheJobOutputsCountTest(StartCase):
     def test_a_result_planted_in_the_artifact_is_refused(self):
         self.w.start_jobs = "lost"                     # the session's run ends with no start; the watchdog's run is played by hand

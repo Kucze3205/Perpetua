@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
     steps:
       - name: Download the bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: bundle-${{ inputs.key }}
           path: .
@@ -33,7 +33,7 @@ jobs:
           bash bundle/run.sh > out/stdout.txt 2> out/stderr.txt
           echo $? > out/exit-code
       - name: Upload the result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: result-${{ inputs.key }}

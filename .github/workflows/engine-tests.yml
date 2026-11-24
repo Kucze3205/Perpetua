@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-24.04, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install test dependencies
         run: |
           sudo apt-get update

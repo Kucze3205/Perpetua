@@ -86,6 +86,9 @@ Iterations run sequentially. Each is an issue labelled `loop:map` and
    `notice` owner request at `policy_passes_notice` passes. A session without `wake` ends the phase.
    A failure leaves the accepted organization in force; two consecutive failed sessions (many passes count
    once) roll back managed definitions. See [activation and recovery](managed-resources.md#layered-activation-and-recovery).
+   When the iteration fails before any run of its Policymaker ended (its inputs were refused, say), the issue closes
+   `crashed` (`cause: iteration-failed`) with the iteration's sessions: it does not block the next Policymaker and,
+   having never run, does not count as a failed session.
    With no trigger due there is no policy phase.
 3. **Shape.** The execution phase. The optional execution shaper reads the staged state and writes
    `.session/tasks.json`. The engine

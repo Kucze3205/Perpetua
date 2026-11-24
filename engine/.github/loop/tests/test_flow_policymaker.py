@@ -584,6 +584,32 @@ class PolicymakerFailureTest(Flow):
         finally:
             it.revert_policy = saved
 
+    def test_a_policymaker_that_never_started_is_closed_with_its_failed_iteration(self):
+        fakes.sh(self.w.loop, "git", "tag", "-f", "setup-baseline")
+        start.start_iteration()
+        dead = self.session_issue("policymaker")
+        original, fakes.policy_job = fakes.policy_job, lambda *args: fakes.Staged("", "", "", "/nonexistent")
+        try:
+            with self.assertRaises(SystemExit):            # the policy scripts' job left no result: the session did not start
+                self.w.session(dead)
+        finally:
+            fakes.policy_job = original
+        self.assertEqual(self.record(0)["status"], "failed")
+        f = c.report_fields(dead)
+        self.assertEqual((self.hub.issues[dead]["state"], f["status"], f["cause"]), ("closed", "crashed", "iteration-failed"))
+        nxt = self.open_iteration()                                              # the next iteration opens with a Policymaker
+        self.assertEqual(it.iteration_number(nxt), 1)
+        self.assertEqual(c.report_fields(nxt["number"])["phase"], "policy")      # not "a Policymaker session is still open"
+        self.assertEqual(it.policymaker_sessions(), [])                          # it never ran: no failed session
+        calls = []
+        saved = it.revert_policy
+        it.revert_policy = lambda why: calls.append(why) or True
+        try:
+            self.w.session(self.session_issue("policymaker"), report=False, exit_code="1")
+            self.assertEqual(calls, [])                                          # one failed session, not two
+        finally:
+            it.revert_policy = saved
+
     def test_a_session_of_several_runs_counts_once_toward_the_rollback(self):
         calls = []
         saved = it.revert_policy
